@@ -8,11 +8,25 @@ const fs = require("fs");
 const path = require("path");
 const { imprimir, testar } = require("./print");
 
-function lerConfig() {
-  try { return JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8")); }
-  catch { return { url: "https://comandas.planejamento.app", printerPort: 9100 }; }
+// Config: defaults → config.json embutido (defaults de fábrica) → config do
+// USUÁRIO (userData, editável pela tela de Ajustes do app, sobrevive a updates).
+const DEFAULTS = { url: "https://comandas.planejamento.app", printerPort: 9100, larguraColunas: 48, caixaNome: "Caixa", kiosk: false };
+function bundledConfig() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8")); } catch { return {}; }
 }
-let cfg = lerConfig();
+function userConfigPath() { return path.join(app.getPath("userData"), "config.json"); }
+function lerUserConfig() {
+  try { return JSON.parse(fs.readFileSync(userConfigPath(), "utf8")); } catch { return {}; }
+}
+function lerConfig() { return { ...DEFAULTS, ...bundledConfig(), ...lerUserConfig() }; }
+function salvarUserConfig(patch) {
+  const atual = lerUserConfig();
+  const novo = { ...atual, ...patch };
+  fs.writeFileSync(userConfigPath(), JSON.stringify(novo, null, 2), "utf8");
+  return novo;
+}
+
+let cfg = DEFAULTS;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -33,6 +47,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  cfg = lerConfig();
   Menu.setApplicationMenu(null);
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
@@ -49,5 +64,20 @@ ipcMain.handle("pdv-print-test", async () => {
   try { await testar(cfg); return { ok: true }; }
   catch (err) { return { ok: false, error: String(err && err.message || err) }; }
 });
-// Config visível pro renderer (nome do caixa, sinaliza que a ponte existe).
-ipcMain.handle("pdv-config", () => ({ caixaNome: cfg.caixaNome || "Caixa", printerIp: cfg.printerIp || null, bridge: true }));
+// Config atual (pra tela de Ajustes do PDV).
+ipcMain.handle("pdv-config", () => ({ ...cfg, bridge: true }));
+// Salva a config editada na tela de Ajustes (IP, caixa, etc.) — grava no userData.
+ipcMain.handle("pdv-set-config", (_e, patch) => {
+  try {
+    const limpo = {};
+    if (patch && typeof patch === "object") {
+      if (typeof patch.printerIp === "string") limpo.printerIp = patch.printerIp.trim();
+      if (patch.printerPort != null) limpo.printerPort = parseInt(patch.printerPort, 10) || 9100;
+      if (typeof patch.caixaNome === "string") limpo.caixaNome = patch.caixaNome.trim();
+      if (patch.larguraColunas != null) limpo.larguraColunas = parseInt(patch.larguraColunas, 10) || 48;
+    }
+    salvarUserConfig(limpo);
+    cfg = lerConfig();
+    return { ok: true, config: { ...cfg, bridge: true } };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});

@@ -134,8 +134,12 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
           </div>
         </div>
 
+        {/* Dentro do app de caixa: tela de ajustes (IP da Epson, nome do caixa).
+            Fora do app: card de download. */}
+        <AppCaixaConfig />
+
         {/* App de caixa (recomendado) — imprime direto na Epson, sem Chrome */}
-        <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 text-[12px] text-indigo-900 dark:text-indigo-100 mb-3">
+        <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 text-[12px] text-indigo-900 dark:text-indigo-100 mb-3 pdv-so-fora-do-app">
           <div className="font-bold text-[13px] inline-flex items-center gap-1.5"><Printer size={14} /> App de caixa (recomendado)</div>
           <p className="opacity-90 mt-0.5">Instale o <b>Planejamento PDV</b> no computador do caixa: abre direto o sistema e imprime na Epson <b>por IP</b> (sem Chrome, sem diálogo, com corte e QR). Também funciona offline.</p>
           {(APP_CAIXA_DOWNLOAD.mac || APP_CAIXA_DOWNLOAD.win) ? (
@@ -148,7 +152,7 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
           )}
         </div>
 
-        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 text-[12px] text-amber-900 dark:text-amber-100 mb-3 space-y-3">
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 text-[12px] text-amber-900 dark:text-amber-100 mb-3 space-y-3 pdv-so-fora-do-app">
           <div className="font-bold text-[13px]">Configurar a impressão pelo Chrome (sem o app)</div>
 
           <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-2.5">
@@ -292,5 +296,65 @@ function TicketConteudo({ job, nomeRest, fonteProd = 22 }: { job: ComandaPrintJo
       <div style={{ textAlign: "center", fontSize: "10px" }}>Documento sem valor fiscal</div>
       <div style={{ height: "16px" }} />
     </div>
+  );
+}
+
+// ── Ajustes do app de caixa (só aparece DENTRO do Planejamento PDV) ─────────
+// Lê/grava a config do app (IP da Epson, nome do caixa, etc.) via window.pdvBridge.
+// Quando presente, esconde os cards de "download" e "configurar Chrome".
+type PdvBridge = {
+  config: () => Promise<Record<string, unknown>>;
+  setConfig: (p: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; config?: Record<string, unknown> }>;
+  printTest: () => Promise<{ ok: boolean; error?: string }>;
+};
+function AppCaixaConfig() {
+  const bridge = (typeof window !== "undefined" ? (window as unknown as { pdvBridge?: PdvBridge }).pdvBridge : undefined);
+  const [ip, setIp] = useState("");
+  const [porta, setPorta] = useState("9100");
+  const [caixa, setCaixa] = useState("");
+  const [largura, setLargura] = useState("48");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!bridge) return;
+    bridge.config().then((c) => {
+      setIp(String(c.printerIp || "")); setPorta(String(c.printerPort || 9100));
+      setCaixa(String(c.caixaNome || "")); setLargura(String(c.larguraColunas || 48));
+    }).catch(() => {});
+  }, [bridge]);
+  if (!bridge) return null;
+  async function salvar() {
+    setBusy(true);
+    try { const r = await bridge!.setConfig({ printerIp: ip, printerPort: porta, caixaNome: caixa, larguraColunas: largura }); setMsg(r.ok ? "salvo ✓" : ("erro: " + (r.error || ""))); }
+    catch (e) { setMsg("erro: " + (e instanceof Error ? e.message : "?")); }
+    finally { setBusy(false); setTimeout(() => setMsg(""), 3000); }
+  }
+  async function teste() {
+    setBusy(true);
+    try { const r = await bridge!.printTest(); setMsg(r.ok ? "impresso ✓" : ("erro: " + (r.error || ""))); }
+    catch (e) { setMsg("erro: " + (e instanceof Error ? e.message : "?")); }
+    finally { setBusy(false); setTimeout(() => setMsg(""), 5000); }
+  }
+  const campo = "w-full h-10 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums";
+  const rot = "text-[10px] font-semibold text-gray-500 dark:text-gray-400 block mb-1";
+  return (
+    <>
+      <style>{".pdv-so-fora-do-app{display:none !important;}"}</style>
+      <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 mb-3">
+        <div className="font-bold text-[13px] text-indigo-900 dark:text-indigo-100 inline-flex items-center gap-1.5 mb-2"><Printer size={14} /> Ajustes do app de caixa</div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="col-span-2"><label className={rot}>IP da impressora (Epson)</label><input value={ip} onChange={(e) => setIp(e.target.value)} inputMode="decimal" placeholder="ex.: 192.168.0.50" className={campo} /></div>
+          <div><label className={rot}>Porta</label><input value={porta} onChange={(e) => setPorta(e.target.value)} inputMode="numeric" placeholder="9100" className={campo} /></div>
+          <div><label className={rot}>Largura (colunas)</label><input value={largura} onChange={(e) => setLargura(e.target.value)} inputMode="numeric" placeholder="48" className={campo} /></div>
+          <div className="col-span-2"><label className={rot}>Nome do caixa</label><input value={caixa} onChange={(e) => setCaixa(e.target.value)} placeholder="Caixa 1" className={campo} /></div>
+        </div>
+        <p className="text-[10px] text-gray-400 mt-1">80mm = 48 colunas · 58mm = 32. Fixe o IP da Epson por reserva de DHCP.</p>
+        <div className="flex items-center gap-2 mt-2">
+          <button onClick={() => void salvar()} disabled={busy} className="flex-1 h-10 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">Salvar</button>
+          <button onClick={() => void teste()} disabled={busy} className="h-10 px-4 rounded-lg border border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-sm font-semibold disabled:opacity-40">Imprimir teste</button>
+        </div>
+        {msg && <div className="text-[12px] font-semibold text-center mt-2 text-gray-700 dark:text-gray-200">{msg}</div>}
+      </div>
+    </>
   );
 }

@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld("pdvBridge", {
   print: (job) => ipcRenderer.invoke("pdv-print", job),
   printTest: () => ipcRenderer.invoke("pdv-print-test"),
   config: () => ipcRenderer.invoke("pdv-config"),
+  setConfig: (patch) => ipcRenderer.invoke("pdv-set-config", patch),
 });
