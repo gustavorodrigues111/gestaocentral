@@ -358,12 +358,12 @@ function CaixaBar({ caixa, onAbrir, onSangria, onReforco, onFechar }: {
 }) {
   if (!caixa) {
     return (
-      <div className="mb-3 flex flex-col items-center text-center gap-4 py-10">
-        <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/40 grid place-items-center"><Banknote size={30} className="text-emerald-600 dark:text-emerald-300" /></div>
-        <button onClick={onAbrir} className="w-full max-w-xs h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-base inline-flex items-center justify-center gap-2 shadow-sm">
-          <Banknote size={20} /> Abrir caixa
+      <div className="mb-3 flex flex-col items-center justify-center text-center gap-5 min-h-[52vh]">
+        <button onClick={onAbrir} className="w-52 h-52 sm:w-56 sm:h-56 rounded-3xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-lg hover:shadow-xl flex flex-col items-center justify-center gap-4 transition-all">
+          <Banknote size={56} strokeWidth={1.75} />
+          <span className="text-xl font-extrabold tracking-tight">Abrir caixa</span>
         </button>
-        <p className="text-[13px] text-gray-500 dark:text-gray-400">Abra o caixa para começar a vender.</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Abra o caixa para começar a vender.</p>
       </div>
     );
   }
