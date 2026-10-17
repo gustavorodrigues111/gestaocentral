@@ -59,7 +59,7 @@ async function imprimir(job, cfg) {
 }
 
 async function testar(cfg) {
-  await imprimir({ tipo: "conta", titulo: "TESTE DE IMPRESSAO", rotulo: "TESTE", comandaNumero: "0", linhas: [{ nome: "Item de teste", valor: "R$ 0,00" }], total: "R$ 0,00", rodape: "AppTip PDV - " + (cfg.caixaNome || "Caixa") }, cfg);
+  await imprimir({ tipo: "conta", titulo: "TESTE DE IMPRESSAO", rotulo: "TESTE", comandaNumero: "0", linhas: [{ nome: "Item de teste", valor: "R$ 0,00" }], total: "R$ 0,00", rodape: "Planejamento PDV - " + (cfg.caixaNome || "Caixa") }, cfg);
 }
 
 module.exports = { imprimir, testar };

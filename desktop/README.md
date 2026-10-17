@@ -1,4 +1,4 @@
-# AppTip PDV — app de caixa (desktop)
+# Planejamento PDV — app de caixa (desktop)
 
 App Electron que abre o módulo **Comandas** numa janela dedicada (sem Chrome) e
 **imprime direto na Epson por IP** (ESC/POS: corte de papel + QR do DANFCe),

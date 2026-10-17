@@ -1,4 +1,4 @@
-// AppTip PDV — processo principal do Electron.
+// Planejamento PDV — processo principal do Electron.
 // Abre o módulo Comandas numa janela dedicada e expõe uma "ponte de impressão":
 // o site (renderer) manda o job de impressão e aqui a gente imprime direto na
 // Epson por IP (ESC/POS). Assim não precisa de Chrome --kiosk-printing nem do
@@ -19,7 +19,7 @@ function createWindow() {
     width: 1280,
     height: 820,
     backgroundColor: "#ffffff",
-    title: `AppTip PDV · ${cfg.caixaNome || "Caixa"}`,
+    title: `Planejamento PDV · ${cfg.caixaNome || "Caixa"}`,
     kiosk: !!cfg.kiosk,
     autoHideMenuBar: true,
     webPreferences: {

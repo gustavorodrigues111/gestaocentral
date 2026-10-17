@@ -11,7 +11,7 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // URLs dos instaladores do App de Caixa (hospedar no Firebase Storage e colar
 // aqui). Vazio → mostra "em breve". Quando preenchido, viram botões de download.
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/downloads%2FAppTip-PDV-1.0.0-arm64.dmg?alt=media&token=714E25E6-8DA7-4B38-B987-710374974BA5",
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/downloads%2FPlanejamento-PDV-1.0.0-arm64.dmg?alt=media&token=DAC55D56-E954-4451-B66E-DAE25450B710",
   win: "",   // ex.: https://.../AppTip-PDV-Setup.exe
 };
 
@@ -137,7 +137,7 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
         {/* App de caixa (recomendado) — imprime direto na Epson, sem Chrome */}
         <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 text-[12px] text-indigo-900 dark:text-indigo-100 mb-3">
           <div className="font-bold text-[13px] inline-flex items-center gap-1.5"><Printer size={14} /> App de caixa (recomendado)</div>
-          <p className="opacity-90 mt-0.5">Instale o <b>AppTip PDV</b> no computador do caixa: abre direto o sistema e imprime na Epson <b>por IP</b> (sem Chrome, sem diálogo, com corte e QR). Também funciona offline.</p>
+          <p className="opacity-90 mt-0.5">Instale o <b>Planejamento PDV</b> no computador do caixa: abre direto o sistema e imprime na Epson <b>por IP</b> (sem Chrome, sem diálogo, com corte e QR). Também funciona offline.</p>
           {(APP_CAIXA_DOWNLOAD.mac || APP_CAIXA_DOWNLOAD.win) ? (
             <div className="flex flex-wrap gap-2 mt-2">
               {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg)</a>}

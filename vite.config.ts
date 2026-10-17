@@ -33,9 +33,9 @@ export default defineConfig({
       injectRegister: null,
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'AppTip Comandas (PDV)',
+        name: 'Planejamento PDV — Comandas',
         short_name: 'Comandas',
-        description: 'PDV de balcão — comandas, caixa e nota fiscal',
+        description: 'PDV de balcão (planejamento.app) — comandas, caixa e nota fiscal',
         theme_color: '#4f46e5',
         background_color: '#ffffff',
         display: 'standalone',

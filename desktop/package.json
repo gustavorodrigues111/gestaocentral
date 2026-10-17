@@ -1,8 +1,8 @@
 {
-  "name": "apptip-pdv-desktop",
-  "productName": "AppTip PDV",
+  "name": "planejamento-pdv-desktop",
+  "productName": "Planejamento PDV",
   "version": "1.0.0",
-  "description": "App de caixa (PDV) do AppTip — abre o Comandas e imprime direto na Epson por IP (ESC/POS).",
+  "description": "App de caixa (PDV) do planejamento.app — abre o Comandas e imprime direto na Epson por IP (ESC/POS).",
   "main": "main.js",
   "author": "AppTip",
   "license": "UNLICENSED",
@@ -21,7 +21,7 @@
   },
   "build": {
     "appId": "app.planejamento.pdv",
-    "productName": "AppTip PDV",
+    "productName": "Planejamento PDV",
     "files": ["main.js", "preload.js", "print.js", "config.json"],
     "mac": { "target": ["dmg"], "category": "public.app-category.business" },
     "win": { "target": ["nsis"] },
