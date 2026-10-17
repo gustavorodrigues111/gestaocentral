@@ -34,7 +34,8 @@ const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimu
 function corCategoria(nome?: string | null): string {
   const n = (nome || "").toLowerCase();
   if (/pescado|peixe|fruto do mar|camar|lula|polvo|ostra|marisco|moqueca/.test(n)) return "bg-sky-50 border-sky-200 dark:bg-sky-950/25 dark:border-sky-900/50";
-  if (/bebida|bar|drink|suco|cerveja|vinho|refri|dose|caipir|chopp|água|agua/.test(n)) return "bg-amber-50 border-amber-200 dark:bg-amber-950/25 dark:border-amber-900/50";
+  if (/sem [aá]lcool|sem alcool|n[ãa]o alco[óo]lic|suco|[aá]gua|refri|mate|caju/.test(n)) return "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/25 dark:border-emerald-900/50";
+  if (/bebida|bar|drink|cerveja|vinho|dose|caipir|chopp/.test(n)) return "bg-amber-50 border-amber-200 dark:bg-amber-950/25 dark:border-amber-900/50";
   if (/comida|cozinha|prato|por[çc][aã]o|petisco|entrada|sobremesa|brasa|quente/.test(n)) return "bg-rose-50 border-rose-200 dark:bg-rose-950/25 dark:border-rose-900/50";
   return "bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-700";
 }
@@ -1789,6 +1790,17 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
     if (!q) return produtos;
     return produtos.filter((p) => p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q) || (p.categoria || "").toLowerCase().includes(q));
   }, [produtos, busca]);
+  // Agrupa a lista por categoria, na ordem das categorias (sem categoria por último).
+  const gruposPorCategoria = useMemo(() => {
+    const porCat = new Map<string, ComandaProduto[]>();
+    for (const p of listaFiltrada) { const k = p.categoriaId || ""; (porCat.get(k) || porCat.set(k, []).get(k)!).push(p); }
+    const ord = [...categorias].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    const grupos: { key: string; nome: string; itens: ComandaProduto[] }[] = [];
+    for (const c of ord) { const itens = porCat.get(c.id); if (itens && itens.length) grupos.push({ key: c.id, nome: c.nome, itens }); }
+    const semCat = porCat.get("");
+    if (semCat && semCat.length) grupos.push({ key: "__sem__", nome: "Sem categoria", itens: semCat });
+    return grupos;
+  }, [listaFiltrada, categorias]);
 
   function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem(""); setCst(""); setAliqIcms(""); setVerFiscal(false); setAtivo(true); setModalAberto(false); }
   function novo() { limpar(); setModalAberto(true); }
@@ -1834,20 +1846,30 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
         <button onClick={novo} className="h-11 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold inline-flex items-center gap-1.5 shrink-0"><Plus size={16} /> Novo</button>
       </div>
 
-      {/* Lista */}
-      <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {listaFiltrada.length === 0 ? <div className="text-sm text-gray-400 text-center py-8">{produtos.length === 0 ? "Nenhum produto ainda. Toque em “Novo”." : "Nada encontrado."}</div> : listaFiltrada.map((p) => (
-          <div key={p.id} className="flex items-center gap-2 py-2.5">
-            <button onClick={() => editar(p)} className="min-w-0 flex-1 text-left">
-              <div className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{p.codigo ? <span className="font-mono text-gray-400">#{p.codigo} </span> : ""}{p.nome} {!p.ativo && <span className="text-[10px] text-gray-400">(inativo)</span>}</div>
-              <div className="text-[11px] text-gray-500">{fmtR(p.preco)}{p.porPeso ? "/kg · peso" : ""}{p.producao ? " · imprime" : ""}{p.categoria ? ` · ${p.categoria}` : ""}</div>
-            </button>
-            <button onClick={() => void salvarProduto({ ...p, ativo: !p.ativo })} className="text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shrink-0">{p.ativo ? "Inativar" : "Ativar"}</button>
-            <button onClick={() => duplicar(p)} title="Duplicar para novo" className="text-gray-300 hover:text-indigo-500 shrink-0"><Copy size={16} /></button>
-            <button onClick={() => { if (confirm(`Excluir "${p.nome}"?`)) void excluirProduto(p.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={16} /></button>
+      {/* Lista agrupada por categoria */}
+      {listaFiltrada.length === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-8">{produtos.length === 0 ? "Nenhum produto ainda. Toque em “Novo”." : "Nada encontrado."}</div>
+      ) : gruposPorCategoria.map((g) => (
+        <div key={g.key} className="mb-3">
+          <div className="flex items-center gap-2 px-1 py-1.5 border-b-2 border-gray-200 dark:border-gray-700">
+            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">{g.nome}</span>
+            <span className="text-[10px] text-gray-400">({g.itens.length})</span>
           </div>
-        ))}
-      </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {g.itens.map((p) => (
+              <div key={p.id} className="flex items-center gap-2 py-2.5">
+                <button onClick={() => editar(p)} className="min-w-0 flex-1 text-left">
+                  <div className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{p.codigo ? <span className="font-mono text-gray-400">#{p.codigo} </span> : ""}{p.nome} {!p.ativo && <span className="text-[10px] text-gray-400">(inativo)</span>}</div>
+                  <div className="text-[11px] text-gray-500">{fmtR(p.preco)}{p.porPeso ? "/kg · peso" : ""}{p.producao ? " · imprime" : ""}</div>
+                </button>
+                <button onClick={() => void salvarProduto({ ...p, ativo: !p.ativo })} className="text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shrink-0">{p.ativo ? "Inativar" : "Ativar"}</button>
+                <button onClick={() => duplicar(p)} title="Duplicar para novo" className="text-gray-300 hover:text-indigo-500 shrink-0"><Copy size={16} /></button>
+                <button onClick={() => { if (confirm(`Excluir "${p.nome}"?`)) void excluirProduto(p.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={16} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
 
       {/* Modal de cadastro/edição */}
       {modalAberto && (
