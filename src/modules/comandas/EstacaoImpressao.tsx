@@ -319,7 +319,7 @@ type PdvBridge = {
   setConfig: (p: Record<string, unknown>) => Promise<{ ok: boolean; error?: string; config?: Record<string, unknown> }>;
   printTest: () => Promise<{ ok: boolean; error?: string }>;
 };
-function AppCaixaConfig() {
+export function AppCaixaConfig({ semEsconder }: { semEsconder?: boolean } = {}) {
   const bridge = (typeof window !== "undefined" ? (window as unknown as { pdvBridge?: PdvBridge }).pdvBridge : undefined);
   const [ip, setIp] = useState("");
   const [porta, setPorta] = useState("9100");
@@ -351,7 +351,7 @@ function AppCaixaConfig() {
   const rot = "text-[10px] font-semibold text-gray-500 dark:text-gray-400 block mb-1";
   return (
     <>
-      <style>{".pdv-so-fora-do-app{display:none !important;}"}</style>
+      {!semEsconder && <style>{".pdv-so-fora-do-app{display:none !important;}"}</style>}
       <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 mb-3">
         <div className="font-bold text-[13px] text-indigo-900 dark:text-indigo-100 inline-flex items-center gap-1.5 mb-2"><Printer size={14} /> Ajustes do app de caixa</div>
         <div className="grid grid-cols-2 gap-2">
