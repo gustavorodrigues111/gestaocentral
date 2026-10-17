@@ -141,7 +141,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   async function abrirComanda(dados: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo" }) {
     if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
     const c: Comanda = {
-      id: uid(), restaurantId: rid, numero: dados.numero.trim(), clienteNome: dados.clienteNome.trim(),
+      id: uid(), restaurantId: rid, numero: dados.numero.trim() || proximoNumero(), clienteNome: dados.clienteNome.trim(),
       cpf: dados.cpf?.trim() || null, telefone: dados.telefone?.trim() || null, pessoas: dados.pessoas || 1,
       status: "aberta", caixaId: caixa.id, modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
@@ -605,13 +605,10 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
   const [err, setErr] = useState("");
   const togo = modo === "togo";
   async function salvar() {
-    if (!togo) {
-      if (!numero.trim()) { setErr("Informe o nº da comanda."); return; }
-      if (!nome.trim()) { setErr("Informe o nome do cliente."); return; }
-    }
+    if (!togo && !nome.trim()) { setErr("Informe o nome do cliente."); return; }
     const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
-    try { await onAbrir({ numero: numero.trim() || "—", clienteNome, telefone: tel, pessoas: Math.max(1, pessoas), modo }); }
+    try { await onAbrir({ numero: numero.trim(), clienteNome, telefone: tel, pessoas: Math.max(1, pessoas), modo }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); setSaving(false); }
   }
   const campo = "w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
@@ -625,12 +622,12 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
         </div>
         <div className="space-y-3.5">
           <div>
-            <label className={rotulo}>Nº da comanda {togo ? "(opcional)" : "*"}</label>
-            <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12" className={`${campo} tabular-nums`} />
-          </div>
-          <div>
             <label className={rotulo}>Nome do cliente {togo ? "(opcional)" : "*"}</label>
             <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder="nome do cliente" className={campo} />
+          </div>
+          <div>
+            <label className={rotulo}>Nº da comanda (opcional)</label>
+            <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12 · deixe vazio p/ automático" className={`${campo} tabular-nums`} />
           </div>
           <div>
             <label className={rotulo}>Quantidade de pessoas</label>
