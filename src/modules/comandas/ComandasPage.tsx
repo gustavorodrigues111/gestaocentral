@@ -16,7 +16,7 @@ import { APP_VERSION_LABEL } from "../../core/version";
 import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
-  ouvirComandas, salvarComanda, criarPrintJob, superseedContaJobs,
+  ouvirComandas, salvarComanda, excluirComanda, criarPrintJob, superseedContaJobs,
   ouvirCategorias, salvarCategoria, excluirCategoria,
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
   ouvirFiscalConfig, salvarFiscalConfig,
@@ -773,9 +773,16 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     if (pendentesProducao.length && !confirm(`Há ${pendentesProducao.length} item(ns) de cozinha ainda NÃO enviados pra produção. Fechar mesmo assim?`)) return;
     setFechar(true);
   }
+  const vazia = comanda.status !== "fechada" && comanda.itens.length === 0 && (comanda.pagamentos || []).length === 0;
   // Sair do detalhe: se há itens de cozinha não enviados, confirma antes.
-  function sair() {
+  async function sair() {
     if (editavel && pendentesProducao.length && !confirm(`Há ${pendentesProducao.length} item(ns) de cozinha ainda NÃO enviados pra produção. Sair sem imprimir? (Cancele pra imprimir a cozinha)`)) return;
+    // Comanda vazia (sem item e sem pagamento) não fica na lista — apaga ao sair.
+    if (vazia) { try { await excluirComanda(comanda.id); } catch { /* ignore */ } }
+    onClose();
+  }
+  async function excluirComandaAtual() {
+    try { await excluirComanda(comanda.id); } catch { /* ignore */ }
     onClose();
   }
   async function reabrir() {
@@ -867,7 +874,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     <div className="flex flex-col rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden h-[74vh]">
       {/* Cabeçalho do detalhe (abre abaixo do header do PDV) */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <button onClick={sair} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center" title="Voltar à lista">←</button>
+        <button onClick={() => void sair()} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center" title="Voltar à lista">←</button>
         <div className="min-w-0 flex-1">
           <div className="font-bold text-gray-900 dark:text-gray-100 truncate leading-tight">#{comanda.numero} · {comanda.clienteNome}{comanda.modo === "togo" && <span className="text-[11px] text-emerald-600 ml-1">to-go</span>}</div>
           <div className="text-[11px] text-gray-500">{comanda.itens.length} item(ns)</div>
@@ -965,6 +972,12 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
             )}
           </>
         ) : editavel ? (
+          comanda.itens.length === 0 ? (
+            <>
+              <span className="flex-1 text-[12px] text-gray-400 self-center pl-1">Nenhum item lançado ainda.</span>
+              <button onClick={() => void excluirComandaAtual()} className="h-11 px-4 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold inline-flex items-center justify-center gap-1.5"><Trash2 size={17} /> Excluir comanda</button>
+            </>
+          ) : (
           <>
             <button onClick={() => setVerConta(true)} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Eye size={17} /> Pré-conta</button>
             <button onClick={() => void imprimirProducao()} disabled={!pendentesProducao.length || salvandoImpr}
@@ -975,6 +988,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
               <Check size={18} /> Fechar · {fmtR(comanda.total)}
             </button>
           </>
+          )
         ) : (
           <button onClick={() => setVerConta(true)} className="flex-1 h-11 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Eye size={17} /> Mostrar conta</button>
         )}
