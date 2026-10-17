@@ -11,8 +11,8 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // URLs dos instaladores do App de Caixa (hospedar no Firebase Storage e colar
 // aqui). Vazio → mostra "em breve". Quando preenchido, viram botões de download.
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://storage.googleapis.com/planejamento-pdv-updates/Planejamento%20PDV-1.0.0-arm64.dmg",
-  win: "https://storage.googleapis.com/planejamento-pdv-updates/Planejamento%20PDV%20Setup%201.0.0.exe",
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/downloads%2FPlanejamento-PDV-1.0.0-arm64.dmg?alt=media&token=DAC55D56-E954-4451-B66E-DAE25450B710",
+  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/downloads%2FPlanejamento-PDV-Setup-1.0.0.exe?alt=media&token=A14397E6-E50B-4672-81DE-B578480FDF16",
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
