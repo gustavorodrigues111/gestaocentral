@@ -115,12 +115,15 @@ export function TefCobranca({ valor, serialPos, cpf, nome, onAprovado, onFechar 
 
         {(fase === "recusado" || fase === "erro") && (
           <div className="text-center py-3">
-            <div className="w-14 h-14 mx-auto rounded-full bg-rose-100 dark:bg-rose-900/40 grid place-items-center mb-2"><TriangleAlert size={28} className="text-rose-600 dark:text-rose-300" /></div>
-            <div className="font-bold text-rose-700 dark:text-rose-300">{fase === "recusado" ? "Não aprovado" : "Deu problema"}</div>
-            <div className="text-[12px] text-gray-500 mt-1 break-words">{erro}</div>
+            <div className="w-14 h-14 mx-auto rounded-full bg-rose-100 dark:bg-rose-900/40 grid place-items-center mb-2">
+              {fase === "recusado" ? <X size={32} className="text-rose-600 dark:text-rose-300" /> : <TriangleAlert size={28} className="text-rose-600 dark:text-rose-300" />}
+            </div>
+            <div className="font-bold text-rose-700 dark:text-rose-300">{fase === "recusado" ? "Venda recusada" : "Deu problema"}</div>
+            <div className="text-[12px] text-gray-500 mt-1 break-words">{erro}{leitura?.status ? ` (${leitura.status})` : ""}</div>
+            <div className="text-[11px] text-gray-400 mt-1">A comanda continua aberta — dá pra tentar de novo ou cobrar em dinheiro.</div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => setFase("escolher")} className="flex-1 h-11 rounded-xl border border-gray-300 dark:border-gray-700 font-semibold">Tentar de novo</button>
-              <button onClick={onFechar} className="flex-1 h-11 rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-semibold">Fechar</button>
+              <button onClick={onFechar} className="flex-1 h-11 rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-semibold">Voltar</button>
             </div>
           </div>
         )}

@@ -43,8 +43,10 @@ export function lerTef(resp: TefResp): TefLeitura {
   const bandeira = str(g("card_brand") ?? g("bandeira") ?? g("Bandeira"));
   // Aprovado: código "CNC" OU já veio NSU + autorização (transação concluída).
   const aprovado = status === "CNC" || (!!nsu && !!autorizacao && status !== "EST");
-  // Recusa só em códigos CONHECIDOS; qualquer outro = segue consultando (evita falso-negativo).
-  const recusado = !aprovado && ["REC", "CAN", "CAE", "NEG", "DEN", "ERR", "EST", "EXP"].includes(status);
+  // Recusa: prefixos CONHECIDOS (ex.: REJ_PAG, REC, CAN, NEG…). Prefixo pq a API
+  // sufixa a fase (REJ_PAG, REJ_CNC…). Qualquer outro = segue consultando.
+  const RECUSA_PREFIXOS = ["REJ", "REC", "CAN", "CAE", "NEG", "DEN", "ERR", "EST", "EXP", "ABORT", "TIMEOUT"];
+  const recusado = !aprovado && RECUSA_PREFIXOS.some((p) => status.startsWith(p));
   return {
     status, aprovado, recusado,
     mensagem: str(g("MensagemErro") ?? g("message") ?? g("reason")) || "",
