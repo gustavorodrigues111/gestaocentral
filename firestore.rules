@@ -809,6 +809,7 @@ service cloud.firestore {
     match /comandas/{id}         { allow read, write: if authed(); }
     match /comandaPrintJobs/{id} { allow read, write: if authed(); }
     match /comandasFiscalConfig/{id} { allow read, write: if authed(); }
+    match /comandaCaixas/{id}    { allow read, write: if authed(); }
 
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {

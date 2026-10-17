@@ -13,13 +13,14 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { APP_VERSION_LABEL } from "../../core/version";
-import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig } from "../../core/types";
+import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
   ouvirComandas, salvarComanda, criarPrintJob, superseedContaJobs,
   ouvirCategorias, salvarCategoria, excluirCategoria,
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
   ouvirFiscalConfig, salvarFiscalConfig,
+  ouvirCaixaAberto, salvarCaixa,
 } from "./comandasRepo";
 import { EstacaoImpressao } from "./EstacaoImpressao";
 import { TefCobranca } from "./TefCobranca";
@@ -28,6 +29,8 @@ import QRCode from "qrcode";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
+// "1.234,56" / "1234,56" / "1234.56" → 1234.56
+const parseReais = (s: string): number => parseFloat((s || "").replace(/\./g, "").replace(",", ".")) || 0;
 const nowIso = () => new Date().toISOString();
 // Tempo decorrido desde a abertura (ex.: "agora", "23min", "1h05") — p/ os cards.
 const tempoDecorrido = (iso?: string | null): string => {
@@ -64,7 +67,9 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [comandas, setComandas] = useState<Comanda[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [fiscalCfg, setFiscalCfg] = useState<ComandaFiscalConfig | null>(null);
+  const [caixa, setCaixa] = useState<ComandaCaixa | null>(null);
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
+  const [caixaModal, setCaixaModal] = useState<null | "abrir" | "sangria" | "reforco" | "fechar">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   // Estação EMBUTIDA: este dispositivo também imprime (pro PC único do balcão
@@ -80,6 +85,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   useEffect(() => { if (!rid) return; return ouvirEstacoes(rid, setEstacoes); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirComandas(rid, setComandas); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirFiscalConfig(rid, setFiscalCfg); }, [rid]);
+  useEffect(() => { if (!rid) return; return ouvirCaixaAberto(rid, setCaixa); }, [rid]);
   useEffect(() => { if (!rid) return; void lerLogoSite(rid).then(setLogoUrl); }, [rid]);
 
   const meNome = me?.nome || "—";
@@ -118,6 +124,18 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     await salvarComanda(c);
     setAbrindo(null);
     setDetalhe(c.id);
+  }
+  async function abrirCaixa(fundoTroco: number, nome: string) {
+    const c: ComandaCaixa = { id: uid(), restaurantId: rid, caixaNome: nome.trim() || "Caixa", status: "aberto", abertoPor: me?.id, abertoPorNome: meNome, abertoEm: nowIso(), fundoTroco, movimentos: [] };
+    await salvarCaixa(c); setCaixaModal(null);
+  }
+  async function addMovimentoCaixa(mov: ComandaCaixaMov) {
+    if (!caixa) return;
+    await salvarCaixa({ ...caixa, movimentos: [...(caixa.movimentos || []), mov] }); setCaixaModal(null);
+  }
+  async function fecharCaixa(contadoDinheiro: number, obs: string, resumo: ComandaCaixa["resumo"]) {
+    if (!caixa) return;
+    await salvarCaixa({ ...caixa, status: "fechado", fechadoPor: me?.id, fechadoPorNome: meNome, fechadoEm: nowIso(), contadoDinheiro, obs: obs.trim() || null, resumo }); setCaixaModal(null);
   }
   const tabEfetiva = abasDisp.some((a) => a.id === tab) ? tab : "comandas";
 
@@ -168,8 +186,17 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         </div>
       </div>
 
+      {comandaDet ? (
+        <ComandaDetalhe
+          comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
+          fiscalCfg={fiscalCfg} podeOperar={podeOperar}
+          meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
+          onClose={() => setDetalhe(null)}
+        />
+      ) : (<>
       {tabEfetiva === "comandas" && (
         <>
+          {podeOperar && <CaixaBar caixa={caixa} onAbrir={() => setCaixaModal("abrir")} onSangria={() => setCaixaModal("sangria")} onReforco={() => setCaixaModal("reforco")} onFechar={() => setCaixaModal("fechar")} />}
           {podeOperar && (
             <div className="grid grid-cols-2 gap-2 mb-3">
               <button onClick={() => setAbrindo("conta")} className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Plus size={18} /> Abrir comanda</button>
@@ -177,16 +204,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
             </div>
           )}
 
-          {comandaDet ? (
-            <ComandaDetalhe
-              comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
-              fiscalCfg={fiscalCfg}
-              podeOperar={podeOperar}
-              meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
-              onClose={() => setDetalhe(null)}
-            />
-          ) : (
-          <>
           {(() => {
             const lista = abertas;   // tela principal = só abertas; as vendas (fechadas) ficam em Relatórios
             if (lista.length === 0) return (
@@ -224,13 +241,11 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               </div>
             );
           })()}
-          </>
-          )}
         </>
       )}
 
       {tabEfetiva === "relatorios" && podeRelatorios && (
-        <RelatorioComandas comandas={comandas} onAbrir={(id) => { setDetalhe(id); setTab("comandas"); }} />
+        <RelatorioComandas comandas={comandas} onAbrir={(id) => setDetalhe(id)} />
       )}
 
       {tabEfetiva === "produtos" && podeProdutos && (
@@ -242,11 +257,19 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       {tabEfetiva === "impressoras" && podeEstacoes && (
         <div className="max-w-lg mx-auto"><EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} /></div>
       )}
+      </>)}
 
       {/* Estação embutida: imprime os jobs neste próprio dispositivo (opt-in) */}
       {imprimirAqui && rid && <EstacaoImpressao embedded rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={null} estacoes={estacoes} logoUrl={logoUrl} />}
 
       {abrindo && <AbrirComandaModal modo={abrindo} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
+      {caixaModal === "abrir" && <AbrirCaixaModal onClose={() => setCaixaModal(null)} onAbrir={abrirCaixa} />}
+      {(caixaModal === "sangria" || caixaModal === "reforco") && caixa && (
+        <MovimentoCaixaModal tipo={caixaModal} meNome={meNome} onClose={() => setCaixaModal(null)} onConfirmar={addMovimentoCaixa} />
+      )}
+      {caixaModal === "fechar" && caixa && (
+        <FecharCaixaModal caixa={caixa} comandas={comandas} onClose={() => setCaixaModal(null)} onFechar={fecharCaixa} />
+      )}
     </PageContainer>
   );
 }
@@ -305,6 +328,166 @@ function EstacoesPanel({ rid, estacoes, categorias }: { rid: string; estacoes: C
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Caixa (sessão de PDV): barra de status + modais ───────────────────────
+function CaixaBar({ caixa, onAbrir, onSangria, onReforco, onFechar }: {
+  caixa: ComandaCaixa | null; onAbrir: () => void; onSangria: () => void; onReforco: () => void; onFechar: () => void;
+}) {
+  if (!caixa) {
+    return (
+      <button onClick={onAbrir} className="w-full mb-3 h-12 rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold inline-flex items-center justify-center gap-2">
+        <Banknote size={18} /> Abrir caixa
+      </button>
+    );
+  }
+  const hora = new Date(caixa.abertoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="mb-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/15 p-3">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-bold text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {caixa.caixaNome || "Caixa"} aberto</div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400">desde {hora} · fundo {fmtR(caixa.fundoTroco)}{caixa.abertoPorNome ? ` · ${caixa.abertoPorNome}` : ""}</div>
+        </div>
+        <button onClick={onFechar} className="shrink-0 h-9 px-3 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[13px] font-bold">Fechar caixa</button>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <button onClick={onReforco} className="flex-1 h-9 rounded-lg border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[13px] font-semibold">+ Reforço</button>
+        <button onClick={onSangria} className="flex-1 h-9 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-[13px] font-semibold">− Sangria</button>
+      </div>
+    </div>
+  );
+}
+
+function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (fundo: number, nome: string) => Promise<void> }) {
+  const [nome, setNome] = useState("Caixa");
+  const [fundo, setFundo] = useState("");
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Banknote size={16} className="text-emerald-500" /> Abrir caixa</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">Informe o dinheiro que já tem na gaveta (fundo de troco). O caixa fica aberto até você fechar.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nome do caixa</label>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Caixa" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Fundo de troco</label>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+              <input value={fundo} onChange={(e) => setFundo(e.target.value)} inputMode="decimal" autoFocus placeholder="0,00" className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+          <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
+          <button onClick={async () => { setSaving(true); try { await onAbrir(parseReais(fundo), nome); } finally { setSaving(false); } }} disabled={saving} className="h-10 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Abrindo…" : "Abrir caixa"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MovimentoCaixaModal({ tipo, meNome, onClose, onConfirmar }: {
+  tipo: "sangria" | "reforco"; meNome: string; onClose: () => void; onConfirmar: (m: ComandaCaixaMov) => Promise<void>;
+}) {
+  const [valor, setValor] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const sangria = tipo === "sangria";
+  const v = parseReais(valor);
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-bold text-gray-900 dark:text-gray-100">{sangria ? "Sangria (retirada)" : "Reforço (entrada)"}</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">{sangria ? "Retirada de dinheiro da gaveta (ex.: sangria pro cofre)." : "Entrada de dinheiro na gaveta (ex.: reforço de troco)."}</p>
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Valor</label>
+        <div className="relative mb-3">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+          <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" autoFocus placeholder="0,00" className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+        </div>
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Motivo (opcional)</label>
+        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder={sangria ? "ex.: sangria pro cofre" : "ex.: troco do banco"} className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+          <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
+          <button onClick={async () => { setSaving(true); try { await onConfirmar({ tipo, valor: v, motivo: motivo.trim() || null, em: new Date().toISOString(), porNome: meNome }); } finally { setSaving(false); } }} disabled={saving || v <= 0} className={`h-10 px-4 rounded-lg text-white text-sm font-bold disabled:opacity-40 ${sangria ? "bg-amber-600" : "bg-emerald-600"}`}>{saving ? "…" : "Confirmar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
+  caixa: ComandaCaixa; comandas: Comanda[]; onClose: () => void; onFechar: (contado: number, obs: string, resumo: ComandaCaixa["resumo"]) => Promise<void>;
+}) {
+  const [contado, setContado] = useState("");
+  const [obs, setObs] = useState("");
+  const [saving, setSaving] = useState(false);
+  // Resumo do período (desde a abertura até agora): pagamentos por forma.
+  const resumo = useMemo(() => {
+    const inicio = caixa.abertoEm, fim = new Date().toISOString();
+    const noPer = (em?: string | null) => !!em && em >= inicio && em <= fim;
+    const map = new Map<string, number>();
+    const comandasNoPer = new Set<string>();
+    for (const c of comandas) for (const p of c.pagamentos || []) if (noPer(p.em)) { map.set(p.forma, (map.get(p.forma) || 0) + p.valor); comandasNoPer.add(c.id); }
+    const porForma = [...map.entries()].map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor);
+    const vendasTotal = porForma.reduce((s, f) => s + f.valor, 0);
+    const dinheiroVendas = porForma.filter((f) => /dinheiro/i.test(f.forma)).reduce((s, f) => s + f.valor, 0);
+    const sangrias = (caixa.movimentos || []).filter((m) => m.tipo === "sangria").reduce((s, m) => s + m.valor, 0);
+    const reforcos = (caixa.movimentos || []).filter((m) => m.tipo === "reforco").reduce((s, m) => s + m.valor, 0);
+    const dinheiroEsperado = +(caixa.fundoTroco + dinheiroVendas + reforcos - sangrias).toFixed(2);
+    return { vendasTotal: +vendasTotal.toFixed(2), nComandas: comandasNoPer.size, porForma, dinheiroVendas: +dinheiroVendas.toFixed(2), sangrias: +sangrias.toFixed(2), reforcos: +reforcos.toFixed(2), dinheiroEsperado, diferenca: 0 };
+  }, [caixa, comandas]);
+  const contadoN = parseReais(contado);
+  const diferenca = +(contadoN - resumo.dinheiroEsperado).toFixed(2);
+  const Linha = ({ l, v, forte }: { l: string; v: string; forte?: boolean }) => (
+    <div className={`flex justify-between ${forte ? "font-bold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}><span>{l}</span><span className="tabular-nums">{v}</span></div>
+  );
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Banknote size={16} className="text-indigo-500" /> Fechar caixa</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 text-[13px] space-y-1">
+          <Linha l={`Vendas (${resumo.nComandas})`} v={fmtR(resumo.vendasTotal)} forte />
+          {resumo.porForma.map((f) => <Linha key={f.forma} l={`· ${f.forma}`} v={fmtR(f.valor)} />)}
+          <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-1.5" />
+          <Linha l="Fundo de troco" v={fmtR(caixa.fundoTroco)} />
+          <Linha l="Dinheiro de vendas" v={fmtR(resumo.dinheiroVendas)} />
+          {resumo.reforcos > 0 && <Linha l="Reforços" v={`+ ${fmtR(resumo.reforcos)}`} />}
+          {resumo.sangrias > 0 && <Linha l="Sangrias" v={`− ${fmtR(resumo.sangrias)}`} />}
+          <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-1.5" />
+          <Linha l="Dinheiro esperado na gaveta" v={fmtR(resumo.dinheiroEsperado)} forte />
+        </div>
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1 mt-3">Dinheiro contado na gaveta</label>
+        <div className="relative">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+          <input value={contado} onChange={(e) => setContado(e.target.value)} inputMode="decimal" autoFocus placeholder="0,00" className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+        </div>
+        {contado.trim() !== "" && (
+          <div className={`mt-2 text-center text-[13px] font-bold rounded-lg py-2 ${Math.abs(diferenca) < 0.005 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : diferenca > 0 ? "bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300" : "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"}`}>
+            {Math.abs(diferenca) < 0.005 ? "Caixa bateu certinho ✓" : diferenca > 0 ? `Sobra de ${fmtR(diferenca)}` : `Quebra de ${fmtR(Math.abs(diferenca))}`}
+          </div>
+        )}
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1 mt-3">Observação (opcional)</label>
+        <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: quebra por troco errado" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+          <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
+          <button onClick={async () => { setSaving(true); try { await onFechar(contadoN, obs, { ...resumo, diferenca }); } finally { setSaving(false); } }} disabled={saving || contado.trim() === ""} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Fechando…" : "Fechar caixa"}</button>
+        </div>
       </div>
     </div>
   );

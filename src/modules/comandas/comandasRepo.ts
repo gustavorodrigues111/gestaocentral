@@ -5,7 +5,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa } from "../../core/types";
 
 export const uid = () => { try { return crypto.randomUUID(); } catch { return "c" + Date.now() + Math.random().toString(36).slice(2); } };
 
@@ -52,6 +52,20 @@ export function ouvirFiscalConfig(rid: string, cb: (c: ComandaFiscalConfig | nul
 }
 export async function salvarFiscalConfig(rid: string, cfg: ComandaFiscalConfig): Promise<void> {
   await setDoc(doc(db, "comandasFiscalConfig", rid), sanitizeForFirestore({ ...cfg, restaurantId: rid, atualizadoEm: new Date().toISOString() }), { merge: true });
+}
+
+// ── Caixa (sessão de PDV) ──────────────────────────────────────────────
+// Ouve o caixa ABERTO do restaurante (no máximo 1 por vez).
+export function ouvirCaixaAberto(rid: string, cb: (c: ComandaCaixa | null) => void): Unsubscribe {
+  const q = query(collection(db, "comandaCaixas"), where("restaurantId", "==", rid), where("status", "==", "aberto"));
+  return onSnapshot(q, (snap) => {
+    const l = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ComandaCaixa);
+    l.sort((a, b) => (b.abertoEm || "").localeCompare(a.abertoEm || ""));
+    cb(l[0] || null);
+  }, (e) => console.error("[comandas] caixaAberto", e));
+}
+export async function salvarCaixa(c: ComandaCaixa): Promise<void> {
+  await setDoc(doc(db, "comandaCaixas", c.id), sanitizeForFirestore(c), { merge: true });
 }
 
 // ── Produtos ───────────────────────────────────────────────────────────

@@ -6662,6 +6662,43 @@ export type ComandaPagamento = {
 
 export type ComandaStatus = "aberta" | "fechada";
 
+// Sessão de caixa (PDV): abre com fundo de troco, registra sangria/reforço, e
+// fecha com conferência do dinheiro. 1 caixa aberto por vez (por restaurante).
+export type ComandaCaixaMov = {
+  tipo: "sangria" | "reforco";       // sangria = retirada; reforço = entrada de troco
+  valor: number;
+  motivo?: string | null;
+  em: string;
+  porNome?: string | null;
+};
+export type ComandaCaixa = {
+  id: string;
+  restaurantId: string;
+  caixaNome?: string | null;         // "Caixa 1" (p/ multi-caixa futuro); default "Caixa"
+  status: "aberto" | "fechado";
+  abertoPor?: string | null;
+  abertoPorNome?: string | null;
+  abertoEm: string;
+  fundoTroco: number;                // dinheiro inicial em caixa
+  movimentos: ComandaCaixaMov[];
+  fechadoPor?: string | null;
+  fechadoPorNome?: string | null;
+  fechadoEm?: string | null;
+  contadoDinheiro?: number | null;   // dinheiro contado no fechamento
+  // Resumo congelado no fechamento:
+  resumo?: {
+    vendasTotal: number;             // faturamento no período
+    nComandas: number;
+    porForma: Array<{ forma: string; valor: number }>;
+    dinheiroVendas: number;
+    sangrias: number;
+    reforcos: number;
+    dinheiroEsperado: number;        // fundo + dinheiroVendas + reforços − sangrias
+    diferenca: number;               // contado − esperado (sobra>0 / quebra<0)
+  } | null;
+  obs?: string | null;
+};
+
 export type Comanda = {
   id: string;
   restaurantId: string;
