@@ -1458,7 +1458,9 @@ function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir
   }
   // Normaliza (de ≤ ate) pra comparação por string YYYY-MM-DD.
   const [d0, d1] = de <= ate ? [de, ate] : [ate, de];
-  const diaDe = (c: Comanda) => (c.fechadoEm || c.criadoEm || "").slice(0, 10);
+  // Dia da venda no fuso LOCAL (BRT), não UTC — senão venda da noite de ontem
+  // (ex.: 21h BRT = 00h UTC) cai no dia seguinte.
+  const diaDe = (c: Comanda) => { const s = c.fechadoEm || c.criadoEm; return s ? ymd(new Date(s)) : ""; };
   const noPeriodo = comandas.filter((c) => { const d = diaDe(c); return d >= d0 && d <= d1; });
   const umDia = d0 === d1;
   const incluiHoje = d1 === hoje;
@@ -1537,7 +1539,7 @@ function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[52vh] overflow-y-auto">
             {[...noPeriodo].sort((a, b) => (b.fechadoEm || b.criadoEm || "").localeCompare(a.fechadoEm || a.criadoEm || "")).map((c) => {
-              const hora = (c.fechadoEm || c.criadoEm || "").slice(11, 16);
+              const es = c.fechadoEm || c.criadoEm; const hora = es ? new Date(es).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
               const formas = [...new Set((c.pagamentos || []).map((p) => p.forma))].join(", ");
               const temNfce = !!c.nfce?.chave;
               return (
