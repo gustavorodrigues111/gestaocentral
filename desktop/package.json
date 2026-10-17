@@ -13,6 +13,7 @@
     "dist:win": "electron-builder --win"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "node-thermal-printer": "^4.4.4"
   },
   "devDependencies": {
@@ -22,9 +23,28 @@
   "build": {
     "appId": "app.planejamento.pdv",
     "productName": "Planejamento PDV",
-    "files": ["main.js", "preload.js", "print.js", "config.json"],
-    "mac": { "target": ["dmg"], "category": "public.app-category.business" },
-    "win": { "target": ["nsis"] },
-    "publish": null
+    "files": [
+      "main.js",
+      "preload.js",
+      "print.js",
+      "config.json"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.business"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://storage.googleapis.com/planejamento-pdv-updates"
+      }
+    ]
   }
 }

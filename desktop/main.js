@@ -7,6 +7,16 @@ const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const { imprimir, testar } = require("./print");
+const { autoUpdater } = require("electron-updater");
+
+// Auto-update: baixa a versão nova em segundo plano e INSTALA ao fechar o app
+// (não interrompe o operador no meio da venda). Feed público no GCS (generic).
+// Windows: funciona sem assinatura. macOS: só com app assinado (limitação Apple).
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+function checarUpdates() {
+  try { autoUpdater.checkForUpdates().catch(() => {}); } catch { /* sem rede / não configurado */ }
+}
 
 // Config: defaults → config.json embutido (defaults de fábrica) → config do
 // USUÁRIO (userData, editável pela tela de Ajustes do app, sobrevive a updates).
@@ -61,6 +71,9 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  // Checa updates ao abrir e a cada 2h (se o app ficar aberto o dia todo).
+  checarUpdates();
+  setInterval(checarUpdates, 2 * 60 * 60 * 1000);
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
