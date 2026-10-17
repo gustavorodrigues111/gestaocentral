@@ -123,8 +123,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     const a: { id: string; label: string }[] = [{ id: "comandas", label: "Comandas" }];
     if (podeOperar) a.push({ id: "caixa", label: "Caixa" });
     if (podeRelatorios) a.push({ id: "relatorios", label: "Relatórios" });
-    if (podeProdutos) a.push({ id: "produtos", label: "Produtos" }, { id: "categorias", label: "Categorias" });
-    if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
+    if (podeProdutos || podeEstacoes) a.push({ id: "cadastros", label: "Cadastros" });
     return a;
   }, [podeOperar, podeRelatorios, podeProdutos, podeEstacoes]);
   const [tab, setTab] = useTabPersistida<string>("comandas", "comandas", abasDisp.map((a) => a.id));
@@ -209,8 +208,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
                 {/* Navegação entre as telas do módulo (Config achatado em Produtos/Categorias/Impressoras) */}
                 {abasDisp.map((a) => {
-                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "caixa" ? <Banknote size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : a.id === "produtos" ? <Package size={16} /> : a.id === "categorias" ? <Tag size={16} /> : <Printer size={16} />;
-                  const divisor = a.id === "produtos";   // separa "operação" (Comandas/Relatórios) da "config"
+                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "caixa" ? <Banknote size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : <Package size={16} />;
+                  const divisor = a.id === "cadastros";   // separa "operação" (Comandas/Caixa/Relatórios) da "config"
                   return (
                     <Fragment key={a.id}>
                       {divisor && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
@@ -301,14 +300,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         <RelatorioComandas comandas={comandas} onAbrir={(id) => setDetalhe(id)} />
       )}
 
-      {tabEfetiva === "produtos" && podeProdutos && (
-        <div className="max-w-lg mx-auto"><ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} fiscalCfg={fiscalCfg} /></div>
-      )}
-      {tabEfetiva === "categorias" && podeProdutos && (
-        <div className="max-w-lg mx-auto"><CategoriasPanel rid={rid} produtos={produtos} categorias={categorias} /></div>
-      )}
-      {tabEfetiva === "impressoras" && podeEstacoes && (
-        <div className="max-w-lg mx-auto"><EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} /></div>
+      {tabEfetiva === "cadastros" && (podeProdutos || podeEstacoes) && (
+        <CadastrosPanel rid={rid} produtos={produtos} categorias={categorias} estacoes={estacoes} fiscalCfg={fiscalCfg} podeProdutos={podeProdutos} podeEstacoes={podeEstacoes} />
       )}
       </>)}
 
@@ -1581,7 +1574,7 @@ function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir
 // Lucro Presumido: PIS/COFINS cumulativo e uniforme + CFOP/CST/alíquota de ICMS
 // padrão. Configura 1x; no produto só varia o NCM. Colapsado por padrão.
 function FiscalPadraoEditor({ rid, cfg }: { rid: string; cfg: ComandaFiscalConfig | null }) {
-  const [aberto, setAberto] = useState(false);
+  const [aberto, setAberto] = useState(true);
   const [cfop, setCfop] = useState(""); const [origem, setOrigem] = useState("0");
   const [cstIcms, setCstIcms] = useState(""); const [aliqIcms, setAliqIcms] = useState("");
   const [cstPis, setCstPis] = useState("01"); const [aliqPis, setAliqPis] = useState("0,65");
@@ -1670,6 +1663,7 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
   // Fiscal por produto (o que VARIA): NCM sempre; CFOP/CST/alíquota só se diferir do padrão.
   const [ncm, setNcm] = useState(""); const [cfop, setCfop] = useState(""); const [origem, setOrigem] = useState(""); const [cst, setCst] = useState(""); const [aliqIcms, setAliqIcms] = useState("");
   const [verFiscal, setVerFiscal] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);
   const precoNum = parseFloat((preco || "").replace(/\./g, "").replace(",", ".")) || 0;
   const catById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
   // Código automático: 2 díg da categoria (01, 02…) + 3 díg sequenciais do produto (001…).
@@ -1691,12 +1685,13 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
     return produtos.filter((p) => p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q) || (p.categoria || "").toLowerCase().includes(q));
   }, [produtos, busca]);
 
-  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem(""); setCst(""); setAliqIcms(""); setVerFiscal(false); }
+  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem(""); setCst(""); setAliqIcms(""); setVerFiscal(false); setModalAberto(false); }
+  function novo() { limpar(); setModalAberto(true); }
   function editar(p: ComandaProduto) {
     setEditId(p.id); setNome(p.nome); setCodigo(p.codigo || ""); setPreco(String(p.preco).replace(".", ","));
     setPorPeso(!!p.porPeso); setImprime(!!p.producao); setCategoriaId(p.categoriaId || "");
     setNcm(p.ncm || ""); setCfop(p.cfop || ""); setOrigem(p.origem || ""); setCst(p.cst || p.csosn || ""); setAliqIcms(p.aliqIcms != null ? String(p.aliqIcms).replace(".", ",") : "");
-    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* ignore */ }
+    setVerFiscal(false); setModalAberto(true);
   }
   async function salvar() {
     if (!nome.trim() || precoNum <= 0) return;
@@ -1717,69 +1712,19 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
 
   return (
     <div>
-      {/* Fiscal padrão (NFC-e) do restaurante — configura 1x */}
-      <FiscalPadraoEditor rid={rid} cfg={fiscalCfg} />
-      {/* Form de cadastro/edição */}
-      <div className={`space-y-2 pb-3 ${editId ? "rounded-xl border border-indigo-200 dark:border-indigo-800 p-3 bg-indigo-50/30 dark:bg-indigo-950/10" : "border-b border-gray-200 dark:border-gray-800"}`}>
-        <div className="text-[12px] font-semibold text-gray-500 dark:text-gray-400">{editId ? "Editando produto" : "Novo produto"}</div>
-        <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do produto" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-        <div className="grid grid-cols-2 gap-2">
-          <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="código (automático)" className="h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-          <div className="relative">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
-            <input value={preco} onChange={(e) => setPreco(e.target.value)} inputMode="decimal" placeholder={porPeso ? "preço/kg" : "preço"} className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-          </div>
-        </div>
-        <select value={categoriaId} onChange={(e) => escolherCategoria(e.target.value)} className="w-full h-11 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-          <option value="">— sem categoria —</option>
-          {categorias.map((c) => <option key={c.id} value={c.id}>{(c.codigo ? String(c.codigo).padStart(2, "0") + " · " : "") + c.nome}</option>)}
-        </select>
-        {!editId && <p className="text-[11px] text-gray-400">O código é gerado sozinho ao escolher a categoria (ex.: <b>01001</b>). Dá pra editar se quiser.</p>}
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={porPeso} onChange={(e) => setPorPeso(e.target.checked)} className="accent-indigo-600" /> <Scale size={13} /> por peso (kg)</label>
-          <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime</label>
-        </div>
-
-        {/* Fiscal (NFC-e) por produto — só o NCM é obrigatório; o resto vem do Fiscal padrão */}
-        <button type="button" onClick={() => setVerFiscal((v) => !v)} className="w-full flex items-center justify-between text-[12px] text-gray-500 dark:text-gray-400 px-1 py-1">
-          <span>Fiscal (NFC-e){ncm ? " ✓" : ""}</span>
-          <span className={`transition-transform ${verFiscal ? "rotate-90" : ""}`}>▶</span>
-        </button>
-        {verFiscal && (
-          <div className="space-y-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2">
-            <div>
-              <label className="text-[10px] text-gray-400">NCM do produto (obrigatório · copie da Altec)</label>
-              <input value={ncm} onChange={(e) => setNcm(e.target.value)} placeholder="NCM (8 díg) — ex.: 21069090" inputMode="numeric" className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-            </div>
-            <details className="text-[11px]">
-              <summary className="cursor-pointer text-gray-400 py-1">Override fiscal (só se este produto difere do padrão)</summary>
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <input value={cfop} onChange={(e) => setCfop(e.target.value)} placeholder={`CFOP (padrão ${fiscalCfg?.cfop || "—"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-                <input value={cst} onChange={(e) => setCst(e.target.value)} placeholder={`CST ICMS (padrão ${fiscalCfg?.cstIcms || "—"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-                <input value={aliqIcms} onChange={(e) => setAliqIcms(e.target.value)} placeholder={`Alíq. ICMS % (padrão ${fiscalCfg?.aliqIcms ?? "—"})`} inputMode="decimal" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-                <input value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder={`Origem (padrão ${fiscalCfg?.origem || "0"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-              </div>
-            </details>
-            {!fiscalCfg?.cstIcms && <p className="text-[10px] text-amber-600 dark:text-amber-400">⚠ Configure o <b>Fiscal padrão</b> no topo desta aba antes de emitir.</p>}
-          </div>
-        )}
-
-        <div className="flex gap-2 pt-0.5">
-          {editId && <button onClick={limpar} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>}
-          <button onClick={() => void salvar()} disabled={!nome.trim() || precoNum <= 0} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{editId ? "Salvar alterações" : "+ Adicionar produto"}</button>
-        </div>
-      </div>
-
-      {/* Busca + lista */}
-      {produtos.length > 6 && (
-        <div className="relative mt-3">
+      {/* Busca + botão Novo */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="relative flex-1">
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" className="w-full h-10 pl-8 pr-8 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" className="w-full h-11 pl-8 pr-8 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
           {busca && <button onClick={() => setBusca("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
         </div>
-      )}
-      <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
-        {listaFiltrada.length === 0 ? <div className="text-sm text-gray-400 text-center py-6">{produtos.length === 0 ? "Nenhum produto ainda." : "Nada encontrado."}</div> : listaFiltrada.map((p) => (
+        <button onClick={novo} className="h-11 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold inline-flex items-center gap-1.5 shrink-0"><Plus size={16} /> Novo</button>
+      </div>
+
+      {/* Lista */}
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {listaFiltrada.length === 0 ? <div className="text-sm text-gray-400 text-center py-8">{produtos.length === 0 ? "Nenhum produto ainda. Toque em “Novo”." : "Nada encontrado."}</div> : listaFiltrada.map((p) => (
           <div key={p.id} className="flex items-center gap-2 py-2.5">
             <button onClick={() => editar(p)} className="min-w-0 flex-1 text-left">
               <div className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{p.codigo ? <span className="font-mono text-gray-400">#{p.codigo} </span> : ""}{p.nome} {!p.ativo && <span className="text-[10px] text-gray-400">(inativo)</span>}</div>
@@ -1790,36 +1735,152 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
           </div>
         ))}
       </div>
+
+      {/* Modal de cadastro/edição */}
+      {modalAberto && (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={limpar}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Package size={16} className="text-indigo-500" /> {editId ? "Editar produto" : "Novo produto"}</div>
+              <button onClick={limpar} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="space-y-2">
+              <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder="Nome do produto" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+              <div className="grid grid-cols-2 gap-2">
+                <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="código (automático)" className="h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+                  <input value={preco} onChange={(e) => setPreco(e.target.value)} inputMode="decimal" placeholder={porPeso ? "preço/kg" : "preço"} className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                </div>
+              </div>
+              <select value={categoriaId} onChange={(e) => escolherCategoria(e.target.value)} className="w-full h-11 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <option value="">— sem categoria —</option>
+                {categorias.map((c) => <option key={c.id} value={c.id}>{(c.codigo ? String(c.codigo).padStart(2, "0") + " · " : "") + c.nome}</option>)}
+              </select>
+              {!editId && <p className="text-[11px] text-gray-400">O código é gerado sozinho ao escolher a categoria (ex.: <b>01001</b>). Dá pra editar se quiser.</p>}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={porPeso} onChange={(e) => setPorPeso(e.target.checked)} className="accent-indigo-600" /> <Scale size={13} /> por peso (kg)</label>
+                <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime</label>
+              </div>
+
+              {/* Fiscal (NFC-e) por produto — só o NCM é obrigatório; o resto vem do Fiscal padrão */}
+              <button type="button" onClick={() => setVerFiscal((v) => !v)} className="w-full flex items-center justify-between text-[12px] text-gray-500 dark:text-gray-400 px-1 py-1">
+                <span>Fiscal (NFC-e){ncm ? " ✓" : ""}</span>
+                <span className={`transition-transform ${verFiscal ? "rotate-90" : ""}`}>▶</span>
+              </button>
+              {verFiscal && (
+                <div className="space-y-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2">
+                  <div>
+                    <label className="text-[10px] text-gray-400">NCM do produto (obrigatório · copie da Altec)</label>
+                    <input value={ncm} onChange={(e) => setNcm(e.target.value)} placeholder="NCM (8 díg) — ex.: 21069090" inputMode="numeric" className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                  </div>
+                  <details className="text-[11px]">
+                    <summary className="cursor-pointer text-gray-400 py-1">Override fiscal (só se este produto difere do padrão)</summary>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <input value={cfop} onChange={(e) => setCfop(e.target.value)} placeholder={`CFOP (padrão ${fiscalCfg?.cfop || "—"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                      <input value={cst} onChange={(e) => setCst(e.target.value)} placeholder={`CST ICMS (padrão ${fiscalCfg?.cstIcms || "—"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                      <input value={aliqIcms} onChange={(e) => setAliqIcms(e.target.value)} placeholder={`Alíq. ICMS % (padrão ${fiscalCfg?.aliqIcms ?? "—"})`} inputMode="decimal" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                      <input value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder={`Origem (padrão ${fiscalCfg?.origem || "0"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                    </div>
+                  </details>
+                  {!fiscalCfg?.cstIcms && <p className="text-[10px] text-amber-600 dark:text-amber-400">⚠ Configure o <b>Fiscal padrão</b> (aba Fiscal) antes de emitir.</p>}
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+              <button onClick={limpar} className="flex-1 h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
+              <button onClick={() => void salvar()} disabled={!nome.trim() || precoNum <= 0} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{editId ? "Salvar" : "Adicionar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Categorias (aba Config › Categorias) ───────────────────────────────────
 function CategoriasPanel({ rid, produtos, categorias }: { rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[] }) {
-  const [novaCat, setNovaCat] = useState("");
-  async function addCat() {
-    if (!novaCat.trim()) return;
-    if (categorias.some((c) => c.nome.trim().toLowerCase() === novaCat.trim().toLowerCase())) { setNovaCat(""); return; }
-    const proxCodigo = Math.max(0, ...categorias.map((c) => c.codigo || 0), categorias.length) + 1;  // 01, 02…
-    await salvarCategoria({ id: uid(), restaurantId: rid, nome: novaCat.trim(), ordem: categorias.length, codigo: proxCodigo });
-    setNovaCat("");
+  const [modalAberto, setModalAberto] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [nome, setNome] = useState("");
+  const [saving, setSaving] = useState(false);
+  function novo() { setEditId(null); setNome(""); setModalAberto(true); }
+  function editar(c: ComandaCategoria) { setEditId(c.id); setNome(c.nome); setModalAberto(true); }
+  function fechar() { setModalAberto(false); setEditId(null); setNome(""); }
+  async function salvar() {
+    const n = nome.trim(); if (!n) return;
+    const dup = categorias.find((c) => c.nome.trim().toLowerCase() === n.toLowerCase() && c.id !== editId);
+    if (dup) { alert("Já existe uma categoria com esse nome."); return; }
+    setSaving(true);
+    try {
+      if (editId) {
+        const base = categorias.find((c) => c.id === editId);
+        await salvarCategoria({ ...(base as ComandaCategoria), nome: n });
+      } else {
+        const proxCodigo = Math.max(0, ...categorias.map((c) => c.codigo || 0), categorias.length) + 1;
+        await salvarCategoria({ id: uid(), restaurantId: rid, nome: n, ordem: categorias.length, codigo: proxCodigo });
+      }
+      fechar();
+    } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSaving(false); }
   }
   return (
     <div>
-      <div className="flex gap-2 pb-3 border-b border-gray-200 dark:border-gray-800">
-        <input value={novaCat} onChange={(e) => setNovaCat(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addCat(); }} placeholder="Nova categoria (ex.: Peixe fresco, Bar)" className="flex-1 h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-        <button onClick={() => void addCat()} disabled={!novaCat.trim()} className="h-11 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40">+ Add</button>
+      <div className="flex items-center justify-end mb-3">
+        <button onClick={novo} className="h-11 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold inline-flex items-center gap-1.5"><Plus size={16} /> Nova categoria</button>
       </div>
-      <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
-        {categorias.length === 0 ? <div className="text-sm text-gray-400 text-center py-8">Nenhuma categoria.<br />Crie uma pra organizar os produtos.</div> : categorias.map((c) => (
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {categorias.length === 0 ? <div className="text-sm text-gray-400 text-center py-8">Nenhuma categoria.<br />Toque em “Nova categoria” pra organizar os produtos.</div> : categorias.map((c) => (
           <div key={c.id} className="flex items-center gap-2 py-2.5">
             {c.codigo ? <span className="shrink-0 text-[11px] font-mono font-bold text-gray-400 w-6 text-center">{String(c.codigo).padStart(2, "0")}</span> : <Tag size={15} className="text-gray-400 shrink-0" />}
-            <span className="flex-1 text-[14px] text-gray-900 dark:text-gray-100 truncate">{c.nome}</span>
+            <button onClick={() => editar(c)} className="flex-1 text-left text-[14px] text-gray-900 dark:text-gray-100 truncate">{c.nome}</button>
             <span className="text-[11px] text-gray-400 shrink-0">{produtos.filter((p) => p.categoriaId === c.id).length} prod.</span>
             <button onClick={() => { if (confirm(`Excluir categoria "${c.nome}"? Os produtos ficam sem categoria.`)) void excluirCategoria(c.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={16} /></button>
           </div>
         ))}
       </div>
+      {modalAberto && (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={fechar}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Tag size={16} className="text-indigo-500" /> {editId ? "Editar categoria" : "Nova categoria"}</div>
+              <button onClick={fechar} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void salvar(); }} autoFocus placeholder="ex.: Peixe fresco, Bar" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+            <div className="flex gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+              <button onClick={fechar} className="flex-1 h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
+              <button onClick={() => void salvar()} disabled={saving || !nome.trim()} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{editId ? "Salvar" : "Adicionar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Cadastros (menu único: Categorias · Produtos · Fiscal · Impressoras) ────
+function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podeProdutos, podeEstacoes }: {
+  rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; fiscalCfg: ComandaFiscalConfig | null; podeProdutos: boolean; podeEstacoes: boolean;
+}) {
+  const subs = useMemo(() => {
+    const a: { id: string; label: string }[] = [];
+    if (podeProdutos) a.push({ id: "categorias", label: "Categorias" }, { id: "produtos", label: "Produtos" }, { id: "fiscal", label: "Fiscal" });
+    if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
+    return a;
+  }, [podeProdutos, podeEstacoes]);
+  const [sub, setSub] = useState(subs[0]?.id || "produtos");
+  const atual = subs.some((s) => s.id === sub) ? sub : (subs[0]?.id || "produtos");
+  return (
+    <div className="max-w-lg mx-auto">
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar mb-3">
+        {subs.map((s) => (
+          <button key={s.id} onClick={() => setSub(s.id)} className={`shrink-0 px-3.5 h-9 rounded-full text-[13px] font-semibold border ${atual === s.id ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{s.label}</button>
+        ))}
+      </div>
+      {atual === "categorias" && <CategoriasPanel rid={rid} produtos={produtos} categorias={categorias} />}
+      {atual === "produtos" && <ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} fiscalCfg={fiscalCfg} />}
+      {atual === "fiscal" && <FiscalPadraoEditor rid={rid} cfg={fiscalCfg} />}
+      {atual === "impressoras" && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
     </div>
   );
 }
