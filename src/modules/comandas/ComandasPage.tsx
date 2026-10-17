@@ -726,6 +726,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
   const editavel = podeOperar && !fechada;
   const [busca, setBusca] = useState("");
   const [catSel, setCatSel] = useState<string>("todas");   // "todas" | categoriaId | "sem"
+  const [abaMob, setAbaMob] = useState<"produtos" | "itens">("produtos");   // mobile: alterna grade de produtos × itens lançados (desktop mostra os dois)
   const [pesoDe, setPesoDe] = useState<ComandaProduto | null>(null);   // produto por peso aguardando o peso
   const [fechar, setFechar] = useState(false);
   const [verConta, setVerConta] = useState(false);          // tela pra mostrar ao cliente
@@ -1022,9 +1023,17 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
         </div>
       </div>
 
+      {/* Alternador mobile: Produtos × Itens (desktop mostra os dois lado a lado) */}
+      {editavel && (
+        <div className="sm:hidden flex gap-1.5 p-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <button onClick={() => setAbaMob("produtos")} className={`flex-1 h-9 rounded-lg text-[13px] font-bold border ${abaMob === "produtos" ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>+ Produtos</button>
+          <button onClick={() => setAbaMob("itens")} className={`flex-1 h-9 rounded-lg text-[13px] font-bold border ${abaMob === "itens" ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Itens ({comanda.itens.length})</button>
+        </div>
+      )}
+
       <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
         {/* Itens lançados */}
-        <div ref={scrollRef} className={`${fechada ? "w-full" : "sm:w-[44%] sm:border-r"} border-gray-100 dark:border-gray-800 overflow-y-auto ${fechada ? "" : "p-3 space-y-1.5"} order-2 sm:order-1 ${fechada ? "" : "max-h-[26vh] sm:max-h-none"}`}>
+        <div ref={scrollRef} className={`${fechada ? "w-full overflow-y-auto" : `${abaMob === "itens" ? "flex-1 min-h-0" : "hidden"} sm:block sm:flex-none sm:w-[44%] sm:border-r overflow-y-auto p-3 space-y-1.5`} order-2 sm:order-1 border-gray-100 dark:border-gray-800`}>
           {fechada ? <ContaCupom comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} /> : comanda.itens.length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-6">{fechada ? "Sem itens." : "Toque num produto pra lançar."}</div>
           ) : comanda.itens.map((i) => (
@@ -1047,7 +1056,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
 
         {/* Grade de produtos (só quando a comanda está aberta) */}
         {editavel && (
-          <div className="flex-1 min-h-0 flex flex-col order-1 sm:order-2">
+          <div className={`${abaMob === "produtos" ? "flex" : "hidden"} sm:flex flex-1 min-h-0 flex-col order-1 sm:order-2`}>
             {/* Abas de categoria */}
             {catsComProd.length > 0 && (
               <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1 border-b border-gray-100 dark:border-gray-800 no-scrollbar">
