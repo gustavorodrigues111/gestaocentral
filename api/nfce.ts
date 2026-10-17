@@ -76,8 +76,13 @@ export default async function handler(req: VercelReq, res: VercelRes) {
         items,
         formas_pagamento: formas.length ? formas : [{ forma_pagamento: "99", valor_pagamento: 0 }],
       };
-      if (body?.cpf_destinatario) nfce.cpf_destinatario = String(body.cpf_destinatario).replace(/\D/g, "");
-      if (body?.nome_destinatario) nfce.nome_destinatario = String(body.nome_destinatario);
+      // Destinatário: na NFC-e o NOME (xNome) só é aceito junto de um CPF/CNPJ.
+      // Sem documento = consumidor não identificado → não manda nome nem dest.
+      const cpfDest = body?.cpf_destinatario ? String(body.cpf_destinatario).replace(/\D/g, "") : "";
+      if (cpfDest) {
+        nfce.cpf_destinatario = cpfDest;
+        if (body?.nome_destinatario) nfce.nome_destinatario = String(body.nome_destinatario);
+      }
       const r = await focus("POST", `/nfce?ref=${encodeURIComponent(ref)}`, nfce);
       res.status(200).json({ ok: r.status >= 200 && r.status < 300, httpStatus: r.status, data: r.body });
       return;
