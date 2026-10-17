@@ -11,7 +11,7 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // URLs dos instaladores do App de Caixa (hospedar no Firebase Storage e colar
 // aqui). Vazio → mostra "em breve". Quando preenchido, viram botões de download.
 const APP_CAIXA_DOWNLOAD = {
-  mac: "",   // ex.: https://.../AppTip-PDV.dmg
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/downloads%2FAppTip-PDV-1.0.0-arm64.dmg?alt=media&token=714E25E6-8DA7-4B38-B987-710374974BA5",
   win: "",   // ex.: https://.../AppTip-PDV-Setup.exe
 };
 
