@@ -10,9 +10,11 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 
 // URLs dos instaladores do App de Caixa (hospedar no Firebase Storage e colar
 // aqui). Vazio → mostra "em breve". Quando preenchido, viram botões de download.
+// Mesmos arquivos do feed de auto-update (pdv-updates/, token compartilhado) —
+// 1 upload serve download + update.
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/downloads%2FPlanejamento-PDV-1.0.0-arm64.dmg?alt=media&token=DAC55D56-E954-4451-B66E-DAE25450B710",
-  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/downloads%2FPlanejamento-PDV-Setup-1.0.0.exe?alt=media&token=A14397E6-E50B-4672-81DE-B578480FDF16",
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.0-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.0.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).

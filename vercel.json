@@ -45,6 +45,7 @@
     },
     { "source": "/copa", "destination": "/copa.html" },
     { "source": "/pages/:slug", "destination": "/api/pagina-og?slug=:slug" },
+    { "source": "/pdv-update/(.*)", "destination": "/api/pdv-update?file=$1" },
     { "source": "/((?!api/|site/|copa).*)", "destination": "/index.html" }
   ],
   "headers": [

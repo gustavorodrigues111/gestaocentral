@@ -43,7 +43,8 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://storage.googleapis.com/planejamento-pdv-updates"
+        "url": "https://comandas.planejamento.app/pdv-update",
+        "channel": "latest"
       }
     ]
   }
