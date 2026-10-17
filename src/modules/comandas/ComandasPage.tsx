@@ -159,7 +159,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
 
   return (
     <PageContainer>
-      <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+      <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
         <div>
           <h1 className="text-lg font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-indigo-500" /> Comandas</h1>
           <p className="text-[12px] text-gray-500">{activeRestaurant?.nome || ""}</p>
