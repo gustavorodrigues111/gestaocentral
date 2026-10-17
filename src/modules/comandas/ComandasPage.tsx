@@ -29,6 +29,11 @@ import QRCode from "qrcode";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
+// Normaliza a forma de pagamento p/ agrupar (tira o "· NSU ..." do cartão).
+const baseForma = (f: string): string => (f || "").split(" · ")[0].trim();
+// Formas padrão sempre exibidas na conferência do caixa (p/ conciliar).
+const FORMAS_PADRAO = ["Dinheiro", "Cartão (Crédito)", "Cartão (Débito)", "Pix (TEF)"];
+
 // Input de dinheiro estilo maquininha: digita e preenche dos centavos p/ a
 // esquerda (1 → 0,01 → 0,12 → 1,23…). Guarda o valor em CENTAVOS (number).
 function MoneyInput({ cents, onChange, autoFocus, className }: { cents: number; onChange: (c: number) => void; autoFocus?: boolean; className?: string }) {
@@ -395,7 +400,7 @@ function CaixaPanel({ caixa, comandas, onAbrir, onSangria, onReforco, onFechar }
   // Resumo ao vivo (desde a abertura).
   const inicio = caixa.abertoEm;
   const map = new Map<string, number>();
-  for (const c of comandas) for (const p of c.pagamentos || []) if (p.em && p.em >= inicio) map.set(p.forma, (map.get(p.forma) || 0) + p.valor);
+  for (const c of comandas) for (const p of c.pagamentos || []) if (p.em && p.em >= inicio) { const fn = baseForma(p.forma); map.set(fn, (map.get(fn) || 0) + p.valor); }
   const porForma = [...map.entries()].map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor);
   const vendasTotal = porForma.reduce((s, f) => s + f.valor, 0);
   const dinheiroVendas = porForma.filter((f) => /dinheiro/i.test(f.forma)).reduce((s, f) => s + f.valor, 0);
@@ -513,7 +518,7 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
     const noPer = (em?: string | null) => !!em && em >= inicio && em <= fim;
     const map = new Map<string, number>();
     const comandasNoPer = new Set<string>();
-    for (const c of comandas) for (const p of c.pagamentos || []) if (noPer(p.em)) { map.set(p.forma, (map.get(p.forma) || 0) + p.valor); comandasNoPer.add(c.id); }
+    for (const c of comandas) for (const p of c.pagamentos || []) if (noPer(p.em)) { const fn = baseForma(p.forma); map.set(fn, (map.get(fn) || 0) + p.valor); comandasNoPer.add(c.id); }
     const porForma = [...map.entries()].map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor);
     const vendasTotal = porForma.reduce((s, f) => s + f.valor, 0);
     const dinheiroVendas = porForma.filter((f) => /dinheiro/i.test(f.forma)).reduce((s, f) => s + f.valor, 0);
@@ -522,11 +527,11 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
     const dinheiroEsperado = +(caixa.fundoTroco + dinheiroVendas + reforcos - sangrias).toFixed(2);
     return { vendasTotal: +vendasTotal.toFixed(2), nComandas: comandasNoPer.size, porForma, dinheiroVendas: +dinheiroVendas.toFixed(2), sangrias: +sangrias.toFixed(2), reforcos: +reforcos.toFixed(2), dinheiroEsperado, diferenca: 0 };
   }, [caixa, comandas]);
-  // Formas a conferir: Dinheiro (esperado = fundo+vendas−sangrias+reforços) + demais formas.
+  // Formas a conferir: as padrão (Dinheiro/Crédito/Débito/Pix) SEMPRE + extras com venda.
   const formasConf = useMemo(() => {
-    const arr: { forma: string; esperado: number }[] = [{ forma: "Dinheiro", esperado: resumo.dinheiroEsperado }];
-    for (const f of resumo.porForma) if (!/dinheiro/i.test(f.forma)) arr.push({ forma: f.forma, esperado: +f.valor.toFixed(2) });
-    return arr;
+    const val = (forma: string) => resumo.porForma.find((f) => f.forma === forma)?.valor || 0;
+    const todas = [...new Set([...FORMAS_PADRAO, ...resumo.porForma.map((f) => f.forma)])];
+    return todas.map((forma) => ({ forma, esperado: /dinheiro/i.test(forma) ? resumo.dinheiroEsperado : +val(forma).toFixed(2) }));
   }, [resumo]);
   const setForma = (forma: string, cents: number) => { setConf((p) => ({ ...p, [forma]: cents })); setTouched(true); };
   const conferencia = formasConf.map((f) => { const conferido = (conf[f.forma] || 0) / 100; return { forma: f.forma, esperado: f.esperado, conferido, diferenca: +(conferido - f.esperado).toFixed(2) }; });
