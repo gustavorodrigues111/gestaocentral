@@ -6628,6 +6628,12 @@ export type ComandaFiscalConfig = {
   aliqPis?: number | null;             // alíquota PIS (%) — cumulativo ~0,65
   cstCofins?: string | null;           // CST COFINS (ex.: 01)
   aliqCofins?: number | null;          // alíquota COFINS (%) — cumulativo ~3,00
+  // IBS/CBS (Reforma Tributária) — defaults do período de teste 2026 se vazio.
+  ibsCbsCst?: string | null;           // CST IBS/CBS (ex.: 000 = tributação integral)
+  ibsCbsClass?: string | null;         // classificação tributária (ex.: 000001)
+  cbsAliq?: number | null;             // alíquota CBS (%) — teste 2026 = 0,9
+  ibsUfAliq?: number | null;           // alíquota IBS estadual (%) — teste 2026 = 0,1
+  ibsMunAliq?: number | null;          // alíquota IBS municipal (%) — teste 2026 = 0
   atualizadoEm?: string | null;
 };
 

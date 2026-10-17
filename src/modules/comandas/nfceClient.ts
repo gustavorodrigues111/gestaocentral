@@ -57,6 +57,12 @@ export function montarNfce(
   const aliqPis = cfg?.aliqPis ?? 0.65;
   const cstCofins = cfg?.cstCofins || "01";
   const aliqCofins = cfg?.aliqCofins ?? 3;
+  // IBS/CBS (Reforma Tributária 2026 — período de teste). Defaults oficiais do teste.
+  const ibsCbsCst = cfg?.ibsCbsCst || "000";
+  const ibsCbsClass = cfg?.ibsCbsClass || "000001";
+  const cbsAliq = cfg?.cbsAliq ?? 0.9;
+  const ibsUfAliq = cfg?.ibsUfAliq ?? 0.1;
+  const ibsMunAliq = cfg?.ibsMunAliq ?? 0;
 
   const items: FocusItem[] = comanda.itens.map((i, idx) => {
     const p = i.produtoId ? byId.get(i.produtoId) : undefined;
@@ -111,6 +117,22 @@ export function montarNfce(
       item.cofins_aliquota_porcentual = aliqCofins;
       item.cofins_valor = r2((bruto * aliqCofins) / 100);
     }
+    // IBS/CBS (Reforma Tributária) — obrigatório p/ Regime Normal desde 03/08/2026.
+    // Período de teste 2026: CBS 0,9% + IBS UF 0,1% (mun 0%), sem recolhimento real.
+    // CST "000" = tributação integral; classificação "000001". Valores como string.
+    const cbsV = r2((bruto * cbsAliq) / 100);
+    const ibsUfV = r2((bruto * ibsUfAliq) / 100);
+    const ibsMunV = r2((bruto * ibsMunAliq) / 100);
+    item.ibs_cbs_situacao_tributaria = ibsCbsCst;
+    item.ibs_cbs_classificacao_tributaria = ibsCbsClass;
+    item.ibs_cbs_base_calculo = bruto;
+    item.cbs_aliquota = String(cbsAliq);
+    item.cbs_valor = String(cbsV);
+    item.ibs_uf_aliquota = String(ibsUfAliq);
+    item.ibs_uf_valor = String(ibsUfV);
+    item.ibs_mun_aliquota = String(ibsMunAliq);
+    item.ibs_mun_valor = String(ibsMunV);
+    item.ibs_valor_total = String(r2(ibsUfV + ibsMunV));
     return item;
   });
   // Agrupa formas de pagamento por código.
