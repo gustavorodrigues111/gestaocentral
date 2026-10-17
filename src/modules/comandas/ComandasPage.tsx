@@ -89,6 +89,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
   const [caixaModal, setCaixaModal] = useState<null | "abrir" | "sangria" | "reforco" | "fechar">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
+  const [novaComanda, setNovaComanda] = useState<Comanda | null>(null);   // recém-criada (otimista, até o snapshot chegar)
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   // Estação EMBUTIDA: este dispositivo também imprime (pro PC único do balcão
   // com a Epson — dispensa a aba separada). Lembrado por dispositivo.
@@ -128,7 +129,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const abertas = useMemo(() => comandas.filter((c) => c.status === "aberta"), [comandas]);
   const [, setTick] = useState(0);   // re-render a cada 1min p/ atualizar o "tempo aberta" dos cards
   useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 60000); return () => clearInterval(id); }, []);
-  const comandaDet = useMemo(() => comandas.find((c) => c.id === detalhe) || null, [comandas, detalhe]);
+  const comandaDet = useMemo(() => comandas.find((c) => c.id === detalhe) || (novaComanda && novaComanda.id === detalhe ? novaComanda : null), [comandas, detalhe, novaComanda]);
+  const fecharDetalhe = () => { setDetalhe(null); setNovaComanda(null); };
 
   if (estacao) return <EstacaoImpressao rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={estacaoParam === "1" ? null : estacaoParam} estacoes={estacoes} logoUrl={logoUrl} />;
   if (!podeVer) return <div className="text-center py-12 text-gray-500">Você não tem acesso a Comandas.</div>;
@@ -146,11 +148,10 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       status: "aberta", caixaId: caixa.id, modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
     };
+    setNovaComanda(c); setAbrindo(null); setDetalhe(c.id);   // abre o detalhe NA HORA (otimista)
     await salvarComanda(c);
-    setAbrindo(null);
-    setDetalhe(c.id);
   }
-  // Venda rápida (to-go): cria a comanda na hora, sem modal, e abre a venda.
+  // Venda rápida (to-go): cria a comanda na hora, sem modal, e abre direto a venda.
   async function vendaRapida() {
     if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
     const c: Comanda = {
@@ -159,8 +160,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       status: "aberta", caixaId: caixa.id, modo: "togo", itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
     };
+    setNovaComanda(c); setDetalhe(c.id);   // abre direto na seleção de produtos (otimista)
     await salvarComanda(c);
-    setDetalhe(c.id);
   }
   async function abrirCaixa(fundoTroco: number) {
     const c: ComandaCaixa = { id: uid(), restaurantId: rid, status: "aberto", abertoPor: me?.id, abertoPorNome: meNome, abertoEm: nowIso(), fundoTroco, movimentos: [] };
@@ -228,7 +229,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
           fiscalCfg={fiscalCfg} podeOperar={podeOperar}
           meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
-          onClose={() => setDetalhe(null)}
+          onClose={fecharDetalhe}
         />
       ) : (<>
       {tabEfetiva === "comandas" && (
