@@ -13,8 +13,8 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // Mesmos arquivos do feed de auto-update (pdv-updates/, token compartilhado) —
 // 1 upload serve download + update.
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.0-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
-  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.0.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.1-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.1.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
