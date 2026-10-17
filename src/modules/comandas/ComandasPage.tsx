@@ -222,11 +222,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               <button onClick={() => void vendaRapida()} className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Package size={18} /> Venda rápida</button>
             </div>
           )}
-          {podeOperar && !caixa && (
-            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-gray-500 dark:text-gray-400 mb-3 text-sm">
-              Abra o caixa pra começar as vendas.
-            </div>
-          )}
 
           {(caixa || abertas.length > 0) && (() => {
             const lista = abertas;   // tela principal = só abertas; as vendas (fechadas) ficam em Relatórios
@@ -363,9 +358,13 @@ function CaixaBar({ caixa, onAbrir, onSangria, onReforco, onFechar }: {
 }) {
   if (!caixa) {
     return (
-      <button onClick={onAbrir} className="w-full mb-3 h-12 rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold inline-flex items-center justify-center gap-2">
-        <Banknote size={18} /> Abrir caixa
-      </button>
+      <div className="mb-3 flex flex-col items-center text-center gap-4 py-10">
+        <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950/40 grid place-items-center"><Banknote size={30} className="text-emerald-600 dark:text-emerald-300" /></div>
+        <button onClick={onAbrir} className="w-full max-w-xs h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-base inline-flex items-center justify-center gap-2 shadow-sm">
+          <Banknote size={20} /> Abrir caixa
+        </button>
+        <p className="text-[13px] text-gray-500 dark:text-gray-400">Abra o caixa para começar a vender.</p>
+      </div>
     );
   }
   const dt = new Date(caixa.abertoEm);
