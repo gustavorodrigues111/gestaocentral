@@ -1,7 +1,7 @@
 // Cliente da NFC-e (Focus NFe) — chama o nosso backend /api/nfce (segredos lá).
 // Monta os itens/formas a partir da comanda + dados fiscais do produto.
 import { authHeader } from "../../core/firebase/idToken";
-import type { Comanda, ComandaProduto } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaFiscalConfig } from "../../core/types";
 
 export type NfceResp = { ok: boolean; httpStatus: number; data: unknown; error?: string };
 
@@ -29,19 +29,46 @@ function codForma(forma: string): string {
   return "99";
 }
 
-// Monta o corpo da NFC-e. Retorna os itens/formas + a lista de produtos SEM
-// fiscal (NCM/CFOP/CSOSN) — se houver, a nota seria rejeitada.
-export function montarNfce(comanda: Comanda, produtos: ComandaProduto[]): { items: FocusItem[]; formas: FocusForma[]; faltando: string[] } {
+// CSTs de ICMS que NÃO destacam imposto (isenta / não tributada / ST já retido).
+// Para esses não mandamos base/alíquota/valor — só o CST + origem.
+const ICMS_SEM_DESTAQUE = new Set(["40", "41", "50", "60"]);
+// CSTs de PIS/COFINS que destacam alíquota (tributável). Os demais (07, 08, 49…) = sem destaque.
+const PISCOFINS_COM_DESTAQUE = new Set(["01", "02"]);
+const r2 = (n: number) => +n.toFixed(2);
+
+// Monta o corpo da NFC-e (Regime Normal / Lucro Presumido) a partir da comanda +
+// do Fiscal padrão do restaurante + dos campos fiscais de cada produto.
+// Por produto varia só o NCM (e, se quiser, CFOP/CST/alíquota de ICMS); o resto
+// (CFOP padrão, PIS/COFINS, origem) vem do `cfg`. Retorna também `faltando`:
+// itens sem NCM ou sem CST/CFOP resolvido — se houver, a nota é rejeitada.
+export function montarNfce(
+  comanda: Comanda,
+  produtos: ComandaProduto[],
+  cfg?: ComandaFiscalConfig | null,
+): { items: FocusItem[]; formas: FocusForma[]; faltando: string[] } {
   const byId = new Map(produtos.map((p) => [p.id, p]));
   const faltando: string[] = [];
+  const cfopPadrao = cfg?.cfop || "";
+  const origemPadrao = cfg?.origem || "0";
+  const cstIcmsPadrao = cfg?.cstIcms || "";
+  const aliqIcmsPadrao = cfg?.aliqIcms ?? null;
+  const cstPis = cfg?.cstPis || "01";
+  const aliqPis = cfg?.aliqPis ?? 0.65;
+  const cstCofins = cfg?.cstCofins || "01";
+  const aliqCofins = cfg?.aliqCofins ?? 3;
+
   const items: FocusItem[] = comanda.itens.map((i, idx) => {
     const p = i.produtoId ? byId.get(i.produtoId) : undefined;
     const ncm = p?.ncm || "";
-    const cfop = p?.cfop || "";
-    const csosn = p?.csosn || p?.cst || "";
-    if (!ncm || !cfop || !csosn) faltando.push(i.nome);
+    const cfop = p?.cfop || cfopPadrao;
+    const origem = p?.origem || origemPadrao;
+    const cstIcms = p?.cst || p?.csosn || cstIcmsPadrao;          // CST de ICMS (produto sobrepõe o padrão)
+    const aliqIcms = p?.aliqIcms ?? aliqIcmsPadrao;
+    if (!ncm || !cfop || !cstIcms) faltando.push(i.nome);
     const un = (p?.unidadeFiscal || p?.unidade || (i.porPeso ? "kg" : "un")).toUpperCase();
-    return {
+    const bruto = r2(i.total);
+
+    const item: FocusItem = {
       numero_item: String(idx + 1),
       codigo_produto: p?.codigo || i.produtoId || String(idx + 1),
       codigo_ncm: ncm,
@@ -49,19 +76,42 @@ export function montarNfce(comanda: Comanda, produtos: ComandaProduto[]): { item
       descricao: i.nome,
       quantidade_comercial: +i.qtd.toFixed(3),
       quantidade_tributavel: +i.qtd.toFixed(3),
-      valor_unitario_comercial: +i.precoUnit.toFixed(2),
-      valor_unitario_tributavel: +i.precoUnit.toFixed(2),
-      valor_bruto: +i.total.toFixed(2),
+      valor_unitario_comercial: r2(i.precoUnit),
+      valor_unitario_tributavel: r2(i.precoUnit),
+      valor_bruto: bruto,
       unidade_comercial: un,
       unidade_tributavel: un,
-      icms_origem: p?.origem || "0",
-      icms_situacao_tributaria: csosn,
+      // ICMS (Regime Normal)
+      icms_origem: origem,
+      icms_situacao_tributaria: cstIcms,
     };
+    if (cstIcms && !ICMS_SEM_DESTAQUE.has(cstIcms)) {
+      // Tributado (CST 00, 10, 20, 70, 90…): base = valor da operação.
+      item.icms_modalidade_base_calculo = "3";
+      item.icms_base_calculo = bruto;
+      item.icms_aliquota = aliqIcms ?? 0;
+      item.icms_valor = r2((bruto * (aliqIcms ?? 0)) / 100);
+    }
+    // PIS
+    item.pis_situacao_tributaria = cstPis;
+    if (PISCOFINS_COM_DESTAQUE.has(cstPis)) {
+      item.pis_base_calculo = bruto;
+      item.pis_aliquota_porcentual = aliqPis;
+      item.pis_valor = r2((bruto * aliqPis) / 100);
+    }
+    // COFINS
+    item.cofins_situacao_tributaria = cstCofins;
+    if (PISCOFINS_COM_DESTAQUE.has(cstCofins)) {
+      item.cofins_base_calculo = bruto;
+      item.cofins_aliquota_porcentual = aliqCofins;
+      item.cofins_valor = r2((bruto * aliqCofins) / 100);
+    }
+    return item;
   });
   // Agrupa formas de pagamento por código.
   const m = new Map<string, number>();
   for (const pg of comanda.pagamentos || []) m.set(codForma(pg.forma), (m.get(codForma(pg.forma)) || 0) + pg.valor);
-  const formas: FocusForma[] = [...m.entries()].map(([forma_pagamento, valor_pagamento]) => ({ forma_pagamento, valor_pagamento: +valor_pagamento.toFixed(2) }));
+  const formas: FocusForma[] = [...m.entries()].map(([forma_pagamento, valor_pagamento]) => ({ forma_pagamento, valor_pagamento: r2(valor_pagamento) }));
   return { items, formas, faltando };
 }
 

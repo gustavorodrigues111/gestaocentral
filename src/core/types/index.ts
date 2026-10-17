@@ -6604,13 +6604,31 @@ export type ComandaProduto = {
   producao?: boolean;                  // true → PRODUÇÃO (vai pra cozinha); false → revenda
   ativo: boolean;
   ordem?: number;
-  // Fiscal (NFC-e) — preenchido pelo contador. Sem isso, a nota é rejeitada.
-  ncm?: string | null;                 // código NCM (8 díg)
-  cfop?: string | null;                // ex.: 5102
+  // Fiscal (NFC-e) — o que VARIA por produto. O resto (CFOP, PIS/COFINS, alíquota
+  // de ICMS padrão) vem do Fiscal padrão do restaurante (ComandaFiscalConfig).
+  ncm?: string | null;                 // código NCM (8 díg) — sempre por produto
+  cfop?: string | null;                // override do CFOP padrão (ex.: 5102)
   origem?: string | null;              // origem da mercadoria (0 = nacional)
-  csosn?: string | null;               // Simples Nacional (ex.: 102, 500)
-  cst?: string | null;                 // Regime normal (ex.: 00) — usar csosn OU cst
+  csosn?: string | null;               // [Simples] CSOSN (ex.: 102, 500) — legado
+  cst?: string | null;                 // [Regime normal] CST de ICMS (ex.: 00, 60)
+  aliqIcms?: number | null;            // override da alíquota de ICMS (%) — só quando difere do padrão
   unidadeFiscal?: string | null;       // unidade tributável (un, kg) — default = unidade
+};
+
+// Fiscal padrão do restaurante (NFC-e). No Lucro Presumido o PIS/COFINS é
+// cumulativo e uniforme, então a maior parte da config fica aqui e não no produto.
+export type ComandaFiscalConfig = {
+  restaurantId: string;
+  regime?: "normal" | "simples";       // Sororoca = "normal" (Lucro Presumido)
+  cfop?: string | null;                // CFOP padrão (ex.: 5102)
+  origem?: string | null;              // origem padrão (0 = nacional)
+  cstIcms?: string | null;             // CST ICMS padrão (ex.: 00 tributado / 60 ST)
+  aliqIcms?: number | null;            // alíquota ICMS padrão (%)
+  cstPis?: string | null;              // CST PIS (ex.: 01)
+  aliqPis?: number | null;             // alíquota PIS (%) — cumulativo ~0,65
+  cstCofins?: string | null;           // CST COFINS (ex.: 01)
+  aliqCofins?: number | null;          // alíquota COFINS (%) — cumulativo ~3,00
+  atualizadoEm?: string | null;
 };
 
 export type ComandaItem = {

@@ -13,12 +13,13 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { APP_VERSION_LABEL } from "../../core/version";
-import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao } from "../../core/types";
+import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
   ouvirComandas, salvarComanda, criarPrintJob, superseedContaJobs,
   ouvirCategorias, salvarCategoria, excluirCategoria,
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
+  ouvirFiscalConfig, salvarFiscalConfig,
 } from "./comandasRepo";
 import { EstacaoImpressao } from "./EstacaoImpressao";
 import { TefCobranca } from "./TefCobranca";
@@ -61,6 +62,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [estacoes, setEstacoes] = useState<ComandaEstacao[]>([]);
   const [comandas, setComandas] = useState<Comanda[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [fiscalCfg, setFiscalCfg] = useState<ComandaFiscalConfig | null>(null);
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
@@ -76,6 +78,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   useEffect(() => { if (!rid) return; return ouvirCategorias(rid, setCategorias); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirEstacoes(rid, setEstacoes); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirComandas(rid, setComandas); }, [rid]);
+  useEffect(() => { if (!rid) return; return ouvirFiscalConfig(rid, setFiscalCfg); }, [rid]);
   useEffect(() => { if (!rid) return; void lerLogoSite(rid).then(setLogoUrl); }, [rid]);
 
   const meNome = me?.nome || "—";
@@ -176,6 +179,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           {comandaDet ? (
             <ComandaDetalhe
               comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
+              fiscalCfg={fiscalCfg}
               podeOperar={podeOperar}
               meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
               onClose={() => setDetalhe(null)}
@@ -229,7 +233,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       )}
 
       {tabEfetiva === "produtos" && podeProdutos && (
-        <div className="max-w-lg mx-auto"><ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} /></div>
+        <div className="max-w-lg mx-auto"><ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} fiscalCfg={fiscalCfg} /></div>
       )}
       {tabEfetiva === "categorias" && podeProdutos && (
         <div className="max-w-lg mx-auto"><CategoriasPanel rid={rid} produtos={produtos} categorias={categorias} /></div>
@@ -369,8 +373,8 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
 }
 
 // ── Detalhe da comanda (lançar itens, imprimir, fechar) ───────────────────
-function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, podeOperar, meNome, nomeRest, rid, onClose }: {
-  comanda: Comanda; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; logoUrl: string | null; podeOperar: boolean; meNome: string; nomeRest: string; rid: string;
+function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fiscalCfg, podeOperar, meNome, nomeRest, rid, onClose }: {
+  comanda: Comanda; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; logoUrl: string | null; fiscalCfg: ComandaFiscalConfig | null; podeOperar: boolean; meNome: string; nomeRest: string; rid: string;
   onClose: () => void;
 }) {
   const fechada = comanda.status === "fechada";
@@ -497,8 +501,9 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
   }
   async function emitirNfce() {
     if (comanda.nfce?.chave && !confirm("Esta comanda já tem NFC-e autorizada. Emitir outra?")) return;
-    const { items, formas, faltando } = montarNfce(comanda, produtos);
-    if (faltando.length) { alert("Faltam dados fiscais (NCM/CFOP/CSOSN) nestes produtos: " + [...new Set(faltando)].join(", ") + ".\nPreencha em Produtos → Fiscal (NFC-e)."); return; }
+    if (!fiscalCfg?.cfop || !fiscalCfg?.cstIcms) { alert("Configure o Fiscal padrão (NFC-e) primeiro: Config → Produtos → Fiscal padrão (CFOP, CST, alíquotas)."); return; }
+    const { items, formas, faltando } = montarNfce(comanda, produtos, fiscalCfg);
+    if (faltando.length) { alert("Faltam dados fiscais (NCM/CFOP/CST) nestes produtos: " + [...new Set(faltando)].join(", ") + ".\nPreencha o NCM em Produtos → Fiscal (NFC-e)."); return; }
     setNfceLoading(true);
     try {
       const ref = `c${comanda.id}_${Date.now().toString(36)}`;
@@ -1016,8 +1021,73 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
   );
 }
 
+// ── Fiscal padrão (NFC-e) do restaurante ───────────────────────────────────
+// Lucro Presumido: PIS/COFINS cumulativo e uniforme + CFOP/CST/alíquota de ICMS
+// padrão. Configura 1x; no produto só varia o NCM. Colapsado por padrão.
+function FiscalPadraoEditor({ rid, cfg }: { rid: string; cfg: ComandaFiscalConfig | null }) {
+  const [aberto, setAberto] = useState(false);
+  const [cfop, setCfop] = useState(""); const [origem, setOrigem] = useState("0");
+  const [cstIcms, setCstIcms] = useState(""); const [aliqIcms, setAliqIcms] = useState("");
+  const [cstPis, setCstPis] = useState("01"); const [aliqPis, setAliqPis] = useState("0,65");
+  const [cstCofins, setCstCofins] = useState("01"); const [aliqCofins, setAliqCofins] = useState("3,00");
+  const [salvando, setSalvando] = useState(false); const [okMsg, setOkMsg] = useState(false);
+  const numBR = (s: string): number | null => { const n = parseFloat((s || "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
+  // Carrega os valores existentes quando o cfg chega / muda.
+  useEffect(() => {
+    if (!cfg) return;
+    setCfop(cfg.cfop || ""); setOrigem(cfg.origem || "0");
+    setCstIcms(cfg.cstIcms || ""); setAliqIcms(cfg.aliqIcms != null ? String(cfg.aliqIcms).replace(".", ",") : "");
+    setCstPis(cfg.cstPis || "01"); setAliqPis(cfg.aliqPis != null ? String(cfg.aliqPis).replace(".", ",") : "0,65");
+    setCstCofins(cfg.cstCofins || "01"); setAliqCofins(cfg.aliqCofins != null ? String(cfg.aliqCofins).replace(".", ",") : "3,00");
+  }, [cfg]);
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await salvarFiscalConfig(rid, {
+        restaurantId: rid, regime: "normal",
+        cfop: cfop.trim() || null, origem: origem.trim() || "0",
+        cstIcms: cstIcms.trim() || null, aliqIcms: numBR(aliqIcms),
+        cstPis: cstPis.trim() || "01", aliqPis: numBR(aliqPis),
+        cstCofins: cstCofins.trim() || "01", aliqCofins: numBR(aliqCofins),
+      });
+      setOkMsg(true); setTimeout(() => setOkMsg(false), 2500);
+    } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSalvando(false); }
+  }
+  const configurado = !!(cfg?.cfop && cfg?.cstIcms);
+  const inp = "h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums w-full";
+  return (
+    <div className="mb-3 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <button type="button" onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-200">
+        <span className="inline-flex items-center gap-1.5"><Receipt size={15} /> Fiscal padrão (NFC-e){configurado ? <span className="text-emerald-600 text-[11px]">✓ configurado</span> : <span className="text-amber-600 text-[11px]">• pendente</span>}</span>
+        <span className={`transition-transform ${aberto ? "rotate-90" : ""}`}>▶</span>
+      </button>
+      {aberto && (
+        <div className="px-3 pb-3 space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Regime <b>Lucro Presumido</b>. Vale pra todos os produtos — no produto você só põe o NCM. Pegue os códigos da sua nota atual (Altec) ou com o contador.</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div><label className="text-[10px] text-gray-400">CFOP padrão</label><input value={cfop} onChange={(e) => setCfop(e.target.value)} placeholder="5102" inputMode="numeric" className={inp} /></div>
+            <div><label className="text-[10px] text-gray-400">Origem</label><input value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder="0 = nacional" inputMode="numeric" className={inp} /></div>
+            <div><label className="text-[10px] text-gray-400">CST ICMS</label><input value={cstIcms} onChange={(e) => setCstIcms(e.target.value)} placeholder="00 / 60" inputMode="numeric" className={inp} /></div>
+            <div><label className="text-[10px] text-gray-400">Alíq. ICMS %</label><input value={aliqIcms} onChange={(e) => setAliqIcms(e.target.value)} placeholder="ex.: 3,2" inputMode="decimal" className={inp} /></div>
+            <div><label className="text-[10px] text-gray-400">CST PIS</label><input value={cstPis} onChange={(e) => setCstPis(e.target.value)} placeholder="01" inputMode="numeric" className={inp} /></div>
+            <div><label className="text-[10px] text-gray-400">Alíq. PIS %</label><input value={aliqPis} onChange={(e) => setAliqPis(e.target.value)} placeholder="0,65" inputMode="decimal" className={inp} /></div>
+            <div><label className="text-[10px] text-gray-400">CST COFINS</label><input value={cstCofins} onChange={(e) => setCstCofins(e.target.value)} placeholder="01" inputMode="numeric" className={inp} /></div>
+            <div><label className="text-[10px] text-gray-400">Alíq. COFINS %</label><input value={aliqCofins} onChange={(e) => setAliqCofins(e.target.value)} placeholder="3,00" inputMode="decimal" className={inp} /></div>
+          </div>
+          <p className="text-[10px] text-gray-400">CST ICMS: <b>00</b> = tributado (precisa da alíquota); <b>60</b> = ICMS já retido por ST (sem alíquota). PIS/COFINS no Lucro Presumido = cumulativo (0,65% e 3%).</p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => void salvar()} disabled={salvando} className="flex-1 h-10 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{salvando ? "Salvando…" : "Salvar Fiscal padrão"}</button>
+            {okMsg && <span className="text-[12px] text-emerald-600 font-semibold">salvo ✓</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Cadastro de produtos (aba Config › Produtos) ───────────────────────────
-function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[] }) {
+function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; fiscalCfg: ComandaFiscalConfig | null }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [codigo, setCodigo] = useState("");
@@ -1026,7 +1096,8 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
   const [imprime, setImprime] = useState(false);     // vai pra impressora (cozinha/bar)
   const [categoriaId, setCategoriaId] = useState<string>("");
   const [busca, setBusca] = useState("");
-  const [ncm, setNcm] = useState(""); const [cfop, setCfop] = useState(""); const [origem, setOrigem] = useState("0"); const [csosn, setCsosn] = useState("");
+  // Fiscal por produto (o que VARIA): NCM sempre; CFOP/CST/alíquota só se diferir do padrão.
+  const [ncm, setNcm] = useState(""); const [cfop, setCfop] = useState(""); const [origem, setOrigem] = useState(""); const [cst, setCst] = useState(""); const [aliqIcms, setAliqIcms] = useState("");
   const [verFiscal, setVerFiscal] = useState(false);
   const precoNum = parseFloat((preco || "").replace(/\./g, "").replace(",", ".")) || 0;
   const catById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
@@ -1049,11 +1120,11 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
     return produtos.filter((p) => p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q) || (p.categoria || "").toLowerCase().includes(q));
   }, [produtos, busca]);
 
-  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem("0"); setCsosn(""); setVerFiscal(false); }
+  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem(""); setCst(""); setAliqIcms(""); setVerFiscal(false); }
   function editar(p: ComandaProduto) {
     setEditId(p.id); setNome(p.nome); setCodigo(p.codigo || ""); setPreco(String(p.preco).replace(".", ","));
     setPorPeso(!!p.porPeso); setImprime(!!p.producao); setCategoriaId(p.categoriaId || "");
-    setNcm(p.ncm || ""); setCfop(p.cfop || ""); setOrigem(p.origem || "0"); setCsosn(p.csosn || p.cst || "");
+    setNcm(p.ncm || ""); setCfop(p.cfop || ""); setOrigem(p.origem || ""); setCst(p.cst || p.csosn || ""); setAliqIcms(p.aliqIcms != null ? String(p.aliqIcms).replace(".", ",") : "");
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* ignore */ }
   }
   async function salvar() {
@@ -1066,13 +1137,17 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
       preco: precoNum, porPeso, producao: imprime,
       categoriaId: categoriaId || null, categoria: cat?.nome || null,
       unidade: porPeso ? "kg" : "un", ativo: base?.ativo ?? true, ordem: base?.ordem ?? produtos.length,
-      ncm: ncm.trim() || null, cfop: cfop.trim() || null, origem: origem.trim() || null, csosn: csosn.trim() || null,
+      ncm: ncm.trim() || null, cfop: cfop.trim() || null, origem: origem.trim() || null,
+      cst: cst.trim() || null, csosn: null,
+      aliqIcms: aliqIcms.trim() ? (parseFloat(aliqIcms.replace(",", ".")) || null) : null,
     });
     limpar();
   }
 
   return (
     <div>
+      {/* Fiscal padrão (NFC-e) do restaurante — configura 1x */}
+      <FiscalPadraoEditor rid={rid} cfg={fiscalCfg} />
       {/* Form de cadastro/edição */}
       <div className={`space-y-2 pb-3 ${editId ? "rounded-xl border border-indigo-200 dark:border-indigo-800 p-3 bg-indigo-50/30 dark:bg-indigo-950/10" : "border-b border-gray-200 dark:border-gray-800"}`}>
         <div className="text-[12px] font-semibold text-gray-500 dark:text-gray-400">{editId ? "Editando produto" : "Novo produto"}</div>
@@ -1094,18 +1169,27 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
           <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime</label>
         </div>
 
-        {/* Fiscal (NFC-e) — preenchido pelo contador; sem isso a nota é rejeitada */}
+        {/* Fiscal (NFC-e) por produto — só o NCM é obrigatório; o resto vem do Fiscal padrão */}
         <button type="button" onClick={() => setVerFiscal((v) => !v)} className="w-full flex items-center justify-between text-[12px] text-gray-500 dark:text-gray-400 px-1 py-1">
-          <span>Fiscal (NFC-e){(ncm || cfop || csosn) ? " ✓" : ""}</span>
+          <span>Fiscal (NFC-e){ncm ? " ✓" : ""}</span>
           <span className={`transition-transform ${verFiscal ? "rotate-90" : ""}`}>▶</span>
         </button>
         {verFiscal && (
-          <div className="grid grid-cols-2 gap-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2">
-            <input value={ncm} onChange={(e) => setNcm(e.target.value)} placeholder="NCM (8 díg)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-            <input value={cfop} onChange={(e) => setCfop(e.target.value)} placeholder="CFOP (ex.: 5102)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-            <input value={csosn} onChange={(e) => setCsosn(e.target.value)} placeholder="CSOSN (ex.: 102)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-            <input value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder="Origem (0=nac.)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-            <p className="col-span-2 text-[10px] text-gray-400">Peça esses códigos ao contador. CSOSN é do Simples (ex.: 102/500); no regime normal use o CST.</p>
+          <div className="space-y-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2">
+            <div>
+              <label className="text-[10px] text-gray-400">NCM do produto (obrigatório · copie da Altec)</label>
+              <input value={ncm} onChange={(e) => setNcm(e.target.value)} placeholder="NCM (8 díg) — ex.: 21069090" inputMode="numeric" className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            </div>
+            <details className="text-[11px]">
+              <summary className="cursor-pointer text-gray-400 py-1">Override fiscal (só se este produto difere do padrão)</summary>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <input value={cfop} onChange={(e) => setCfop(e.target.value)} placeholder={`CFOP (padrão ${fiscalCfg?.cfop || "—"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                <input value={cst} onChange={(e) => setCst(e.target.value)} placeholder={`CST ICMS (padrão ${fiscalCfg?.cstIcms || "—"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                <input value={aliqIcms} onChange={(e) => setAliqIcms(e.target.value)} placeholder={`Alíq. ICMS % (padrão ${fiscalCfg?.aliqIcms ?? "—"})`} inputMode="decimal" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                <input value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder={`Origem (padrão ${fiscalCfg?.origem || "0"})`} inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+              </div>
+            </details>
+            {!fiscalCfg?.cstIcms && <p className="text-[10px] text-amber-600 dark:text-amber-400">⚠ Configure o <b>Fiscal padrão</b> no topo desta aba antes de emitir.</p>}
           </div>
         )}
 

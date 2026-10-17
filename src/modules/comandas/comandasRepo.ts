@@ -5,7 +5,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig } from "../../core/types";
 
 export const uid = () => { try { return crypto.randomUUID(); } catch { return "c" + Date.now() + Math.random().toString(36).slice(2); } };
 
@@ -41,6 +41,17 @@ export async function excluirEstacao(id: string): Promise<void> { await deleteDo
 export async function lerLogoSite(rid: string): Promise<string | null> {
   try { const s = await getDoc(doc(db, "sitesConfig", rid)); return s.exists() ? ((s.data() as { logoUrl?: string }).logoUrl || null) : null; }
   catch { return null; }
+}
+
+// ── Fiscal padrão (NFC-e) ──────────────────────────────────────────────
+// 1 doc por restaurante: comandasFiscalConfig/{rid}.
+export function ouvirFiscalConfig(rid: string, cb: (c: ComandaFiscalConfig | null) => void): Unsubscribe {
+  return onSnapshot(doc(db, "comandasFiscalConfig", rid), (snap) => {
+    cb(snap.exists() ? ({ ...(snap.data() as ComandaFiscalConfig), restaurantId: rid }) : null);
+  }, (e) => console.error("[comandas] fiscalConfig", e));
+}
+export async function salvarFiscalConfig(rid: string, cfg: ComandaFiscalConfig): Promise<void> {
+  await setDoc(doc(db, "comandasFiscalConfig", rid), sanitizeForFirestore({ ...cfg, restaurantId: rid, atualizadoEm: new Date().toISOString() }), { merge: true });
 }
 
 // ── Produtos ───────────────────────────────────────────────────────────
