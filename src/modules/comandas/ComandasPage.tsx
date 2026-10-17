@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -1768,6 +1768,7 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
   const [ncm, setNcm] = useState(""); const [cfop, setCfop] = useState(""); const [origem, setOrigem] = useState(""); const [cst, setCst] = useState(""); const [aliqIcms, setAliqIcms] = useState("");
   const [verFiscal, setVerFiscal] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
+  const [ativo, setAtivo] = useState(true);
   const precoNum = parseFloat((preco || "").replace(/\./g, "").replace(",", ".")) || 0;
   const catById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
   // Código automático: 2 díg da categoria (01, 02…) + 3 díg sequenciais do produto (001…).
@@ -1789,14 +1790,21 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
     return produtos.filter((p) => p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q) || (p.categoria || "").toLowerCase().includes(q));
   }, [produtos, busca]);
 
-  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem(""); setCst(""); setAliqIcms(""); setVerFiscal(false); setModalAberto(false); }
+  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem(""); setCst(""); setAliqIcms(""); setVerFiscal(false); setAtivo(true); setModalAberto(false); }
   function novo() { limpar(); setModalAberto(true); }
-  function editar(p: ComandaProduto) {
-    setEditId(p.id); setNome(p.nome); setCodigo(p.codigo || ""); setPreco(String(p.preco).replace(".", ","));
+  // Preenche o form a partir de um produto. editar = mesmo id; duplicar = novo id, código em branco.
+  function preencher(p: ComandaProduto, comoEdicao: boolean) {
+    setEditId(comoEdicao ? p.id : null);
+    setNome(comoEdicao ? p.nome : `${p.nome} (cópia)`);
+    setCodigo(comoEdicao ? (p.codigo || "") : "");   // duplicar: código gera sozinho
+    setPreco(String(p.preco).replace(".", ","));
     setPorPeso(!!p.porPeso); setImprime(!!p.producao); setCategoriaId(p.categoriaId || "");
     setNcm(p.ncm || ""); setCfop(p.cfop || ""); setOrigem(p.origem || ""); setCst(p.cst || p.csosn || ""); setAliqIcms(p.aliqIcms != null ? String(p.aliqIcms).replace(".", ",") : "");
+    setAtivo(comoEdicao ? (p.ativo !== false) : true);
     setVerFiscal(false); setModalAberto(true);
   }
+  const editar = (p: ComandaProduto) => preencher(p, true);
+  const duplicar = (p: ComandaProduto) => preencher(p, false);
   async function salvar() {
     if (!nome.trim() || precoNum <= 0) return;
     const cat = categoriaId ? catById.get(categoriaId) : undefined;
@@ -1806,7 +1814,7 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
       id: editId || uid(), restaurantId: rid, nome: nome.trim(), codigo: codigoFinal || null,
       preco: precoNum, porPeso, producao: imprime,
       categoriaId: categoriaId || null, categoria: cat?.nome || null,
-      unidade: porPeso ? "kg" : "un", ativo: base?.ativo ?? true, ordem: base?.ordem ?? produtos.length,
+      unidade: porPeso ? "kg" : "un", ativo, ordem: base?.ordem ?? produtos.length,
       ncm: ncm.trim() || null, cfop: cfop.trim() || null, origem: origem.trim() || null,
       cst: cst.trim() || null, csosn: null,
       aliqIcms: aliqIcms.trim() ? (parseFloat(aliqIcms.replace(",", ".")) || null) : null,
@@ -1835,6 +1843,7 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
               <div className="text-[11px] text-gray-500">{fmtR(p.preco)}{p.porPeso ? "/kg · peso" : ""}{p.producao ? " · imprime" : ""}{p.categoria ? ` · ${p.categoria}` : ""}</div>
             </button>
             <button onClick={() => void salvarProduto({ ...p, ativo: !p.ativo })} className="text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shrink-0">{p.ativo ? "Inativar" : "Ativar"}</button>
+            <button onClick={() => duplicar(p)} title="Duplicar para novo" className="text-gray-300 hover:text-indigo-500 shrink-0"><Copy size={16} /></button>
             <button onClick={() => { if (confirm(`Excluir "${p.nome}"?`)) void excluirProduto(p.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={16} /></button>
           </div>
         ))}
@@ -1866,6 +1875,10 @@ function ProdutosPanel({ rid, produtos, categorias, fiscalCfg }: { rid: string; 
                 <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={porPeso} onChange={(e) => setPorPeso(e.target.checked)} className="accent-indigo-600" /> <Scale size={13} /> por peso (kg)</label>
                 <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime</label>
               </div>
+              <label className={`flex items-center justify-between gap-1.5 h-10 px-3 rounded-lg border cursor-pointer text-sm ${ativo ? "border-gray-200 dark:border-gray-700" : "border-rose-300 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800"}`}>
+                <span className="inline-flex items-center gap-1.5">{ativo ? <Check size={14} className="text-emerald-600" /> : <X size={14} className="text-rose-500" />} {ativo ? "Produto ativo" : "Produto inativo (não aparece no lançamento)"}</span>
+                <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} className="accent-emerald-600" />
+              </label>
 
               {/* Fiscal (NFC-e) por produto — só o NCM é obrigatório; o resto vem do Fiscal padrão */}
               <button type="button" onClick={() => setVerFiscal((v) => !v)} className="w-full flex items-center justify-between text-[12px] text-gray-500 dark:text-gray-400 px-1 py-1">
