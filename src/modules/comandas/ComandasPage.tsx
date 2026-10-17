@@ -314,7 +314,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       )}
 
       {tabEfetiva === "relatorios" && podeRelatorios && (
-        <RelatorioComandas comandas={comandas} onAbrir={(id) => setDetalhe(id)} />
+        <RelatorioComandas comandas={comandas} categorias={categorias} onAbrir={(id) => setDetalhe(id)} />
       )}
 
       {tabEfetiva === "cadastros" && (podeProdutos || podeEstacoes) && (
@@ -1532,7 +1532,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
 const ymd = (d: Date) => d.toLocaleDateString("en-CA");
 const addDias = (base: string, n: number) => { const d = new Date(base + "T12:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
 const brData = (d: string) => d.split("-").reverse().join("/");
-function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir?: (id: string) => void }) {
+function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comanda[]; categorias: ComandaCategoria[]; onAbrir?: (id: string) => void }) {
   const hoje = ymd(new Date());
   const [preset, setPreset] = useState("hoje");
   const [de, setDe] = useState(hoje);
@@ -1579,6 +1579,34 @@ function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir
     return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }, [comandas, d0, d1]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const ticketMedio = noPeriodo.length ? faturamento / noPeriodo.length : 0;
+  const ticketPessoa = pessoas ? faturamento / pessoas : 0;
+
+  // Produtos mais vendidos no período (por faturamento; mostra também a qtd).
+  const maisVendidos = useMemo(() => {
+    const m = new Map<string, { nome: string; qtd: number; total: number; porPeso: boolean }>();
+    for (const c of noPeriodo) for (const it of c.itens) {
+      const o = m.get(it.nome) || { nome: it.nome, qtd: 0, total: 0, porPeso: !!it.porPeso };
+      o.qtd += it.qtd || 0; o.total += it.total || 0; m.set(it.nome, o);
+    }
+    return [...m.values()].sort((a, b) => b.total - a.total);
+  }, [comandas, d0, d1]); // eslint-disable-line react-hooks/exhaustive-deps
+  const maxProd = maisVendidos[0]?.total || 1;
+
+  // Faturamento por categoria (cruza categoriaId do item com o catálogo).
+  const porCategoria = useMemo(() => {
+    const nomeCat = (id: string | null | undefined) => id ? (categorias.find((c) => c.id === id)?.nome || "Outros") : "Sem categoria";
+    const m = new Map<string, { nome: string; total: number; qtd: number }>();
+    for (const c of noPeriodo) for (const it of c.itens) {
+      const nome = nomeCat(it.categoriaId);
+      const o = m.get(nome) || { nome, total: 0, qtd: 0 };
+      o.total += it.total || 0; o.qtd += it.qtd || 0; m.set(nome, o);
+    }
+    const arr = [...m.values()].sort((a, b) => b.total - a.total);
+    const soma = arr.reduce((s, x) => s + x.total, 0) || 1;
+    return arr.map((x) => ({ ...x, pct: x.total / soma }));
+  }, [comandas, d0, d1, categorias]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const Card = ({ label, valor, tone, hint }: { label: string; valor: string; tone?: string; hint?: string }) => (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
       <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</div>
@@ -1610,13 +1638,60 @@ function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir
         <Card label="Faturamento" valor={fmtR(faturamento)} tone="text-indigo-700 dark:text-indigo-300" hint={`${noPeriodo.length} comanda(s)`} />
         <Card label="Recebido" valor={fmtR(recebido)} tone="text-emerald-600 dark:text-emerald-300" hint={`${fechadas.length} paga(s)`} />
         <Card label="Em aberto" valor={fmtR(emAberto)} tone={emAberto > 0 ? "text-amber-600 dark:text-amber-300" : undefined} hint={`${abertas.length} aberta(s)`} />
-        <Card label="Pessoas" valor={String(pessoas)} hint={`${itensConsumidos} itens`} />
+        <Card label="Ticket médio" valor={fmtR(ticketMedio)} hint={`${fmtR(ticketPessoa)}/pessoa`} />
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12px] text-gray-500">
+        <span><b className="text-gray-800 dark:text-gray-100 tabular-nums">{pessoas}</b> pessoas</span>
+        <span className="text-gray-300 dark:text-gray-700">·</span>
+        <span><b className="text-gray-800 dark:text-gray-100 tabular-nums">{itensConsumidos}</b> itens</span>
+        <span className="text-gray-300 dark:text-gray-700">·</span>
+        <span><b className="text-gray-800 dark:text-gray-100 tabular-nums">{noPeriodo.length}</b> comandas</span>
       </div>
       {porForma.length > 0 && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Recebido por forma</div>
           <div className="flex flex-wrap gap-2">
             {porForma.map(([f, v]) => <span key={f} className="text-[12px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{f} <b className="tabular-nums">{fmtR(v)}</b></span>)}
+          </div>
+        </div>
+      )}
+      {/* Mais vendidos no período (por faturamento) */}
+      {maisVendidos.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Mais vendidos</span>
+            <span className="text-[12px] text-gray-500">{maisVendidos.length} produto(s)</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[48vh] overflow-y-auto">
+            {maisVendidos.slice(0, 20).map((p, i) => (
+              <div key={p.nome} className="px-3 py-2">
+                <div className="flex items-center gap-2 text-[13px]">
+                  <span className="w-5 text-right tabular-nums text-gray-400 shrink-0">{i + 1}</span>
+                  <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-100">{p.nome}</span>
+                  <span className="tabular-nums text-[12px] text-gray-400 shrink-0">{p.porPeso ? `${fmtNum(p.qtd, 2)} kg` : `${p.qtd}x`}</span>
+                  <span className="w-20 text-right tabular-nums font-semibold text-indigo-700 dark:text-indigo-300 shrink-0">{fmtR(p.total)}</span>
+                </div>
+                <div className="mt-1 h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"><div className="h-full bg-indigo-400 dark:bg-indigo-600 rounded-full" style={{ width: `${Math.max(3, (p.total / maxProd) * 100)}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Faturamento por categoria */}
+      {porCategoria.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Por categoria</div>
+          <div className="space-y-2">
+            {porCategoria.map((c) => (
+              <div key={c.nome}>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="flex-1 min-w-0 truncate text-gray-700 dark:text-gray-200">{c.nome}</span>
+                  <span className="tabular-nums text-gray-400">{Math.round(c.pct * 100)}%</span>
+                  <span className="w-20 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtR(c.total)}</span>
+                </div>
+                <div className="mt-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"><div className="h-full bg-emerald-400 dark:bg-emerald-600 rounded-full" style={{ width: `${Math.max(3, c.pct * 100)}%` }} /></div>
+              </div>
+            ))}
           </div>
         </div>
       )}
