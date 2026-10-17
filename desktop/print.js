@@ -29,14 +29,28 @@ async function imprimir(job, cfg) {
     if (job.rodape) p.println(job.rodape);
   } else if (job.tipo === "cancelamento") {
     const cozinha = job.rotulo === "COZINHA";
-    p.alignCenter(); p.bold(true);
-    p.setTextSize(2, 2); p.println("CANCELADO"); p.setTextSize(0, 0);
-    p.println("!!! CANCELAMENTO !!!");
-    if (cozinha) p.println("NAO PREPARAR / RETIRAR");
+    const larg = cfg.larguraColunas || 48;
+    const bar = " ".repeat(larg);
+    p.alignCenter();
+    // Faixa GIGANTE: branco no preto (modo invertido)
+    p.invert(true); p.bold(true);
+    p.setTextSize(0, 0); p.println(bar);
+    p.setTextSize(2, 2); p.println("CANCELAMENTO");
+    p.setTextSize(0, 0); p.println(bar);
+    p.invert(false);
+    p.println("");
+    if (cozinha) {
+      p.invert(true); p.setTextSize(1, 1);
+      p.println(" NAO PREPARAR / NAO ENTREGAR ");
+      p.setTextSize(0, 0); p.invert(false);
+      p.println("");
+    }
     p.setTextSize(1, 1); p.println("#" + (job.comandaNumero || "") + (job.clienteNome ? " - " + job.clienteNome : "")); p.setTextSize(0, 0);
-    p.bold(false); p.drawLine(); p.alignLeft(); p.setTextSize(1, 1); p.bold(true);
-    (job.linhas || []).forEach((l) => p.println("X " + (l.qtd ? l.qtd + "  " : "") + l.nome + (l.valor ? "  " + l.valor : "")));
-    p.setTextSize(0, 0); p.bold(false); p.drawLine(); p.alignCenter();
+    p.bold(false); p.drawLine();
+    p.bold(true); p.println((job.linhas || []).length > 1 ? "ITENS CANCELADOS" : "ITEM CANCELADO"); p.bold(false);
+    p.alignLeft(); p.setTextSize(1, 1); p.bold(true);
+    (job.linhas || []).forEach((l) => p.println("X " + (l.qtd ? l.qtd + "x " : "") + l.nome + (l.valor ? "  " + l.valor : "")));
+    p.setTextSize(0, 0); p.bold(false); p.alignCenter(); p.drawLine();
     if (job.rodape) p.println(job.rodape);
     p.alignLeft();
   } else {

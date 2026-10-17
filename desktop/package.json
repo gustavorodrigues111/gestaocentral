@@ -1,10 +1,10 @@
 {
   "name": "planejamento-pdv-desktop",
   "productName": "Planejamento PDV",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "App de caixa (PDV) do planejamento.app — abre o Comandas e imprime direto na Epson por IP (ESC/POS).",
   "main": "main.js",
-  "author": "AppTip",
+  "author": "planejamento.app",
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",

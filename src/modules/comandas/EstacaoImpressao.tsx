@@ -13,8 +13,8 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // Mesmos arquivos do feed de auto-update (pdv-updates/, token compartilhado) —
 // 1 upload serve download + update.
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.2-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
-  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.2.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.3-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.3.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
@@ -241,26 +241,31 @@ function TicketConteudo({ job, nomeRest, fonteProd = 22 }: { job: ComandaPrintJo
       </div>
     );
   }
-  // CANCELAMENTO (cozinha ou nota): GIGANTE, impossível passar batido.
+  // CANCELAMENTO (cozinha ou nota): GIGANTE, fundo preto / letra branca, impossível passar batido.
   if (job.tipo === "cancelamento") {
     const f = Math.max(12, Math.min(40, fonteProd));
     const cozinha = job.rotulo === "COZINHA";
+    // forcePrintBg garante que o fundo preto saia na impressão (navegadores não imprimem fundo por padrão)
+    const forcePrintBg = { WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" } as React.CSSProperties;
     return (
       <div style={{ minHeight: "90mm", color: "#000" }}>
-        <div style={{ height: "10px" }} />
-        <div style={{ textAlign: "center", border: "6px solid #000", padding: "10px 4px", lineHeight: 1 }}>
-          <div style={{ fontWeight: 900, fontSize: `${Math.round(f * 1.9)}px`, letterSpacing: "2px" }}>CANCELADO</div>
+        <div style={{ height: "8px" }} />
+        {/* Faixa preta GIGANTE */}
+        <div style={{ ...forcePrintBg, background: "#000", color: "#fff", textAlign: "center", padding: "14px 4px", lineHeight: 1 }}>
+          <div style={{ fontWeight: 900, fontSize: `${Math.round(f * 1.0)}px`, letterSpacing: "6px" }}>✗✗✗✗✗✗✗✗</div>
+          <div style={{ fontWeight: 900, fontSize: `${Math.round(f * 1.7)}px`, letterSpacing: "2px", margin: "8px 0" }}>CANCELAMENTO</div>
+          <div style={{ fontWeight: 900, fontSize: `${Math.round(f * 1.0)}px`, letterSpacing: "6px" }}>✗✗✗✗✗✗✗✗</div>
         </div>
-        <div style={{ textAlign: "center", fontWeight: 900, fontSize: `${Math.round(f * 0.9)}px`, letterSpacing: "4px", margin: "8px 0" }}>!!! CANCELAMENTO !!!</div>
-        {cozinha && <div style={{ textAlign: "center", fontWeight: 900, fontSize: `${Math.round(f * 0.8)}px`, textDecoration: "underline" }}>NAO PREPARAR / RETIRAR</div>}
-        <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 1.15)}px`, lineHeight: 1.05, marginTop: "6px" }}>#{job.comandaNumero}{job.clienteNome ? ` · ${job.clienteNome}` : ""}</div>
-        <div style={{ borderTop: "4px solid #000", margin: "10px 0" }} />
+        {cozinha && <div style={{ ...forcePrintBg, background: "#000", color: "#fff", textAlign: "center", fontWeight: 900, fontSize: `${Math.round(f * 0.95)}px`, padding: "8px 4px", marginTop: "3px" }}>NAO PREPARAR<br />NAO ENTREGAR</div>}
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 1.15)}px`, lineHeight: 1.05, marginTop: "10px" }}>#{job.comandaNumero}{job.clienteNome ? ` · ${job.clienteNome}` : ""}</div>
+        <div style={{ textAlign: "center", fontWeight: 900, fontSize: `${Math.round(f * 0.85)}px`, letterSpacing: "1px", marginTop: "10px" }}>{job.linhas.length > 1 ? "ITENS CANCELADOS" : "ITEM CANCELADO"}</div>
+        <div style={{ borderTop: "4px solid #000", margin: "6px 0" }} />
         {job.linhas.map((ln, i) => (
-          <div key={i} style={{ fontSize: `${Math.round(f * 1.1)}px`, fontWeight: 900, lineHeight: 1.35, margin: "4px 0" }}>
-            ✗ {ln.qtd ? `${ln.qtd}  ` : ""}{ln.nome}{ln.valor ? `  ${ln.valor}` : ""}
+          <div key={i} style={{ fontSize: `${Math.round(f * 1.25)}px`, fontWeight: 900, lineHeight: 1.3, margin: "6px 0", display: "flex", gap: "8px" }}>
+            <span>✗</span><span>{ln.qtd ? `${ln.qtd}x ` : ""}{ln.nome}{ln.valor ? ` — ${ln.valor}` : ""}</span>
           </div>
         ))}
-        <div style={{ borderTop: "4px solid #000", margin: "10px 0" }} />
+        <div style={{ borderTop: "4px solid #000", margin: "6px 0" }} />
         {job.rodape && <div style={{ whiteSpace: "pre-line", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>{job.rodape}</div>}
         <div style={{ height: "40px" }} />
       </div>
