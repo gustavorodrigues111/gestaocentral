@@ -741,13 +741,17 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     let qrDataUrl: string | null = null;
     if (n.qrcodeUrl) { try { qrDataUrl = await QRCode.toDataURL(n.qrcodeUrl, { margin: 1, width: 240 }); } catch { qrDataUrl = null; } }
     const job: ComandaPrintJob = {
-      id: uid(), restaurantId: rid, tipo: "danfce", comandaId: c.id,
+      id: uid(), restaurantId: rid, tipo: "danfce", rotulo: "DANFE NFC-e", comandaId: c.id,
       comandaNumero: c.numero, clienteNome: c.clienteNome, estacaoId: null, logoUrl,
-      titulo: nomeRest || "NFC-e",
-      linhas: agruparItens(c.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
+      titulo: fiscalCfg?.emitRazao || nomeRest || "NFC-e",
+      linhas: agruparItens(c.itens).map((g) => ({ nome: g.nome, qtd: g.porPeso ? `${fmtNum(g.qtd, 3)}kg` : `${g.qtd}x`, valor: fmtR(g.total) })),
       total: fmtR(c.total),
-      rodape: `${(c.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("  ")}${c.cpf ? `\nCPF: ${c.cpf}` : ""}`,
-      nfce: { chave: n.chave, numero: n.numero, serie: n.serie, protocolo: n.protocolo, qrcodeUrl: n.qrcodeUrl, qrDataUrl, urlConsulta: n.urlConsulta },
+      rodape: (c.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
+      nfce: {
+        chave: n.chave, numero: n.numero, serie: n.serie, protocolo: n.protocolo, qrcodeUrl: n.qrcodeUrl, qrDataUrl, urlConsulta: n.urlConsulta,
+        dataEmissao: n.emitidaEm || nowIso(), cpfConsumidor: c.cpf || null,
+        emitRazao: fiscalCfg?.emitRazao || nomeRest || null, emitCnpj: fiscalCfg?.emitCnpj || null, emitIe: fiscalCfg?.emitIe || null, emitEndereco: fiscalCfg?.emitEndereco || null,
+      },
       status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
     };
     await criarPrintJob(job);
@@ -755,12 +759,12 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
   async function reimprimirConta() {
     await superseedContaJobs(rid, comanda.id);   // descarta contas pendentes antigas desta comanda
     const job: ComandaPrintJob = {
-      id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
+      id: uid(), restaurantId: rid, tipo: "conta", rotulo: "CONTA", comandaId: comanda.id,
       comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
-      titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
+      titulo: nomeRest || "CONTA",
       linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
       total: fmtR(comanda.total),
-      rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${(comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("  ")}\nDocumento sem valor fiscal · ${new Date().toLocaleString("pt-BR")}`,
+      rodape: (comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
       status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
     };
     await criarPrintJob(job);
@@ -1078,12 +1082,12 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   async function imprimirPreConta() {
     await superseedContaJobs(rid, comanda.id);
     await criarPrintJob({
-      id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
+      id: uid(), restaurantId: rid, tipo: "conta", rotulo: "PRÉ-CONTA", comandaId: comanda.id,
       comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
-      titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
+      titulo: nomeRest || "CONTA",
       linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
       total: fmtR(comanda.total),
-      rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\nPRÉ-CONTA · Documento sem valor fiscal\n${new Date().toLocaleString("pt-BR")} · ${meNome}`,
+      rodape: (comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
       status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
     });
     setPreImpresso(true); setTimeout(() => setPreImpresso(false), 2500);
@@ -1124,12 +1128,12 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
       if (imprimirConta) {
         await superseedContaJobs(rid, comanda.id);
         const job: ComandaPrintJob = {
-          id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
+          id: uid(), restaurantId: rid, tipo: "conta", rotulo: "CONTA", comandaId: comanda.id,
           comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
-          titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
+          titulo: nomeRest || "CONTA",
           linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
           total: fmtR(comanda.total),
-          rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(comanda.total - valorPago)}`}\n${new Date().toLocaleString("pt-BR")} · ${meNome}`,
+          rodape: `${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(comanda.total - valorPago)}`}`,
           status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
         };
         await criarPrintJob(job);
@@ -1388,6 +1392,8 @@ function FiscalPadraoEditor({ rid, cfg }: { rid: string; cfg: ComandaFiscalConfi
   const [cstIcms, setCstIcms] = useState(""); const [aliqIcms, setAliqIcms] = useState("");
   const [cstPis, setCstPis] = useState("01"); const [aliqPis, setAliqPis] = useState("0,65");
   const [cstCofins, setCstCofins] = useState("01"); const [aliqCofins, setAliqCofins] = useState("3,00");
+  const [emitRazao, setEmitRazao] = useState(""); const [emitCnpj, setEmitCnpj] = useState("");
+  const [emitIe, setEmitIe] = useState(""); const [emitEndereco, setEmitEndereco] = useState("");
   const [salvando, setSalvando] = useState(false); const [okMsg, setOkMsg] = useState(false);
   const numBR = (s: string): number | null => { const n = parseFloat((s || "").replace(",", ".")); return Number.isFinite(n) ? n : null; };
   // Carrega os valores existentes quando o cfg chega / muda.
@@ -1397,6 +1403,7 @@ function FiscalPadraoEditor({ rid, cfg }: { rid: string; cfg: ComandaFiscalConfi
     setCstIcms(cfg.cstIcms || ""); setAliqIcms(cfg.aliqIcms != null ? String(cfg.aliqIcms).replace(".", ",") : "");
     setCstPis(cfg.cstPis || "01"); setAliqPis(cfg.aliqPis != null ? String(cfg.aliqPis).replace(".", ",") : "0,65");
     setCstCofins(cfg.cstCofins || "01"); setAliqCofins(cfg.aliqCofins != null ? String(cfg.aliqCofins).replace(".", ",") : "3,00");
+    setEmitRazao(cfg.emitRazao || ""); setEmitCnpj(cfg.emitCnpj || ""); setEmitIe(cfg.emitIe || ""); setEmitEndereco(cfg.emitEndereco || "");
   }, [cfg]);
   async function salvar() {
     setSalvando(true);
@@ -1407,6 +1414,7 @@ function FiscalPadraoEditor({ rid, cfg }: { rid: string; cfg: ComandaFiscalConfi
         cstIcms: cstIcms.trim() || null, aliqIcms: numBR(aliqIcms),
         cstPis: cstPis.trim() || "01", aliqPis: numBR(aliqPis),
         cstCofins: cstCofins.trim() || "01", aliqCofins: numBR(aliqCofins),
+        emitRazao: emitRazao.trim() || null, emitCnpj: emitCnpj.trim() || null, emitIe: emitIe.trim() || null, emitEndereco: emitEndereco.trim() || null,
       });
       setOkMsg(true); setTimeout(() => setOkMsg(false), 2500);
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
@@ -1434,6 +1442,17 @@ function FiscalPadraoEditor({ rid, cfg }: { rid: string; cfg: ComandaFiscalConfi
             <div><label className="text-[10px] text-gray-400">Alíq. COFINS %</label><input value={aliqCofins} onChange={(e) => setAliqCofins(e.target.value)} placeholder="3,00" inputMode="decimal" className={inp} /></div>
           </div>
           <p className="text-[10px] text-gray-400">CST ICMS: <b>00</b> = tributado (precisa da alíquota); <b>60</b> = ICMS já retido por ST (sem alíquota). PIS/COFINS no Lucro Presumido = cumulativo (0,65% e 3%).</p>
+          <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+            <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1 mt-1">Dados do emitente (cabeçalho do cupom fiscal)</div>
+            <div className="space-y-2">
+              <div><label className="text-[10px] text-gray-400">Razão social</label><input value={emitRazao} onChange={(e) => setEmitRazao(e.target.value)} placeholder="SOROROCA RESTAURANTE LTDA" className={inp} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-[10px] text-gray-400">CNPJ</label><input value={emitCnpj} onChange={(e) => setEmitCnpj(e.target.value)} placeholder="52.349.568/0001-16" inputMode="numeric" className={inp} /></div>
+                <div><label className="text-[10px] text-gray-400">Inscrição Estadual</label><input value={emitIe} onChange={(e) => setEmitIe(e.target.value)} placeholder="IE" inputMode="numeric" className={inp} /></div>
+              </div>
+              <div><label className="text-[10px] text-gray-400">Endereço</label><input value={emitEndereco} onChange={(e) => setEmitEndereco(e.target.value)} placeholder="Rua, nº, bairro, cidade/UF" className={inp} /></div>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <button onClick={() => void salvar()} disabled={salvando} className="flex-1 h-10 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{salvando ? "Salvando…" : "Salvar Fiscal padrão"}</button>
             {okMsg && <span className="text-[12px] text-emerald-600 font-semibold">salvo ✓</span>}

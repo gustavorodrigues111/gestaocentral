@@ -6634,6 +6634,11 @@ export type ComandaFiscalConfig = {
   cbsAliq?: number | null;             // alíquota CBS (%) — teste 2026 = 0,9
   ibsUfAliq?: number | null;           // alíquota IBS estadual (%) — teste 2026 = 0,1
   ibsMunAliq?: number | null;          // alíquota IBS municipal (%) — teste 2026 = 0
+  // Dados do emitente — pra imprimir no cabeçalho do DANFCe (cupom fiscal).
+  emitRazao?: string | null;           // razão social
+  emitCnpj?: string | null;            // CNPJ (com ou sem máscara)
+  emitIe?: string | null;              // inscrição estadual
+  emitEndereco?: string | null;        // endereço completo (rua, nº, bairro, cidade/UF)
   atualizadoEm?: string | null;
 };
 
@@ -6738,6 +6743,7 @@ export type ComandaPrintJob = {
   id: string;
   restaurantId: string;
   tipo: "producao" | "conta" | "danfce";   // danfce = cupom fiscal NFC-e (com QR)
+  rotulo?: string | null;              // identificação do documento (ex.: "PRÉ-CONTA", "CONTA", "DANFE NFC-e")
   comandaId: string;
   comandaNumero: string;
   clienteNome: string;
@@ -6757,6 +6763,12 @@ export type ComandaPrintJob = {
     qrDataUrl?: string | null;         // QR já renderizado (data:image/png) p/ imprimir direto
     urlConsulta?: string | null;       // URL p/ consulta manual (chave)
     ambiente?: "producao" | "homologacao" | null;
+    dataEmissao?: string | null;       // ISO da emissão
+    cpfConsumidor?: string | null;     // CPF do consumidor (se houver)
+    emitRazao?: string | null;         // razão social do emitente
+    emitCnpj?: string | null;
+    emitIe?: string | null;
+    emitEndereco?: string | null;
   } | null;
   status: "pendente" | "impresso" | "erro";
   criadoEm: string;
