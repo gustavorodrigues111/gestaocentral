@@ -323,10 +323,14 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   async function salvar() {
-    if (!nome.trim()) { setErr("Nome do cliente é obrigatório."); return; }
-    if (modo === "conta" && !numero.trim()) { setErr("Nº da pulseira é obrigatório na conta aberta."); return; }
+    // Venda rápida (to-go): não exige identificação. Conta aberta: precisa de nome + pulseira.
+    if (modo === "conta") {
+      if (!nome.trim()) { setErr("Nome do cliente é obrigatório na conta aberta."); return; }
+      if (!numero.trim()) { setErr("Nº da pulseira é obrigatório na conta aberta."); return; }
+    }
+    const clienteNome = nome.trim() || (modo === "togo" ? "Venda rápida" : nome.trim());
     setErr(""); setSaving(true);
-    try { await onAbrir({ numero: numero.trim() || "—", clienteNome: nome, cpf, telefone: tel, pessoas: Math.max(1, parseInt(pessoas, 10) || 1), modo }); }
+    try { await onAbrir({ numero: numero.trim() || "—", clienteNome, cpf, telefone: tel, pessoas: Math.max(1, parseInt(pessoas, 10) || 1), modo }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); setSaving(false); }
   }
   return (
@@ -343,8 +347,8 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
               <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12" className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nome *</label>
-              <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder="nome do cliente" className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nome {modo === "togo" ? "(opcional)" : "*"}</label>
+              <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder={modo === "togo" ? "opcional" : "nome do cliente"} className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -504,10 +508,17 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     if (!fiscalCfg?.cfop || !fiscalCfg?.cstIcms) { alert("Configure o Fiscal padrão (NFC-e) primeiro: Config → Produtos → Fiscal padrão (CFOP, CST, alíquotas)."); return; }
     const { items, formas, faltando } = montarNfce(comanda, produtos, fiscalCfg);
     if (faltando.length) { alert("Faltam dados fiscais (NCM/CFOP/CST) nestes produtos: " + [...new Set(faltando)].join(", ") + ".\nPreencha o NCM em Produtos → Fiscal (NFC-e)."); return; }
+    // CPF na nota: usa o da comanda; se não tiver, pergunta (pode deixar vazio = consumidor não identificado).
+    let cpfNota = (comanda.cpf || "").replace(/\D/g, "");
+    if (!cpfNota) {
+      const r = prompt("CPF na nota? (só números — deixe vazio p/ consumidor não identificado)", "");
+      if (r === null) return;   // cancelou
+      cpfNota = r.replace(/\D/g, "");
+    }
     setNfceLoading(true);
     try {
       const ref = `c${comanda.id}_${Date.now().toString(36)}`;
-      const l = lerNfce(await nfceEmitir(ref, items, formas, comanda.cpf || undefined, comanda.clienteNome));
+      const l = lerNfce(await nfceEmitir(ref, items, formas, cpfNota || undefined, comanda.clienteNome));
       await salvarComanda({ ...comanda, nfce: { ref, status: l.status, chave: l.chave, numero: l.numero, serie: l.serie, qrcodeUrl: l.qrcodeUrl, danfeUrl: l.danfeUrl, emitidaEm: new Date().toISOString(), erro: l.autorizado ? undefined : l.mensagem } });
       alert(l.autorizado ? `✅ NFC-e autorizada! Nº ${l.numero} · série ${l.serie}` : `❌ Não autorizada: ${l.mensagem || l.status}`);
     } catch (e) { alert("Erro ao emitir NFC-e: " + (e instanceof Error ? e.message : "?")); }
