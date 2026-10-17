@@ -62,7 +62,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
-  const [verFechadas, setVerFechadas] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   // Estação EMBUTIDA: este dispositivo também imprime (pro PC único do balcão
   // com a Epson — dispensa a aba separada). Lembrado por dispositivo.
@@ -82,7 +81,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const podeVer = can("comandas", "ver");
   const podeOperar = can("comandas", "operar");
   const podeProdutos = can("comandas", "produtos");
-  const podeFechadas = can("comandas", "fechadas");
   const podeRelatorios = can("comandas", "relatorios");
   const podeEstacoes = can("comandas", "estacoes");
 
@@ -100,8 +98,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const abertas = useMemo(() => comandas.filter((c) => c.status === "aberta"), [comandas]);
   const [, setTick] = useState(0);   // re-render a cada 1min p/ atualizar o "tempo aberta" dos cards
   useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 60000); return () => clearInterval(id); }, []);
-  const hojeYmd = new Date().toLocaleDateString("en-CA");
-  const fechadasHoje = useMemo(() => comandas.filter((c) => c.status === "fechada" && (c.fechadoEm || c.criadoEm || "").slice(0, 10) === hojeYmd), [comandas, hojeYmd]);
   const comandaDet = useMemo(() => comandas.find((c) => c.id === detalhe) || null, [comandas, detalhe]);
 
   if (estacao) return <EstacaoImpressao rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={estacaoParam === "1" ? null : estacaoParam} estacoes={estacoes} logoUrl={logoUrl} />;
@@ -185,22 +181,13 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
             />
           ) : (
           <>
-          {podeFechadas && (
-            <div className="flex justify-center mb-3">
-              <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 text-sm">
-                <button onClick={() => setVerFechadas(false)} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 ${!verFechadas ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Receipt size={14} /> Abertas ({abertas.length})</button>
-                <button onClick={() => setVerFechadas(true)} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 ${verFechadas ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Clock size={14} /> Fechadas hoje ({fechadasHoje.length})</button>
-              </div>
-            </div>
-          )}
-
           {(() => {
-            const lista = (podeFechadas && verFechadas) ? fechadasHoje : abertas;
+            const lista = abertas;   // tela principal = só abertas; as vendas (fechadas) ficam em Relatórios
             if (lista.length === 0) return (
               <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-gray-400">
                 <Receipt size={38} className="mx-auto mb-2 text-gray-300" />
-                <div className="font-semibold text-gray-600 dark:text-gray-300">{verFechadas ? "Nenhuma comanda fechada hoje" : "Nenhuma comanda aberta"}</div>
-                {!verFechadas && podeOperar && <div className="text-sm mt-1">Abra uma comanda pra começar a lançar.</div>}
+                <div className="font-semibold text-gray-600 dark:text-gray-300">Nenhuma comanda aberta</div>
+                {podeOperar && <div className="text-sm mt-1">Abra uma comanda pra começar a lançar.</div>}
               </div>
             );
             return (
