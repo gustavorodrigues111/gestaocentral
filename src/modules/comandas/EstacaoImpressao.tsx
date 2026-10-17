@@ -61,14 +61,21 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
       return;
     }
     setAtual(prox);
+    // App de caixa (Electron): imprime DIRETO na Epson por IP (ESC/POS), sem
+    // diálogo. Fora do app: window.print() (Chrome --kiosk-printing).
+    const bridge = (typeof window !== "undefined" ? (window as unknown as { pdvBridge?: { print: (j: unknown) => Promise<{ ok: boolean; error?: string }> } }).pdvBridge : undefined);
     const t = setTimeout(async () => {
       let ok = true;
-      try { window.print(); } catch { ok = false; }
+      if (bridge) {
+        try { const r = await bridge.print(prox); ok = !!r?.ok; if (!ok) console.error("[pdvBridge]", r?.error); } catch { ok = false; }
+      } else {
+        try { window.print(); } catch { ok = false; }
+      }
       try { await marcarPrintJob(prox.id, ok ? "impresso" : "erro"); } catch { /* o listener retenta */ }
       setLog((l) => [{ id: prox.id, titulo: prox.titulo, em: new Date().toLocaleTimeString("pt-BR"), ok }, ...l].slice(0, 30));
       setAtual(null);
       ocupadoRef.current = false;
-    }, 400);
+    }, bridge ? 50 : 400);
     return () => clearTimeout(t);
   }, [jobs, auto]);
 

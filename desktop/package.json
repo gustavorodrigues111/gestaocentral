@@ -1,0 +1,30 @@
+{
+  "name": "apptip-pdv-desktop",
+  "productName": "AppTip PDV",
+  "version": "1.0.0",
+  "description": "App de caixa (PDV) do AppTip — abre o Comandas e imprime direto na Epson por IP (ESC/POS).",
+  "main": "main.js",
+  "author": "AppTip",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "node-thermal-printer": "^4.4.4"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "app.planejamento.pdv",
+    "productName": "AppTip PDV",
+    "files": ["main.js", "preload.js", "print.js", "config.json"],
+    "mac": { "target": ["dmg"], "category": "public.app-category.business" },
+    "win": { "target": ["nsis"] },
+    "publish": null
+  }
+}
