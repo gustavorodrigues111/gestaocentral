@@ -6746,7 +6746,7 @@ export type ComandaEstacao = {
 export type ComandaPrintJob = {
   id: string;
   restaurantId: string;
-  tipo: "producao" | "conta" | "danfce";   // danfce = cupom fiscal NFC-e (com QR)
+  tipo: "producao" | "conta" | "danfce" | "cancelamento";   // danfce = cupom fiscal NFC-e (com QR); cancelamento = CANCELAMENTO grande
   rotulo?: string | null;              // identificação do documento (ex.: "PRÉ-CONTA", "CONTA", "DANFE NFC-e")
   comandaId: string;
   comandaNumero: string;

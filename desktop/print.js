@@ -27,6 +27,15 @@ async function imprimir(job, cfg) {
     (job.linhas || []).forEach((l) => p.println((l.qtd ? l.qtd + "  " : "") + l.nome));
     p.setTextSize(0, 0); p.bold(false); p.drawLine();
     if (job.rodape) p.println(job.rodape);
+  } else if (job.tipo === "cancelamento") {
+    p.alignCenter(); p.bold(true); p.setTextSize(1, 1); p.println("*** CANCELAMENTO ***"); p.setTextSize(0, 0);
+    if (job.rotulo) p.println(job.rotulo);
+    p.setTextSize(1, 1); p.println("#" + (job.comandaNumero || "")); p.setTextSize(0, 0);
+    if (job.clienteNome) p.println(job.clienteNome);
+    p.bold(false); p.drawLine(); p.alignLeft(); p.setTextSize(1, 1); p.bold(true);
+    (job.linhas || []).forEach((l) => p.println((l.qtd ? l.qtd + "  " : "") + l.nome + (l.valor ? "  " + l.valor : "")));
+    p.setTextSize(0, 0); p.bold(false); p.drawLine();
+    if (job.rodape) p.println(job.rodape);
   } else {
     // conta / pré-conta / danfce
     const n = job.nfce;

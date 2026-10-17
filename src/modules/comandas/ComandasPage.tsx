@@ -732,6 +732,8 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
   const [nfceLoading, setNfceLoading] = useState(false);
   const [cpfModal, setCpfModal] = useState(false);      // pedir CPF antes de emitir
   const [cancelModal, setCancelModal] = useState(false); // pedir motivo do cancelamento
+  const [perguntaNota, setPerguntaNota] = useState(false); // "Emitir nota agora?" após fechar a venda
+  const voltarAposRef = useRef(false);                   // após emitir/cancelar CPF → volta pra lista
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Só categorias que têm produtos ativos.
@@ -792,17 +794,27 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
   }
   async function mudarQtd(itemId: string, delta: number) {
     // Mínimo 1 — diminuir NÃO exclui (pra remover, use a lixeira, que confirma).
+    const it = comanda.itens.find((i) => i.id === itemId);
+    const reduziu = it && !it.porPeso && delta < 0 && it.qtd > 1;
     const itens = comanda.itens.map((i) => {
       if (i.id !== itemId || i.porPeso) return i;
       const q = Math.max(1, i.qtd + delta);
       return { ...i, qtd: q, total: +(q * i.precoUnit).toFixed(2) };
     });
     await patch(recompor(itens));
+    // Item de produção JÁ enviado à cozinha e reduzido → avisa a cozinha.
+    if (reduziu && it!.producao && it!.impressoEm) {
+      await imprimirCancelamentoCozinha([{ nome: it!.nome, qtd: Math.min(-delta, it!.qtd), categoriaId: it!.categoriaId, porPeso: it!.porPeso }]);
+    }
   }
   async function removerItem(itemId: string) {
     const it = comanda.itens.find((i) => i.id === itemId);
     if (it && !confirm(`Remover "${it.nome}" da comanda?`)) return;
     await patch(recompor(comanda.itens.filter((i) => i.id !== itemId)));
+    // Item de produção JÁ enviado à cozinha e removido → imprime cancelamento.
+    if (it && it.producao && it.impressoEm) {
+      await imprimirCancelamentoCozinha([{ nome: it.nome, qtd: it.qtd, categoriaId: it.categoriaId, porPeso: it.porPeso }]);
+    }
   }
 
   // Ticket de PRODUÇÃO: só os itens de produção ainda NÃO impressos.
@@ -866,6 +878,18 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     if (!confirm("Reabrir esta comanda? Ela volta pra lista de abertas.")) return;
     await salvarComanda({ ...comanda, status: "aberta", fechadoEm: null, fechadoPorNome: null });
   }
+  // Dá pra emitir NFC-e agora? (fiscal configurado, sem nota ainda, NCM ok).
+  const podeEmitirAgora = useMemo(() => {
+    if (!fiscalCfg?.cfop || !fiscalCfg?.cstIcms) return false;
+    if (comanda.nfce?.chave && !comanda.nfce?.canceladoEm) return false;
+    if (comanda.itens.length === 0) return false;
+    return montarNfce(comanda, produtos, fiscalCfg).faltando.length === 0;
+  }, [comanda, produtos, fiscalCfg]);
+  // Após fechar a venda: pergunta se emite a nota; senão volta pra lista.
+  function aposFecharVenda() {
+    setFechar(false);
+    if (podeEmitirAgora) setPerguntaNota(true); else onClose();
+  }
   // Abre o fluxo de emissão: valida e, se faltar CPF, abre o modal; senão emite.
   function emitirNfce() {
     if (comanda.nfce?.chave && !comanda.nfce?.canceladoEm && !confirm("Esta comanda já tem NFC-e autorizada. Emitir outra?")) return;
@@ -890,7 +914,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
         alert(`❌ Não autorizada: ${l.mensagem || l.status}`);
       }
     } catch (e) { alert("Erro ao emitir NFC-e: " + (e instanceof Error ? e.message : "?")); }
-    finally { setNfceLoading(false); }
+    finally { setNfceLoading(false); if (voltarAposRef.current) { voltarAposRef.current = false; onClose(); } }
   }
   function cancelarNfce() {
     if (!comanda.nfce?.ref || !comanda.nfce?.chave) { alert("Esta venda não tem NFC-e autorizada pra cancelar."); return; }
@@ -903,7 +927,9 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     try {
       const l = lerNfce(await nfceCancelar(ref, motivo.trim()));
       if (l.cancelado || l.status === "cancelado") {
-        await salvarComanda({ ...comanda, nfce: { ...comanda.nfce!, status: "cancelado", canceladoEm: new Date().toISOString() } });
+        const cancelada = { ...comanda, nfce: { ...comanda.nfce!, status: "cancelado", canceladoEm: new Date().toISOString() } };
+        await salvarComanda(cancelada);
+        await imprimirCancelamentoNfce(cancelada);   // comprovante de cancelamento
         alert("✅ NFC-e cancelada com sucesso.");
       } else {
         alert(`❌ Não foi possível cancelar: ${l.mensagem || l.status}\n(A janela de cancelamento da NFC-e é curta — ~30 min.)`);
@@ -932,6 +958,39 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
     };
     await criarPrintJob(job);
+  }
+  // Imprime um comprovante de CANCELAMENTO da NFC-e (grande).
+  async function imprimirCancelamentoNfce(c: Comanda) {
+    const n = c.nfce; if (!n) return;
+    await criarPrintJob({
+      id: uid(), restaurantId: rid, tipo: "cancelamento", rotulo: "NOTA FISCAL (NFC-e)", comandaId: c.id,
+      comandaNumero: c.numero, clienteNome: c.clienteNome, estacaoId: null, logoUrl,
+      titulo: nomeRest || "",
+      linhas: [{ nome: `NFC-e no ${n.numero || "-"} serie ${n.serie || "-"}`, qtd: null, valor: null }],
+      total: null,
+      rodape: `${n.chave ? "Chave: " + n.chave + "\n" : ""}Cancelada em ${new Date().toLocaleString("pt-BR")} · ${meNome}`,
+      status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
+    });
+  }
+  // Imprime CANCELAMENTO na cozinha (itens de produção que JÁ tinham sido enviados).
+  async function imprimirCancelamentoCozinha(cancelados: { nome: string; qtd: number; categoriaId?: string | null; porPeso?: boolean }[]) {
+    if (!cancelados.length) return;
+    const porEstacao = new Map<string, typeof cancelados>();
+    for (const it of cancelados) {
+      const eid = estacaoDaCategoria(it.categoriaId) || "_null_";
+      (porEstacao.get(eid) || porEstacao.set(eid, []).get(eid)!).push(it);
+    }
+    for (const [eid, itens] of porEstacao) {
+      const estacaoId = eid === "_null_" ? null : eid;
+      await criarPrintJob({
+        id: uid(), restaurantId: rid, tipo: "cancelamento", rotulo: "COZINHA", comandaId: comanda.id,
+        comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId, logoUrl: null,
+        titulo: "",
+        linhas: itens.map((g) => ({ nome: g.nome, qtd: g.porPeso ? `${fmtNum(g.qtd, 3)} kg` : `${g.qtd}x`, valor: null })),
+        total: null, rodape: `${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${meNome}`,
+        status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
+      });
+    }
   }
   async function reimprimirConta() {
     await superseedContaJobs(rid, comanda.id);   // descarta contas pendentes antigas desta comanda
@@ -1072,7 +1131,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       </div>
 
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
-      {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} onClose={() => setFechar(false)} onFechado={() => { setFechar(false); onClose(); }} />}
+      {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} onClose={() => setFechar(false)} onFechado={aposFecharVenda} />}
       {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} onImprimir={() => void reimprimirConta()} />}
       {cpfModal && (
         <NfceInputModal
@@ -1081,8 +1140,21 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
           placeholder="000.000.000-00" inputMode="numeric" mascara="cpf" podeVazio
           confirmarLabel="Emitir NFC-e"
           onConfirmar={(v) => { setCpfModal(false); void doEmitir(v.replace(/\D/g, "")); }}
-          onClose={() => setCpfModal(false)}
+          onClose={() => { setCpfModal(false); if (voltarAposRef.current) { voltarAposRef.current = false; onClose(); } }}
         />
+      )}
+      {perguntaNota && (
+        <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={() => { setPerguntaNota(false); onClose(); }}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-5 shadow-xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-900/40 grid place-items-center mb-2"><Check size={30} className="text-emerald-600 dark:text-emerald-300" /></div>
+            <div className="font-bold text-gray-900 dark:text-gray-100 text-lg">Venda fechada!</div>
+            <div className="text-[13px] text-gray-500 dark:text-gray-400 mt-1">Quer emitir a nota fiscal (NFC-e) agora?</div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => { setPerguntaNota(false); onClose(); }} className="flex-1 h-12 rounded-xl border border-gray-300 dark:border-gray-700 font-semibold">Agora não</button>
+              <button onClick={() => { setPerguntaNota(false); voltarAposRef.current = true; emitirNfce(); }} className="flex-1 h-12 rounded-xl bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-1.5"><Receipt size={18} /> Emitir nota</button>
+            </div>
+          </div>
+        </div>
       )}
       {cancelModal && (
         <NfceInputModal
@@ -1559,6 +1631,7 @@ function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir
               const es = c.fechadoEm || c.criadoEm; const hora = es ? new Date(es).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
               const formas = [...new Set((c.pagamentos || []).map((p) => p.forma))].join(", ");
               const temNfce = !!c.nfce?.chave;
+              const nfceCancelada = !!c.nfce?.canceladoEm;
               return (
                 <button key={c.id} onClick={() => onAbrir?.(c.id)} className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40">
                   <div className="min-w-0 flex-1">
@@ -1568,7 +1641,9 @@ function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir
                   {c.status === "fechada"
                     ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 shrink-0">paga</span>
                     : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300 shrink-0">aberta</span>}
-                  {temNfce && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300 shrink-0">NFC-e</span>}
+                  {temNfce && (nfceCancelada
+                    ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300 shrink-0">NFC-e cancelada</span>
+                    : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300 shrink-0">NFC-e</span>)}
                   <span className="w-20 text-right tabular-nums text-[13px] font-semibold text-gray-900 dark:text-gray-100 shrink-0">{fmtR(c.total)}</span>
                 </button>
               );

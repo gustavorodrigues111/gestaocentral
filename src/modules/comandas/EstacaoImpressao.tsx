@@ -241,6 +241,27 @@ function TicketConteudo({ job, nomeRest, fonteProd = 22 }: { job: ComandaPrintJo
       </div>
     );
   }
+  // CANCELAMENTO (cozinha ou nota): "CANCELAMENTO" bem grande, pra não passar batido.
+  if (job.tipo === "cancelamento") {
+    const f = Math.max(12, Math.min(40, fonteProd));
+    return (
+      <div style={{ minHeight: "80mm", color: "#000" }}>
+        <div style={{ textAlign: "center", border: "4px solid #000", padding: "6px 0", fontWeight: 900, fontSize: `${Math.round(f * 1.15)}px`, letterSpacing: "2px" }}>*** CANCELAMENTO ***</div>
+        {job.rotulo && <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 0.8)}px`, marginTop: "6px" }}>{job.rotulo}</div>}
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 1.1)}px`, lineHeight: 1.05, marginTop: "2px" }}>#{job.comandaNumero}</div>
+        {job.clienteNome && <div style={{ textAlign: "center", fontWeight: 700, fontSize: `${Math.round(f * 0.65)}px` }}>{job.clienteNome}</div>}
+        <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
+        {job.linhas.map((ln, i) => (
+          <div key={i} style={{ fontSize: `${f}px`, fontWeight: 800, lineHeight: 1.4, margin: "3px 0" }}>
+            {ln.qtd ? `${ln.qtd}  ` : ""}{ln.nome}{ln.valor ? `  ${ln.valor}` : ""}
+          </div>
+        ))}
+        <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
+        {job.rodape && <div style={{ whiteSpace: "pre-line", fontSize: "13px", fontWeight: 600 }}>{job.rodape}</div>}
+        <div style={{ height: "32px" }} />
+      </div>
+    );
+  }
   const sep = <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />;
   const brDataHora = (iso?: string | null) => iso ? new Date(iso).toLocaleString("pt-BR") : "";
 
