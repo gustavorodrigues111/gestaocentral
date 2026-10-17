@@ -1239,6 +1239,8 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   const [saving, setSaving] = useState(false);
   const [tefAberto, setTefAberto] = useState(false);   // cobrança no cartão via Smart TEF
   const [modoDinheiro, setModoDinheiro] = useState(false);
+  const [modoManual, setModoManual] = useState(false);   // plano B: cartão/Pix cobrado direto na maquininha
+  const [formaManual, setFormaManual] = useState("Cartão (Crédito)");
   const [autoFechar, setAutoFechar] = useState(false);  // ao TEF aprovar e quitar, fecha sozinho
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
   const porPessoa = +(comanda.total / nPessoas).toFixed(2);
@@ -1269,6 +1271,12 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
     if (v <= 0) return;
     setLinhas((l) => [...l, { forma: "Dinheiro", valor: +v.toFixed(2), em: new Date().toISOString(), porNome: meNome }]);
     setValorTxt(""); setModoDinheiro(false);
+  }
+  // Plano B: cartão/Pix cobrado DIRETO na maquininha (TEF fora) → registra manual, sem NSU.
+  function lancarManual(v: number) {
+    if (v <= 0) return;
+    setLinhas((l) => [...l, { forma: formaManual, valor: +v.toFixed(2), em: new Date().toISOString(), porNome: meNome }]);
+    setValorTxt(""); setModoManual(false);
   }
   // Ao TEF aprovar e quitar o total → fecha a venda sozinho.
   useEffect(() => {
@@ -1359,11 +1367,33 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           </div>
         )}
 
-        {/* Forma de pagamento: só Cartão (maquininha/TEF) ou Dinheiro */}
-        {restante > 0.001 && !modoDinheiro && (
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setTefAberto(true)} className="h-16 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-bold flex flex-col items-center justify-center gap-0.5"><CreditCard size={20} /><span className="text-sm">Cartão / Pix</span><span className="text-[10px] font-normal opacity-70">maquininha (TEF)</span></button>
-            <button onClick={() => { setModoDinheiro(true); setValorTxt(restante.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold flex flex-col items-center justify-center gap-0.5"><Banknote size={20} /><span className="text-sm">Dinheiro</span></button>
+        {/* Forma de pagamento: Cartão/Pix (TEF), Dinheiro, ou manual (plano B) */}
+        {restante > 0.001 && !modoDinheiro && !modoManual && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setTefAberto(true)} className="h-16 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-bold flex flex-col items-center justify-center gap-0.5"><CreditCard size={20} /><span className="text-sm">Cartão / Pix</span><span className="text-[10px] font-normal opacity-70">maquininha (TEF)</span></button>
+              <button onClick={() => { setModoDinheiro(true); setValorTxt(restante.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold flex flex-col items-center justify-center gap-0.5"><Banknote size={20} /><span className="text-sm">Dinheiro</span></button>
+            </div>
+            <button onClick={() => { setModoManual(true); setValorTxt(restante.toFixed(2).replace(".", ",")); }} className="w-full mt-2 text-[12px] text-gray-500 dark:text-gray-400 underline underline-offset-2">TEF fora do ar? Lançar cartão/Pix cobrado direto na maquininha</button>
+          </>
+        )}
+        {restante > 0.001 && modoManual && (
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+            <span className="text-[12px] font-bold text-gray-700 dark:text-gray-200 inline-flex items-center gap-1"><CreditCard size={14} /> Pagamento manual (cobrado na maquininha)</span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {["Cartão (Crédito)", "Cartão (Débito)", "Pix"].map((f) => (
+                <button key={f} onClick={() => setFormaManual(f)} className={`h-9 rounded-lg border text-[12px] font-semibold ${formaManual === f ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{f.replace("Cartão (", "").replace(")", "")}</button>
+              ))}
+            </div>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+              <input value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} inputMode="decimal" placeholder="valor" autoFocus className="w-full h-12 pl-8 pr-2 text-right text-xl rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            </div>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">Confirme que a maquininha aprovou antes de lançar.</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setModoManual(false); setValorTxt(""); }} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 font-semibold text-sm">← Voltar</button>
+              <button onClick={() => lancarManual(Math.min(valorIn, restante))} disabled={valorIn <= 0} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white font-bold disabled:opacity-40">Lançar {formaManual.replace("Cartão (", "").replace(")", "")}</button>
+            </div>
           </div>
         )}
         {restante > 0.001 && modoDinheiro && (
