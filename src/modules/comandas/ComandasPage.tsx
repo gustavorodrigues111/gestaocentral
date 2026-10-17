@@ -148,8 +148,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           <p className="text-[10px] text-gray-400">planejamento.app · {APP_VERSION_LABEL}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={toggleImprimirAqui} title="Este dispositivo imprime direto, sem o diálogo do Chrome"
-            className={`h-9 px-2.5 rounded-lg border text-sm font-semibold inline-flex items-center gap-1.5 ${imprimirAqui ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+          <button onClick={toggleImprimirAqui} title="Este dispositivo imprime direto, sem o diálogo do Chrome (só faz sentido no PC do caixa com a impressora)"
+            className={`h-9 px-2.5 rounded-lg border text-sm font-semibold hidden sm:inline-flex items-center gap-1.5 ${imprimirAqui ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
             <Printer size={15} /> Imprimir aqui <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${imprimirAqui ? "bg-emerald-600 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"}`}>{imprimirAqui ? "ON" : "OFF"}</span>
           </button>
           <div className="relative">
