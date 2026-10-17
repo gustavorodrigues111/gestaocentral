@@ -90,6 +90,16 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
 
   const alvo = atual || teste;
   const origin = typeof window !== "undefined" ? window.location.origin : "https://comandas.planejamento.app";
+  // Teste de impressão: usa a ponte (ESC/POS por IP) quando roda no app; senão window.print().
+  async function imprimirTeste(job: ComandaPrintJob) {
+    const bridge = (typeof window !== "undefined" ? (window as unknown as { pdvBridge?: { print: (j: unknown) => Promise<{ ok: boolean; error?: string }> } }).pdvBridge : undefined);
+    if (bridge) {
+      try { const r = await bridge.print(job); if (!r.ok) alert("Erro na impressão: " + (r.error || "")); }
+      catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); }
+      return;
+    }
+    setTeste(job); setTimeout(() => { try { window.print(); } catch { /* ignore */ } setTeste(null); }, 300);
+  }
 
   // Modo EMBUTIDO: roda dentro do próprio PDV (mesmo PC da Epson). Sem painel —
   // só o listener (acima) + a área de impressão oculta. Imprime automático.
@@ -121,9 +131,9 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
           <div className="text-3xl font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums">{jobs.length}</div>
           <div className="text-sm text-gray-500">na fila{atual ? " · imprimindo…" : ""}</div>
           <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
-            <button onClick={() => { setTeste({ id: "teste", restaurantId: rid, tipo: "conta", comandaId: "", comandaNumero: "TESTE", clienteNome: "Teste", logoUrl, titulo: `${nomeRest || "COMANDA"} · TESTE`, linhas: [{ nome: "1x Item de teste", qtd: null, valor: "R$ 0,00" }], total: "R$ 0,00", rodape: "impressão de teste", status: "pendente", criadoEm: new Date().toISOString(), impressoEm: null }); setTimeout(() => { window.print(); setTeste(null); }, 300); }}
+            <button onClick={() => void imprimirTeste({ id: "teste", restaurantId: rid, tipo: "conta", rotulo: "TESTE", comandaId: "", comandaNumero: "TESTE", clienteNome: "Teste", logoUrl, titulo: `${nomeRest || "COMANDA"} · TESTE`, linhas: [{ nome: "1x Item de teste", qtd: null, valor: "R$ 0,00" }], total: "R$ 0,00", rodape: "impressão de teste", status: "pendente", criadoEm: new Date().toISOString(), impressoEm: null })}
               className="h-9 px-4 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir teste (conta)</button>
-            <button onClick={() => { setTeste({ id: "teste", restaurantId: rid, tipo: "producao", comandaId: "", comandaNumero: "99", clienteNome: "Teste", logoUrl: null, titulo: "PRODUÇÃO · #99", linhas: [{ nome: "Item de teste", qtd: "2x", valor: null }], total: null, rodape: "teste", status: "pendente", criadoEm: new Date().toISOString(), impressoEm: null }); setTimeout(() => { window.print(); setTeste(null); }, 300); }}
+            <button onClick={() => void imprimirTeste({ id: "teste", restaurantId: rid, tipo: "producao", comandaId: "", comandaNumero: "99", clienteNome: "Teste", logoUrl: null, titulo: "PRODUÇÃO · #99", linhas: [{ nome: "Item de teste", qtd: "2x", valor: null }], total: null, rodape: "teste", status: "pendente", criadoEm: new Date().toISOString(), impressoEm: null })}
               className="h-9 px-4 rounded-lg border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Teste (produção)</button>
           </div>
           <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">

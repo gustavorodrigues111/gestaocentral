@@ -104,7 +104,11 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   // Estação EMBUTIDA: este dispositivo também imprime (pro PC único do balcão
   // com a Epson — dispensa a aba separada). Lembrado por dispositivo.
-  const [imprimirAqui, setImprimirAqui] = useState<boolean>(() => { try { return localStorage.getItem("comandas_estacao_embutida") === "1"; } catch { return false; } });
+  // Rodando DENTRO do app de caixa (Electron): a ponte de impressão existe →
+  // a estação embutida liga sozinha e imprime direto na Epson por IP (ESC/POS),
+  // sem o diálogo do Windows/Chrome.
+  const temBridge = typeof window !== "undefined" && !!(window as unknown as { pdvBridge?: unknown }).pdvBridge;
+  const [imprimirAqui, setImprimirAqui] = useState<boolean>(() => { try { if (temBridge) return true; return localStorage.getItem("comandas_estacao_embutida") === "1"; } catch { return temBridge; } });
   const toggleImprimirAqui = () => setImprimirAqui((v) => { const n = !v; try { localStorage.setItem("comandas_estacao_embutida", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   // Estação de impressão: abre por ?estacao=1 (ou ?estacao=<id>) na URL.
   const estacaoParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("estacao") : null;
@@ -316,7 +320,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       </>)}
 
       {/* Estação embutida: imprime os jobs neste próprio dispositivo (opt-in) */}
-      {imprimirAqui && rid && <EstacaoImpressao embedded rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={null} estacoes={estacoes} logoUrl={logoUrl} />}
+      {(imprimirAqui || temBridge) && rid && <EstacaoImpressao embedded rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={null} estacoes={estacoes} logoUrl={logoUrl} />}
 
       {abrindo && <AbrirComandaModal modo={abrindo} clientes={clientes} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
       {caixaModal === "abrir" && <AbrirCaixaModal onClose={() => setCaixaModal(null)} onAbrir={abrirCaixa} />}
