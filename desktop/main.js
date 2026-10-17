@@ -43,6 +43,16 @@ function createWindow() {
     },
   });
   win.loadURL(cfg.url || "https://comandas.planejamento.app");
+  // Atalhos (sem menu): Cmd/Ctrl+R ou F5 = recarregar (pega a versão nova do
+  // sistema na hora); Cmd/Ctrl+Shift+R = recarregar ignorando cache.
+  win.webContents.on("before-input-event", (event, input) => {
+    const mod = process.platform === "darwin" ? input.meta : input.control;
+    const k = (input.key || "").toLowerCase();
+    if ((mod && k === "r") || input.key === "F5") {
+      event.preventDefault();
+      if (mod && input.shift) win.webContents.reloadIgnoringCache(); else win.webContents.reload();
+    }
+  });
   return win;
 }
 
