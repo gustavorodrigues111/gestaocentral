@@ -197,6 +197,44 @@ function TicketConteudo({ job, nomeRest, fonteProd = 22 }: { job: ComandaPrintJo
       </div>
     );
   }
+  // DANFCe — cupom fiscal da NFC-e (com QR Code, chave, protocolo).
+  if (job.tipo === "danfce" && job.nfce) {
+    const n = job.nfce;
+    const chaveFmt = (n.chave || "").replace(/(\d{4})(?=\d)/g, "$1 ");
+    return (
+      <div style={{ fontSize: "12px", lineHeight: 1.35, fontWeight: 600, color: "#000" }}>
+        {job.logoUrl && <div style={{ textAlign: "center", marginBottom: "3px" }}><img src={job.logoUrl} alt="" style={{ maxHeight: "44px", maxWidth: "60mm", margin: "0 auto", display: "block" }} /></div>}
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: "14px" }}>{job.titulo}</div>
+        <div style={{ textAlign: "center", fontSize: "10px" }}>Documento Auxiliar da NFC-e</div>
+        <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+        {job.linhas.map((ln, i) => (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "6px", fontWeight: 700 }}>
+            <span>{ln.qtd ? `${ln.qtd} ` : ""}{ln.nome}</span>
+            {ln.valor && <span style={{ whiteSpace: "nowrap" }}>{ln.valor}</span>}
+          </div>
+        ))}
+        {job.total && (
+          <>
+            <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: "15px" }}><span>TOTAL</span><span>{job.total}</span></div>
+          </>
+        )}
+        {job.rodape && <div style={{ whiteSpace: "pre-line", fontSize: "11px", marginTop: "2px" }}>{job.rodape}</div>}
+        <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+        <div style={{ textAlign: "center", fontSize: "10px", lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 800 }}>NFC-e nº {n.numero} · série {n.serie}</div>
+          <div style={{ marginTop: "2px" }}>Consulte pela chave de acesso em:</div>
+          <div style={{ wordBreak: "break-all" }}>{n.urlConsulta || "www.nfce.fazenda.sp.gov.br"}</div>
+          <div style={{ marginTop: "3px", fontWeight: 700 }}>Chave de acesso</div>
+          <div style={{ wordBreak: "break-all", fontFamily: "ui-monospace, monospace" }}>{chaveFmt}</div>
+          {n.protocolo && <div style={{ marginTop: "2px" }}>Protocolo: {n.protocolo}</div>}
+        </div>
+        {n.qrDataUrl && <div style={{ textAlign: "center", marginTop: "6px" }}><img src={n.qrDataUrl} alt="QR" style={{ width: "40mm", height: "40mm", margin: "0 auto", display: "block" }} /></div>}
+        <div style={{ textAlign: "center", fontSize: "10px", marginTop: "4px" }}>{nomeRest}</div>
+        <div style={{ height: "24px" }} />
+      </div>
+    );
+  }
   // Conta / cupom (layout normal) — fonte um pouco mais grossa pra ler melhor no térmico.
   return (
     <div style={{ fontSize: "13px", lineHeight: 1.4, fontWeight: 600, color: "#000" }}>

@@ -148,18 +148,21 @@ export const nfceConsultar = (ref: string) => call({ acao: "consultar", ref });
 export const nfceCancelar = (ref: string, justificativa: string) => call({ acao: "cancelar", ref, justificativa });
 
 // Interpreta a resposta da Focus.
-export function lerNfce(resp: NfceResp): { autorizado: boolean; status: string; mensagem: string; chave?: string; numero?: string; serie?: string; qrcodeUrl?: string; danfeUrl?: string } {
+export function lerNfce(resp: NfceResp): { autorizado: boolean; cancelado: boolean; status: string; mensagem: string; chave?: string; numero?: string; serie?: string; protocolo?: string; qrcodeUrl?: string; urlConsulta?: string; danfeUrl?: string } {
   const d = (resp.data && typeof resp.data === "object" ? resp.data : {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" || typeof v === "number") ? String(v) : undefined;
   const status = String(d.status || "").toLowerCase();
   return {
     autorizado: status === "autorizado",
+    cancelado: status === "cancelado",
     status,
     mensagem: str(d.mensagem_sefaz) || str(d.mensagem) || "",
     chave: str(d.chave_nfe),
     numero: str(d.numero),
     serie: str(d.serie),
+    protocolo: str(d.protocolo) || str(d.numero_protocolo),
     qrcodeUrl: str(d.qrcode_url),
+    urlConsulta: str(d.url_consulta_nf) || str(d.url_consulta),
     danfeUrl: str(d.caminho_danfe),
   };
 }

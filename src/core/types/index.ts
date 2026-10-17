@@ -6682,7 +6682,7 @@ export type Comanda = {
   fechadoEm?: string | null;
   fechadoPorNome?: string | null;
   // NFC-e (Focus NFe) — resultado da emissão fiscal, se houver.
-  nfce?: { ref: string; status: string; chave?: string; numero?: string; serie?: string; qrcodeUrl?: string; danfeUrl?: string; emitidaEm?: string; erro?: string } | null;
+  nfce?: { ref: string; status: string; chave?: string; numero?: string; serie?: string; protocolo?: string; qrcodeUrl?: string; urlConsulta?: string; danfeUrl?: string; emitidaEm?: string; canceladoEm?: string; erro?: string } | null;
 };
 
 // Estação de impressão (PC + impressora). categorias = quais categorias de
@@ -6700,7 +6700,7 @@ export type ComandaEstacao = {
 export type ComandaPrintJob = {
   id: string;
   restaurantId: string;
-  tipo: "producao" | "conta";
+  tipo: "producao" | "conta" | "danfce";   // danfce = cupom fiscal NFC-e (com QR)
   comandaId: string;
   comandaNumero: string;
   clienteNome: string;
@@ -6710,6 +6710,17 @@ export type ComandaPrintJob = {
   linhas: Array<{ nome: string; qtd?: string | null; valor?: string | null }>;
   total?: string | null;
   rodape?: string | null;
+  // DANFCe (tipo "danfce"): dados fiscais pra montar o cupom + QR.
+  nfce?: {
+    chave?: string | null;             // chave de acesso (44 díg)
+    numero?: string | null;
+    serie?: string | null;
+    protocolo?: string | null;
+    qrcodeUrl?: string | null;         // conteúdo do QR Code (URL de consulta)
+    qrDataUrl?: string | null;         // QR já renderizado (data:image/png) p/ imprimir direto
+    urlConsulta?: string | null;       // URL p/ consulta manual (chave)
+    ambiente?: "producao" | "homologacao" | null;
+  } | null;
   status: "pendente" | "impresso" | "erro";
   criadoEm: string;
   criadoPorNome?: string | null;

@@ -23,7 +23,8 @@ import {
 } from "./comandasRepo";
 import { EstacaoImpressao } from "./EstacaoImpressao";
 import { TefCobranca } from "./TefCobranca";
-import { montarNfce, nfceEmitir, lerNfce } from "./nfceClient";
+import { montarNfce, nfceEmitir, nfceCancelar, lerNfce } from "./nfceClient";
+import QRCode from "qrcode";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
@@ -519,10 +520,53 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     try {
       const ref = `c${comanda.id}_${Date.now().toString(36)}`;
       const l = lerNfce(await nfceEmitir(ref, items, formas, cpfNota || undefined, comanda.clienteNome));
-      await salvarComanda({ ...comanda, nfce: { ref, status: l.status, chave: l.chave, numero: l.numero, serie: l.serie, qrcodeUrl: l.qrcodeUrl, danfeUrl: l.danfeUrl, emitidaEm: new Date().toISOString(), erro: l.autorizado ? undefined : l.mensagem } });
-      alert(l.autorizado ? `✅ NFC-e autorizada! Nº ${l.numero} · série ${l.serie}` : `❌ Não autorizada: ${l.mensagem || l.status}`);
+      const nfce = { ref, status: l.status, chave: l.chave, numero: l.numero, serie: l.serie, protocolo: l.protocolo, qrcodeUrl: l.qrcodeUrl, urlConsulta: l.urlConsulta, danfeUrl: l.danfeUrl, emitidaEm: new Date().toISOString(), erro: l.autorizado ? undefined : l.mensagem };
+      await salvarComanda({ ...comanda, nfce });
+      if (l.autorizado) {
+        await imprimirDanfce({ ...comanda, nfce });   // cupom fiscal com QR na estação
+        alert(`✅ NFC-e autorizada! Nº ${l.numero} · série ${l.serie}\nImprimindo o cupom fiscal (DANFCe).`);
+      } else {
+        alert(`❌ Não autorizada: ${l.mensagem || l.status}`);
+      }
     } catch (e) { alert("Erro ao emitir NFC-e: " + (e instanceof Error ? e.message : "?")); }
     finally { setNfceLoading(false); }
+  }
+  async function cancelarNfce() {
+    const ref = comanda.nfce?.ref;
+    if (!ref || !comanda.nfce?.chave) { alert("Esta venda não tem NFC-e autorizada pra cancelar."); return; }
+    if (comanda.nfce?.canceladoEm) { alert("Esta NFC-e já foi cancelada."); return; }
+    const just = prompt("Motivo do cancelamento (mínimo 15 caracteres):", "Cancelamento solicitado pelo cliente no balcão");
+    if (just === null) return;
+    if (just.trim().length < 15) { alert("O motivo precisa ter pelo menos 15 caracteres (exigência da SEFAZ)."); return; }
+    setNfceLoading(true);
+    try {
+      const l = lerNfce(await nfceCancelar(ref, just.trim()));
+      if (l.cancelado || l.status === "cancelado") {
+        await salvarComanda({ ...comanda, nfce: { ...comanda.nfce!, status: "cancelado", canceladoEm: new Date().toISOString() } });
+        alert("✅ NFC-e cancelada com sucesso.");
+      } else {
+        alert(`❌ Não foi possível cancelar: ${l.mensagem || l.status}\n(A janela de cancelamento da NFC-e é curta — ~30 min.)`);
+      }
+    } catch (e) { alert("Erro ao cancelar NFC-e: " + (e instanceof Error ? e.message : "?")); }
+    finally { setNfceLoading(false); }
+  }
+  // Imprime o DANFCe (cupom fiscal 80mm com QR) na estação.
+  async function imprimirDanfce(c: Comanda) {
+    const n = c.nfce; if (!n?.chave) return;
+    // Gera o QR (data URL) aqui, pra impressão não depender de render assíncrono.
+    let qrDataUrl: string | null = null;
+    if (n.qrcodeUrl) { try { qrDataUrl = await QRCode.toDataURL(n.qrcodeUrl, { margin: 1, width: 240 }); } catch { qrDataUrl = null; } }
+    const job: ComandaPrintJob = {
+      id: uid(), restaurantId: rid, tipo: "danfce", comandaId: c.id,
+      comandaNumero: c.numero, clienteNome: c.clienteNome, estacaoId: null, logoUrl,
+      titulo: nomeRest || "NFC-e",
+      linhas: agruparItens(c.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
+      total: fmtR(c.total),
+      rodape: `${(c.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("  ")}${c.cpf ? `\nCPF: ${c.cpf}` : ""}`,
+      nfce: { chave: n.chave, numero: n.numero, serie: n.serie, protocolo: n.protocolo, qrcodeUrl: n.qrcodeUrl, qrDataUrl, urlConsulta: n.urlConsulta },
+      status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
+    };
+    await criarPrintJob(job);
   }
   async function reimprimirConta() {
     await superseedContaJobs(rid, comanda.id);   // descarta contas pendentes antigas desta comanda
@@ -623,8 +667,19 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
         {fechada ? (
           <>
             <button onClick={() => void reimprimirConta()} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Reimprimir</button>
-            {podeOperar && <button onClick={() => void reabrir()} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">Reabrir</button>}
-            {podeOperar && <button onClick={() => void emitirNfce()} disabled={nfceLoading} className={`basis-full sm:basis-0 sm:flex-1 h-11 rounded-xl font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${comanda.nfce?.chave ? "border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300" : "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"}`}>{nfceLoading ? "Emitindo…" : comanda.nfce?.chave ? "NFC-e ✓" : "Emitir NFC-e"}</button>}
+            {podeOperar && !comanda.nfce?.chave && <button onClick={() => void reabrir()} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">Reabrir</button>}
+            {/* NFC-e: emitir OU (já emitida) imprimir cupom + cancelar */}
+            {podeOperar && !comanda.nfce?.chave && (
+              <button onClick={() => void emitirNfce()} disabled={nfceLoading} className="basis-full sm:basis-0 sm:flex-1 h-11 rounded-xl font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900">{nfceLoading ? "Emitindo…" : "Emitir NFC-e"}</button>
+            )}
+            {comanda.nfce?.chave && !comanda.nfce?.canceladoEm && (
+              <>
+                <button onClick={() => void imprimirDanfce(comanda)} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Cupom fiscal</button>
+                {podeOperar && <button onClick={() => void cancelarNfce()} disabled={nfceLoading} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold disabled:opacity-50">{nfceLoading ? "…" : "Cancelar NFC-e"}</button>}
+                <span className="basis-full text-[11px] text-emerald-700 dark:text-emerald-300 text-center">NFC-e Nº {comanda.nfce.numero} · série {comanda.nfce.serie} autorizada ✓</span>
+              </>
+            )}
+            {comanda.nfce?.canceladoEm && <span className="basis-full text-[11px] text-rose-600 dark:text-rose-400 text-center font-semibold">NFC-e Nº {comanda.nfce.numero} CANCELADA</span>}
           </>
         ) : editavel ? (
           <>
