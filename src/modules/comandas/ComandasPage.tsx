@@ -229,7 +229,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       )}
 
       {tabEfetiva === "relatorios" && podeRelatorios && (
-        <RelatorioComandas comandas={comandas} />
+        <RelatorioComandas comandas={comandas} onAbrir={(id) => { setDetalhe(id); setTab("comandas"); }} />
       )}
 
       {tabEfetiva === "produtos" && podeProdutos && (
@@ -912,7 +912,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
 const ymd = (d: Date) => d.toLocaleDateString("en-CA");
 const addDias = (base: string, n: number) => { const d = new Date(base + "T12:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
 const brData = (d: string) => d.split("-").reverse().join("/");
-function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
+function RelatorioComandas({ comandas, onAbrir }: { comandas: Comanda[]; onAbrir?: (id: string) => void }) {
   const hoje = ymd(new Date());
   const [preset, setPreset] = useState("hoje");
   const [de, setDe] = useState(hoje);
@@ -995,6 +995,35 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Recebido por forma</div>
           <div className="flex flex-wrap gap-2">
             {porForma.map(([f, v]) => <span key={f} className="text-[12px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{f} <b className="tabular-nums">{fmtR(v)}</b></span>)}
+          </div>
+        </div>
+      )}
+      {/* Lista de vendas (individuais) — clique abre o cupom p/ reimprimir/emitir NFC-e/reabrir */}
+      {noPeriodo.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Vendas{umDia ? "" : " no período"}</span>
+            <span className="text-[12px] text-gray-500">{noPeriodo.length} comanda(s)</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[52vh] overflow-y-auto">
+            {[...noPeriodo].sort((a, b) => (b.fechadoEm || b.criadoEm || "").localeCompare(a.fechadoEm || a.criadoEm || "")).map((c) => {
+              const hora = (c.fechadoEm || c.criadoEm || "").slice(11, 16);
+              const formas = [...new Set((c.pagamentos || []).map((p) => p.forma))].join(", ");
+              const temNfce = !!c.nfce?.chave;
+              return (
+                <button key={c.id} onClick={() => onAbrir?.(c.id)} className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">#{c.numero} · {c.clienteNome}</div>
+                    <div className="text-[11px] text-gray-500 truncate">{hora ? hora + " · " : ""}{c.itens.length} item(ns){formas ? " · " + formas : ""}</div>
+                  </div>
+                  {c.status === "fechada"
+                    ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 shrink-0">paga</span>
+                    : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300 shrink-0">aberta</span>}
+                  {temNfce && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300 shrink-0">NFC-e</span>}
+                  <span className="w-20 text-right tabular-nums text-[13px] font-semibold text-gray-900 dark:text-gray-100 shrink-0">{fmtR(c.total)}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
