@@ -5,7 +5,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, Cliente } from "../../core/types";
 
 export const uid = () => { try { return crypto.randomUUID(); } catch { return "c" + Date.now() + Math.random().toString(36).slice(2); } };
 
@@ -66,6 +66,22 @@ export function ouvirCaixaAberto(rid: string, cb: (c: ComandaCaixa | null) => vo
 }
 export async function salvarCaixa(c: ComandaCaixa): Promise<void> {
   await setDoc(doc(db, "comandaCaixas", c.id), sanitizeForFirestore(c), { merge: true });
+}
+
+// ── Clientes (CRM compartilhado com Reservas: coleção /clientes por restaurante) ──
+// Carga única (getDocs) p/ o typeahead; sem listener permanente (economia de leitura).
+export async function lerClientes(rid: string): Promise<Cliente[]> {
+  try {
+    const snap = await getDocs(query(collection(db, "clientes"), where("restaurantId", "==", rid)));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cliente);
+  } catch (e) { console.error("[comandas] lerClientes", e); return []; }
+}
+// Cria um cliente novo no CRM (mesmo /clientes das Reservas). Retorna o cliente criado.
+export async function criarCliente(rid: string, nome: string, telefone: string, criadoPor: string): Promise<Cliente> {
+  const now = new Date().toISOString();
+  const c: Cliente = { id: uid(), restaurantId: rid, nome: nome.trim(), telefone: telefone.trim() || undefined, criadoEm: now, criadoPor, atualizadoEm: now };
+  await setDoc(doc(db, "clientes", c.id), sanitizeForFirestore(c));
+  return c;
 }
 
 // ── Produtos ───────────────────────────────────────────────────────────

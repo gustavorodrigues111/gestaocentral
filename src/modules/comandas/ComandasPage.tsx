@@ -13,14 +13,14 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { APP_VERSION_LABEL } from "../../core/version";
-import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov } from "../../core/types";
+import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov, Cliente } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
   ouvirComandas, salvarComanda, excluirComanda, criarPrintJob, superseedContaJobs,
   ouvirCategorias, salvarCategoria, excluirCategoria,
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
   ouvirFiscalConfig, salvarFiscalConfig,
-  ouvirCaixaAberto, salvarCaixa,
+  ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
 } from "./comandasRepo";
 import { EstacaoImpressao } from "./EstacaoImpressao";
 import { TefCobranca } from "./TefCobranca";
@@ -86,6 +86,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [fiscalCfg, setFiscalCfg] = useState<ComandaFiscalConfig | null>(null);
   const [caixa, setCaixa] = useState<ComandaCaixa | null>(null);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
   const [caixaModal, setCaixaModal] = useState<null | "abrir" | "sangria" | "reforco" | "fechar">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
@@ -105,6 +106,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   useEffect(() => { if (!rid) return; return ouvirComandas(rid, setComandas); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirFiscalConfig(rid, setFiscalCfg); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirCaixaAberto(rid, setCaixa); }, [rid]);
+  // Clientes (CRM) — carga única p/ o typeahead de abertura de comanda.
+  useEffect(() => { if (!rid) return; let vivo = true; void lerClientes(rid).then((l) => { if (vivo) setClientes(l); }); return () => { vivo = false; }; }, [rid]);
   useEffect(() => { if (!rid) return; void lerLogoSite(rid).then(setLogoUrl); }, [rid]);
 
   const meNome = me?.nome || "—";
@@ -140,11 +143,17 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     const max = comandas.reduce((m, c) => { const n = parseInt((c.numero || "").replace(/\D/g, ""), 10); return Number.isFinite(n) && n > m ? n : m; }, 0);
     return String(max + 1);
   }
-  async function abrirComanda(dados: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo" }) {
+  async function abrirComanda(dados: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) {
     if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
+    // Cliente: usa o selecionado; se tem telefone + nome e não é cadastrado, cria no CRM.
+    let clienteId = dados.clienteId || null;
+    const tel = dados.telefone?.trim() || "";
+    if (!clienteId && tel && dados.clienteNome.trim() && dados.modo === "conta") {
+      try { const novo = await criarCliente(rid, dados.clienteNome, tel, me?.id || ""); clienteId = novo.id; setClientes((p) => [...p, novo]); } catch { /* ignore */ }
+    }
     const c: Comanda = {
       id: uid(), restaurantId: rid, numero: dados.numero.trim() || proximoNumero(), clienteNome: dados.clienteNome.trim(),
-      cpf: dados.cpf?.trim() || null, telefone: dados.telefone?.trim() || null, pessoas: dados.pessoas || 1,
+      cpf: dados.cpf?.trim() || null, telefone: tel || null, clienteId, pessoas: dados.pessoas || 1,
       status: "aberta", caixaId: caixa.id, modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
     };
@@ -306,7 +315,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       {/* Estação embutida: imprime os jobs neste próprio dispositivo (opt-in) */}
       {imprimirAqui && rid && <EstacaoImpressao embedded rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={null} estacoes={estacoes} logoUrl={logoUrl} />}
 
-      {abrindo && <AbrirComandaModal modo={abrindo} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
+      {abrindo && <AbrirComandaModal modo={abrindo} clientes={clientes} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
       {caixaModal === "abrir" && <AbrirCaixaModal onClose={() => setCaixaModal(null)} onAbrir={abrirCaixa} />}
       {(caixaModal === "sangria" || caixaModal === "reforco") && caixa && (
         <MovimentoCaixaModal tipo={caixaModal} meNome={meNome} onClose={() => setCaixaModal(null)} onConfirmar={addMovimentoCaixa} />
@@ -593,23 +602,38 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
 }
 
 // ── Abrir comanda ────────────────────────────────────────────────────────
-function AbrirComandaModal({ modo, onClose, onAbrir }: {
+function AbrirComandaModal({ modo, clientes, onClose, onAbrir }: {
   modo: "conta" | "togo";
+  clientes: Cliente[];
   onClose: () => void;
-  onAbrir: (d: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo" }) => Promise<void>;
+  onAbrir: (d: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) => Promise<void>;
 }) {
   const [numero, setNumero] = useState("");
   const [nome, setNome] = useState("");
   const [tel, setTel] = useState("");
   const [pessoas, setPessoas] = useState(1);
+  const [clienteId, setClienteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const togo = modo === "togo";
+  // Typeahead no CRM: casa por nome OU telefone enquanto digita (até escolher um).
+  const matches = useMemo(() => {
+    if (clienteId) return [];
+    const qn = nome.trim().toLowerCase();
+    const qt = tel.replace(/\D/g, "");
+    if (qn.length < 2 && qt.length < 3) return [];
+    return clientes.filter((c) => {
+      const byNome = qn.length >= 2 && (c.nome || "").toLowerCase().includes(qn);
+      const byTel = qt.length >= 3 && (c.telefone || "").replace(/\D/g, "").includes(qt);
+      return byNome || byTel;
+    }).slice(0, 6);
+  }, [clientes, nome, tel, clienteId]);
+  function selecionar(c: Cliente) { setClienteId(c.id); setNome(c.nome); setTel(c.telefone || ""); }
   async function salvar() {
     if (!togo && !nome.trim()) { setErr("Informe o nome do cliente."); return; }
     const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
-    try { await onAbrir({ numero: numero.trim(), clienteNome, telefone: tel, pessoas: Math.max(1, pessoas), modo }); }
+    try { await onAbrir({ numero: numero.trim(), clienteNome, telefone: tel, pessoas: Math.max(1, pessoas), modo, clienteId }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); setSaving(false); }
   }
   const campo = "w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
@@ -624,7 +648,8 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
         <div className="space-y-3.5">
           <div>
             <label className={rotulo}>Nome do cliente {togo ? "(opcional)" : "*"}</label>
-            <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder="nome do cliente" className={campo} />
+            <input value={nome} onChange={(e) => { setNome(e.target.value); if (clienteId) setClienteId(null); }} autoFocus placeholder="nome do cliente" className={campo} />
+            {clienteId && <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">✓ cliente do CRM <button onClick={() => setClienteId(null)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button></div>}
           </div>
           <div>
             <label className={rotulo}>Nº da comanda (opcional)</label>
@@ -640,8 +665,26 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
           </div>
           <div>
             <label className={rotulo}>Telefone (opcional)</label>
-            <input value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="(11) 90000-0000" className={campo} />
+            <input value={tel} onChange={(e) => { setTel(e.target.value); if (clienteId) setClienteId(null); }} inputMode="tel" placeholder="(11) 90000-0000" className={campo} />
           </div>
+          {/* Sugestões do CRM (por nome ou telefone) */}
+          {matches.length > 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden -mt-1">
+              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-gray-50 dark:bg-gray-800/40">Clientes cadastrados</div>
+              <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-44 overflow-y-auto">
+                {matches.map((c) => (
+                  <button key={c.id} type="button" onClick={() => selecionar(c)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20">
+                    <User size={14} className="text-gray-400 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-800 dark:text-gray-100">{c.nome}</span>
+                    {c.telefone && <span className="text-[11px] text-gray-400 tabular-nums shrink-0">{c.telefone}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {!togo && !clienteId && tel.trim() && nome.trim() && matches.length === 0 && (
+            <p className="text-[11px] text-gray-400 -mt-1">Cliente novo — será cadastrado no CRM ao abrir a comanda.</p>
+          )}
           {err && <div className="text-sm text-rose-600">{err}</div>}
           <div className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
             <button onClick={onClose} className="flex-1 h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
