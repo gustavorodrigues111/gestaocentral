@@ -355,6 +355,7 @@ export function AppCaixaConfig({ semEsconder }: { semEsconder?: boolean } = {}) 
   const [porta, setPorta] = useState("9100");
   const [caixa, setCaixa] = useState("");
   const [largura, setLargura] = useState("48");
+  const [versao, setVersao] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -362,6 +363,7 @@ export function AppCaixaConfig({ semEsconder }: { semEsconder?: boolean } = {}) 
     bridge.config().then((c) => {
       setIp(String(c.printerIp || "")); setPorta(String(c.printerPort || 9100));
       setCaixa(String(c.caixaNome || "")); setLargura(String(c.larguraColunas || 48));
+      setVersao(String((c as { appVersion?: string }).appVersion || ""));
     }).catch(() => {});
   }, [bridge]);
   if (!bridge) return null;
@@ -383,7 +385,10 @@ export function AppCaixaConfig({ semEsconder }: { semEsconder?: boolean } = {}) 
     <>
       {!semEsconder && <style>{".pdv-so-fora-do-app{display:none !important;}"}</style>}
       <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 mb-3">
-        <div className="font-bold text-[13px] text-indigo-900 dark:text-indigo-100 inline-flex items-center gap-1.5 mb-2"><Printer size={14} /> Ajustes do app de caixa</div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-bold text-[13px] text-indigo-900 dark:text-indigo-100 inline-flex items-center gap-1.5"><Printer size={14} /> Ajustes do app de caixa</div>
+          {versao && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-200 tabular-nums">v{versao}</span>}
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="col-span-2"><label className={rot}>IP da impressora (Epson)</label><input value={ip} onChange={(e) => setIp(e.target.value)} inputMode="decimal" placeholder="ex.: 192.168.0.50" className={campo} /></div>
           <div><label className={rot}>Porta</label><input value={porta} onChange={(e) => setPorta(e.target.value)} inputMode="numeric" placeholder="9100" className={campo} /></div>

@@ -43,7 +43,7 @@ function createWindow() {
     width: 1280,
     height: 820,
     backgroundColor: "#ffffff",
-    title: `Planejamento PDV · ${cfg.caixaNome || "Caixa"}`,
+    title: `Planejamento PDV v${app.getVersion()} · ${cfg.caixaNome || "Caixa"}`,
     kiosk: !!cfg.kiosk,
     autoHideMenuBar: true,
     webPreferences: {
@@ -88,7 +88,7 @@ ipcMain.handle("pdv-print-test", async () => {
   catch (err) { return { ok: false, error: String(err && err.message || err) }; }
 });
 // Config atual (pra tela de Ajustes do PDV).
-ipcMain.handle("pdv-config", () => ({ ...cfg, bridge: true }));
+ipcMain.handle("pdv-config", () => ({ ...cfg, bridge: true, appVersion: app.getVersion() }));
 // Salva a config editada na tela de Ajustes (IP, caixa, etc.) — grava no userData.
 ipcMain.handle("pdv-set-config", (_e, patch) => {
   try {
@@ -101,6 +101,6 @@ ipcMain.handle("pdv-set-config", (_e, patch) => {
     }
     salvarUserConfig(limpo);
     cfg = lerConfig();
-    return { ok: true, config: { ...cfg, bridge: true } };
+    return { ok: true, config: { ...cfg, bridge: true, appVersion: app.getVersion() } };
   } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
 });
