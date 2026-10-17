@@ -114,19 +114,37 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   if (estacao) return <EstacaoImpressao rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={estacaoParam === "1" ? null : estacaoParam} estacoes={estacoes} logoUrl={logoUrl} />;
   if (!podeVer) return <div className="text-center py-12 text-gray-500">Você não tem acesso a Comandas.</div>;
 
+  // Próximo nº de comanda (sequencial a partir dos números já usados).
+  function proximoNumero(): string {
+    const max = comandas.reduce((m, c) => { const n = parseInt((c.numero || "").replace(/\D/g, ""), 10); return Number.isFinite(n) && n > m ? n : m; }, 0);
+    return String(max + 1);
+  }
   async function abrirComanda(dados: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo" }) {
+    if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
     const c: Comanda = {
       id: uid(), restaurantId: rid, numero: dados.numero.trim(), clienteNome: dados.clienteNome.trim(),
       cpf: dados.cpf?.trim() || null, telefone: dados.telefone?.trim() || null, pessoas: dados.pessoas || 1,
-      status: "aberta", modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
+      status: "aberta", caixaId: caixa.id, modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
     };
     await salvarComanda(c);
     setAbrindo(null);
     setDetalhe(c.id);
   }
-  async function abrirCaixa(fundoTroco: number, nome: string) {
-    const c: ComandaCaixa = { id: uid(), restaurantId: rid, caixaNome: nome.trim() || "Caixa", status: "aberto", abertoPor: me?.id, abertoPorNome: meNome, abertoEm: nowIso(), fundoTroco, movimentos: [] };
+  // Venda rápida (to-go): cria a comanda na hora, sem modal, e abre a venda.
+  async function vendaRapida() {
+    if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
+    const c: Comanda = {
+      id: uid(), restaurantId: rid, numero: proximoNumero(), clienteNome: "Venda rápida",
+      cpf: null, telefone: null, pessoas: 1,
+      status: "aberta", caixaId: caixa.id, modo: "togo", itens: [], total: 0, pagamentos: [], valorPago: 0,
+      criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
+    };
+    await salvarComanda(c);
+    setDetalhe(c.id);
+  }
+  async function abrirCaixa(fundoTroco: number) {
+    const c: ComandaCaixa = { id: uid(), restaurantId: rid, status: "aberto", abertoPor: me?.id, abertoPorNome: meNome, abertoEm: nowIso(), fundoTroco, movimentos: [] };
     await salvarCaixa(c); setCaixaModal(null);
   }
   async function addMovimentoCaixa(mov: ComandaCaixaMov) {
@@ -197,14 +215,20 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       {tabEfetiva === "comandas" && (
         <>
           {podeOperar && <CaixaBar caixa={caixa} onAbrir={() => setCaixaModal("abrir")} onSangria={() => setCaixaModal("sangria")} onReforco={() => setCaixaModal("reforco")} onFechar={() => setCaixaModal("fechar")} />}
-          {podeOperar && (
+          {/* Vendas só com caixa aberto. Sem caixa, o CaixaBar mostra só "Abrir caixa". */}
+          {podeOperar && caixa && (
             <div className="grid grid-cols-2 gap-2 mb-3">
               <button onClick={() => setAbrindo("conta")} className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Plus size={18} /> Abrir comanda</button>
-              <button onClick={() => setAbrindo("togo")} className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Package size={18} /> Venda rápida</button>
+              <button onClick={() => void vendaRapida()} className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Package size={18} /> Venda rápida</button>
+            </div>
+          )}
+          {podeOperar && !caixa && (
+            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-gray-500 dark:text-gray-400 mb-3 text-sm">
+              Abra o caixa pra começar as vendas.
             </div>
           )}
 
-          {(() => {
+          {(caixa || abertas.length > 0) && (() => {
             const lista = abertas;   // tela principal = só abertas; as vendas (fechadas) ficam em Relatórios
             if (lista.length === 0) return (
               <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-gray-400">
@@ -344,13 +368,15 @@ function CaixaBar({ caixa, onAbrir, onSangria, onReforco, onFechar }: {
       </button>
     );
   }
-  const hora = new Date(caixa.abertoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const dt = new Date(caixa.abertoEm);
+  const hora = dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const data = dt.toLocaleDateString("pt-BR");
   return (
     <div className="mb-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/15 p-3">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-bold text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {caixa.caixaNome || "Caixa"} aberto</div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400">desde {hora} · fundo {fmtR(caixa.fundoTroco)}{caixa.abertoPorNome ? ` · ${caixa.abertoPorNome}` : ""}</div>
+          <div className="text-[13px] font-bold text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Caixa aberto · {data} {hora}</div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400">fundo {fmtR(caixa.fundoTroco)}{caixa.abertoPorNome ? ` · ${caixa.abertoPorNome}` : ""}</div>
         </div>
         <button onClick={onFechar} className="shrink-0 h-9 px-3 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[13px] font-bold">Fechar caixa</button>
       </div>
@@ -362,8 +388,7 @@ function CaixaBar({ caixa, onAbrir, onSangria, onReforco, onFechar }: {
   );
 }
 
-function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (fundo: number, nome: string) => Promise<void> }) {
-  const [nome, setNome] = useState("Caixa");
+function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (fundo: number) => Promise<void> }) {
   const [fundo, setFundo] = useState("");
   const [saving, setSaving] = useState(false);
   return (
@@ -373,12 +398,8 @@ function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (
           <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Banknote size={16} className="text-emerald-500" /> Abrir caixa</div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">Informe o dinheiro que já tem na gaveta (fundo de troco). O caixa fica aberto até você fechar.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nome do caixa</label>
-            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Caixa" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-          </div>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">Informe o dinheiro que já tem na gaveta (fundo de troco). O caixa fica identificado pela data e hora da abertura e fica aberto até você fechar.</p>
+        <div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Fundo de troco</label>
             <div className="relative">
@@ -389,7 +410,7 @@ function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (
         </div>
         <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
           <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
-          <button onClick={async () => { setSaving(true); try { await onAbrir(parseReais(fundo), nome); } finally { setSaving(false); } }} disabled={saving} className="h-10 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Abrindo…" : "Abrir caixa"}</button>
+          <button onClick={async () => { setSaving(true); try { await onAbrir(parseReais(fundo)); } finally { setSaving(false); } }} disabled={saving} className="h-10 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Abrindo…" : "Abrir caixa"}</button>
         </div>
       </div>
     </div>

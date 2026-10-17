@@ -6712,6 +6712,7 @@ export type Comanda = {
   cpf?: string | null;
   telefone?: string | null;
   status: ComandaStatus;
+  caixaId?: string | null;             // sessão de caixa em que foi aberta
   modo?: "conta" | "togo";             // conta aberta (fica consumindo) × leva e vai embora
   pessoas?: number;                    // nº de pessoas na comanda (controle do dia + divisão sugerida)
   itens: ComandaItem[];
