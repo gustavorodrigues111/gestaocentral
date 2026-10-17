@@ -48,6 +48,7 @@ export function montarNfce(
 ): { items: FocusItem[]; formas: FocusForma[]; faltando: string[] } {
   const byId = new Map(produtos.map((p) => [p.id, p]));
   const faltando: string[] = [];
+  const regime = cfg?.regime || "normal";
   const cfopPadrao = cfg?.cfop || "";
   const origemPadrao = cfg?.origem || "0";
   const cstIcmsPadrao = cfg?.cstIcms || "";
@@ -62,7 +63,11 @@ export function montarNfce(
     const ncm = p?.ncm || "";
     const cfop = p?.cfop || cfopPadrao;
     const origem = p?.origem || origemPadrao;
-    const cstIcms = p?.cst || p?.csosn || cstIcmsPadrao;          // CST de ICMS (produto sobrepõe o padrão)
+    // Regime Normal: SEMPRE CST (2 díg); nunca cai no csosn antigo do produto.
+    // Simples: usa CSOSN (3 díg). Produto sobrepõe o padrão.
+    const cstIcms = regime === "simples"
+      ? (p?.csosn || p?.cst || cstIcmsPadrao)
+      : (p?.cst || cstIcmsPadrao);
     const aliqIcms = p?.aliqIcms ?? aliqIcmsPadrao;
     if (!ncm || !cfop || !cstIcms) faltando.push(i.nome);
     const un = (p?.unidadeFiscal || p?.unidade || (i.porPeso ? "kg" : "un")).toUpperCase();
