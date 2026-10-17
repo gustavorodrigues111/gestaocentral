@@ -596,56 +596,60 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
   const [nome, setNome] = useState("");
   const [cpf, setCpf] = useState("");
   const [tel, setTel] = useState("");
-  const [pessoas, setPessoas] = useState("1");
+  const [pessoas, setPessoas] = useState(1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const togo = modo === "togo";
+  const fmtCpf = (s: string) => s.replace(/\D/g, "").slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
   async function salvar() {
-    // Venda rápida (to-go): não exige identificação. Conta aberta: precisa de nome + pulseira.
-    if (modo === "conta") {
-      if (!nome.trim()) { setErr("Nome do cliente é obrigatório na conta aberta."); return; }
-      if (!numero.trim()) { setErr("Nº da pulseira é obrigatório na conta aberta."); return; }
+    if (!togo) {
+      if (!numero.trim()) { setErr("Informe o nº da comanda."); return; }
+      if (!nome.trim()) { setErr("Informe o nome do cliente."); return; }
     }
-    const clienteNome = nome.trim() || (modo === "togo" ? "Venda rápida" : nome.trim());
+    const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
-    try { await onAbrir({ numero: numero.trim() || "—", clienteNome, cpf, telefone: tel, pessoas: Math.max(1, parseInt(pessoas, 10) || 1), modo }); }
+    try { await onAbrir({ numero: numero.trim() || "—", clienteNome, cpf, telefone: tel, pessoas: Math.max(1, pessoas), modo }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); setSaving(false); }
   }
+  const campo = "w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
+  const rotulo = "text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5";
   return (
     <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><User size={16} className="text-indigo-500" /> {modo === "togo" ? "Venda rápida (to-go)" : "Abrir comanda"}</div>
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><User size={16} className="text-indigo-500" /> {togo ? "Venda rápida (to-go)" : "Abrir comanda"}</div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nº pulseira {modo === "togo" ? "(opcional)" : "*"}</label>
-              <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12" className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nome {modo === "togo" ? "(opcional)" : "*"}</label>
-              <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder={modo === "togo" ? "opcional" : "nome do cliente"} className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        <div className="space-y-3.5">
+          <div>
+            <label className={rotulo}>Nº da comanda {togo ? "(opcional)" : "*"}</label>
+            <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12" className={`${campo} tabular-nums`} />
+          </div>
+          <div>
+            <label className={rotulo}>Nome do cliente {togo ? "(opcional)" : "*"}</label>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder="nome do cliente" className={campo} />
+          </div>
+          <div>
+            <label className={rotulo}>Quantidade de pessoas</label>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => setPessoas((p) => Math.max(1, p - 1))} disabled={pessoas <= 1} className="w-12 h-12 rounded-xl border border-gray-300 dark:border-gray-700 grid place-items-center text-gray-600 dark:text-gray-300 disabled:opacity-30 active:bg-gray-100 dark:active:bg-gray-800"><Minus size={20} /></button>
+              <div className="flex-1 h-12 rounded-xl bg-gray-50 dark:bg-gray-800/60 grid place-items-center text-2xl font-extrabold text-gray-900 dark:text-gray-100 tabular-nums">{pessoas}</div>
+              <button type="button" onClick={() => setPessoas((p) => Math.min(99, p + 1))} className="w-12 h-12 rounded-xl border border-gray-300 dark:border-gray-700 grid place-items-center text-gray-600 dark:text-gray-300 active:bg-gray-100 dark:active:bg-gray-800"><Plus size={20} /></button>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Pessoas</label>
-              <input value={pessoas} onChange={(e) => setPessoas(e.target.value)} type="number" min={1} className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">CPF</label>
-              <input value={cpf} onChange={(e) => setCpf(e.target.value)} inputMode="numeric" placeholder="opc." className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Telefone</label>
-              <input value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="opc." className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-            </div>
+          <div>
+            <label className={rotulo}>Telefone (opcional)</label>
+            <input value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="(11) 90000-0000" className={campo} />
+          </div>
+          <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+            <label className={`${rotulo} mt-3`}>CPF na nota (opcional)</label>
+            <input value={cpf} onChange={(e) => setCpf(fmtCpf(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" className={`${campo} tabular-nums`} />
+            <p className="text-[11px] text-gray-400 mt-1">Só se o cliente pedir CPF na nota fiscal.</p>
           </div>
           {err && <div className="text-sm text-rose-600">{err}</div>}
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-            <button onClick={onClose} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm">Cancelar</button>
-            <button onClick={salvar} disabled={saving} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{saving ? "..." : "Abrir e lançar"}</button>
+            <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
+            <button onClick={salvar} disabled={saving} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "..." : "Abrir e lançar"}</button>
           </div>
         </div>
       </div>
