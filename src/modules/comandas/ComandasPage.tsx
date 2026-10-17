@@ -680,8 +680,22 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     const ids = new Set(produtos.map((p) => p.categoriaId || "sem"));
     const out = categorias.filter((c) => ids.has(c.id)).map((c) => ({ id: c.id, nome: c.nome }));
     if (ids.has("sem")) out.push({ id: "sem", nome: "Outros" });
+    // "Cozinha aberta" sempre primeiro.
+    out.sort((a, b) => {
+      const ca = a.nome.trim().toLowerCase().includes("cozinha aberta") ? 0 : 1;
+      const cb = b.nome.trim().toLowerCase().includes("cozinha aberta") ? 0 : 1;
+      return ca - cb;
+    });
     return out;
   }, [produtos, categorias]);
+  // Seleciona "Cozinha aberta" por padrão na 1ª carga (se existir).
+  const catInitRef = useRef(false);
+  useEffect(() => {
+    if (catInitRef.current || catsComProd.length === 0) return;
+    catInitRef.current = true;
+    const ca = catsComProd.find((c) => c.nome.trim().toLowerCase().includes("cozinha aberta"));
+    if (ca) setCatSel(ca.id);
+  }, [catsComProd]);
 
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -918,7 +932,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
             {/* Abas de categoria */}
             {catsComProd.length > 0 && (
               <div className="flex gap-1.5 overflow-x-auto px-2 pt-2 pb-1 border-b border-gray-100 dark:border-gray-800 no-scrollbar">
-                {[{ id: "todas", nome: "Todas" }, ...catsComProd].map((c) => (
+                {[...catsComProd, { id: "todas", nome: "Todas" }].map((c) => (
                   <button key={c.id} onClick={() => setCatSel(c.id)} className={`shrink-0 px-3 h-8 rounded-full text-[13px] font-semibold border ${catSel === c.id ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{c.nome}</button>
                 ))}
               </div>
