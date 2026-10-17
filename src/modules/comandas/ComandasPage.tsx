@@ -22,6 +22,7 @@ import {
 } from "./comandasRepo";
 import { EstacaoImpressao } from "./EstacaoImpressao";
 import { TefCobranca } from "./TefCobranca";
+import { montarNfce, nfceEmitir, lerNfce } from "./nfceClient";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
@@ -380,6 +381,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
   const [fechar, setFechar] = useState(false);
   const [verConta, setVerConta] = useState(false);          // tela pra mostrar ao cliente
   const [salvandoImpr, setSalvandoImpr] = useState(false);
+  const [nfceLoading, setNfceLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Só categorias que têm produtos ativos.
@@ -493,6 +495,19 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
     if (!confirm("Reabrir esta comanda? Ela volta pra lista de abertas.")) return;
     await salvarComanda({ ...comanda, status: "aberta", fechadoEm: null, fechadoPorNome: null });
   }
+  async function emitirNfce() {
+    if (comanda.nfce?.chave && !confirm("Esta comanda já tem NFC-e autorizada. Emitir outra?")) return;
+    const { items, formas, faltando } = montarNfce(comanda, produtos);
+    if (faltando.length) { alert("Faltam dados fiscais (NCM/CFOP/CSOSN) nestes produtos: " + [...new Set(faltando)].join(", ") + ".\nPreencha em Produtos → Fiscal (NFC-e)."); return; }
+    setNfceLoading(true);
+    try {
+      const ref = `c${comanda.id}_${Date.now().toString(36)}`;
+      const l = lerNfce(await nfceEmitir(ref, items, formas, comanda.cpf || undefined, comanda.clienteNome));
+      await salvarComanda({ ...comanda, nfce: { ref, status: l.status, chave: l.chave, numero: l.numero, serie: l.serie, qrcodeUrl: l.qrcodeUrl, danfeUrl: l.danfeUrl, emitidaEm: new Date().toISOString(), erro: l.autorizado ? undefined : l.mensagem } });
+      alert(l.autorizado ? `✅ NFC-e autorizada! Nº ${l.numero} · série ${l.serie}` : `❌ Não autorizada: ${l.mensagem || l.status}`);
+    } catch (e) { alert("Erro ao emitir NFC-e: " + (e instanceof Error ? e.message : "?")); }
+    finally { setNfceLoading(false); }
+  }
   async function reimprimirConta() {
     await superseedContaJobs(rid, comanda.id);   // descarta contas pendentes antigas desta comanda
     const job: ComandaPrintJob = {
@@ -591,8 +606,9 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
       <div className="shrink-0 border-t border-gray-200 dark:border-gray-800 p-2.5 flex flex-wrap items-center gap-2">
         {fechada ? (
           <>
-            <button onClick={() => void reimprimirConta()} className="flex-1 h-11 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Reimprimir</button>
-            {podeOperar && <button onClick={() => void reabrir()} className="flex-1 h-11 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">Reabrir</button>}
+            <button onClick={() => void reimprimirConta()} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Reimprimir</button>
+            {podeOperar && <button onClick={() => void reabrir()} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">Reabrir</button>}
+            {podeOperar && <button onClick={() => void emitirNfce()} disabled={nfceLoading} className={`basis-full sm:basis-0 sm:flex-1 h-11 rounded-xl font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 ${comanda.nfce?.chave ? "border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300" : "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"}`}>{nfceLoading ? "Emitindo…" : comanda.nfce?.chave ? "NFC-e ✓" : "Emitir NFC-e"}</button>}
           </>
         ) : editavel ? (
           <>
@@ -1010,6 +1026,8 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
   const [imprime, setImprime] = useState(false);     // vai pra impressora (cozinha/bar)
   const [categoriaId, setCategoriaId] = useState<string>("");
   const [busca, setBusca] = useState("");
+  const [ncm, setNcm] = useState(""); const [cfop, setCfop] = useState(""); const [origem, setOrigem] = useState("0"); const [csosn, setCsosn] = useState("");
+  const [verFiscal, setVerFiscal] = useState(false);
   const precoNum = parseFloat((preco || "").replace(/\./g, "").replace(",", ".")) || 0;
   const catById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
   // Código automático: 2 díg da categoria (01, 02…) + 3 díg sequenciais do produto (001…).
@@ -1031,10 +1049,11 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
     return produtos.filter((p) => p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q) || (p.categoria || "").toLowerCase().includes(q));
   }, [produtos, busca]);
 
-  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); }
+  function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); setNcm(""); setCfop(""); setOrigem("0"); setCsosn(""); setVerFiscal(false); }
   function editar(p: ComandaProduto) {
     setEditId(p.id); setNome(p.nome); setCodigo(p.codigo || ""); setPreco(String(p.preco).replace(".", ","));
     setPorPeso(!!p.porPeso); setImprime(!!p.producao); setCategoriaId(p.categoriaId || "");
+    setNcm(p.ncm || ""); setCfop(p.cfop || ""); setOrigem(p.origem || "0"); setCsosn(p.csosn || p.cst || "");
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* ignore */ }
   }
   async function salvar() {
@@ -1047,6 +1066,7 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
       preco: precoNum, porPeso, producao: imprime,
       categoriaId: categoriaId || null, categoria: cat?.nome || null,
       unidade: porPeso ? "kg" : "un", ativo: base?.ativo ?? true, ordem: base?.ordem ?? produtos.length,
+      ncm: ncm.trim() || null, cfop: cfop.trim() || null, origem: origem.trim() || null, csosn: csosn.trim() || null,
     });
     limpar();
   }
@@ -1073,6 +1093,22 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
           <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={porPeso} onChange={(e) => setPorPeso(e.target.checked)} className="accent-indigo-600" /> <Scale size={13} /> por peso (kg)</label>
           <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime</label>
         </div>
+
+        {/* Fiscal (NFC-e) — preenchido pelo contador; sem isso a nota é rejeitada */}
+        <button type="button" onClick={() => setVerFiscal((v) => !v)} className="w-full flex items-center justify-between text-[12px] text-gray-500 dark:text-gray-400 px-1 py-1">
+          <span>Fiscal (NFC-e){(ncm || cfop || csosn) ? " ✓" : ""}</span>
+          <span className={`transition-transform ${verFiscal ? "rotate-90" : ""}`}>▶</span>
+        </button>
+        {verFiscal && (
+          <div className="grid grid-cols-2 gap-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2">
+            <input value={ncm} onChange={(e) => setNcm(e.target.value)} placeholder="NCM (8 díg)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            <input value={cfop} onChange={(e) => setCfop(e.target.value)} placeholder="CFOP (ex.: 5102)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            <input value={csosn} onChange={(e) => setCsosn(e.target.value)} placeholder="CSOSN (ex.: 102)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            <input value={origem} onChange={(e) => setOrigem(e.target.value)} placeholder="Origem (0=nac.)" inputMode="numeric" className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            <p className="col-span-2 text-[10px] text-gray-400">Peça esses códigos ao contador. CSOSN é do Simples (ex.: 102/500); no regime normal use o CST.</p>
+          </div>
+        )}
+
         <div className="flex gap-2 pt-0.5">
           {editId && <button onClick={limpar} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>}
           <button onClick={() => void salvar()} disabled={!nome.trim() || precoNum <= 0} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{editId ? "Salvar alterações" : "+ Adicionar produto"}</button>

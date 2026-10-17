@@ -6604,6 +6604,13 @@ export type ComandaProduto = {
   producao?: boolean;                  // true → PRODUÇÃO (vai pra cozinha); false → revenda
   ativo: boolean;
   ordem?: number;
+  // Fiscal (NFC-e) — preenchido pelo contador. Sem isso, a nota é rejeitada.
+  ncm?: string | null;                 // código NCM (8 díg)
+  cfop?: string | null;                // ex.: 5102
+  origem?: string | null;              // origem da mercadoria (0 = nacional)
+  csosn?: string | null;               // Simples Nacional (ex.: 102, 500)
+  cst?: string | null;                 // Regime normal (ex.: 00) — usar csosn OU cst
+  unidadeFiscal?: string | null;       // unidade tributável (un, kg) — default = unidade
 };
 
 export type ComandaItem = {
@@ -6650,6 +6657,8 @@ export type Comanda = {
   criadoPorNome?: string;
   fechadoEm?: string | null;
   fechadoPorNome?: string | null;
+  // NFC-e (Focus NFe) — resultado da emissão fiscal, se houver.
+  nfce?: { ref: string; status: string; chave?: string; numero?: string; serie?: string; qrcodeUrl?: string; danfeUrl?: string; emitidaEm?: string; erro?: string } | null;
 };
 
 // Estação de impressão (PC + impressora). categorias = quais categorias de
