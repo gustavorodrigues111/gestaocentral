@@ -29,8 +29,21 @@ import QRCode from "qrcode";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
-// "1.234,56" / "1234,56" / "1234.56" → 1234.56
-const parseReais = (s: string): number => parseFloat((s || "").replace(/\./g, "").replace(",", ".")) || 0;
+// Input de dinheiro estilo maquininha: digita e preenche dos centavos p/ a
+// esquerda (1 → 0,01 → 0,12 → 1,23…). Guarda o valor em CENTAVOS (number).
+function MoneyInput({ cents, onChange, autoFocus, className }: { cents: number; onChange: (c: number) => void; autoFocus?: boolean; className?: string }) {
+  const display = (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (
+    <div className="relative">
+      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+      <input
+        value={display} inputMode="numeric" autoFocus={autoFocus}
+        onChange={(e) => onChange(Math.min(99999999, parseInt(e.target.value.replace(/\D/g, "") || "0", 10)))}
+        className={className || "w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums"}
+      />
+    </div>
+  );
+}
 const nowIso = () => new Date().toISOString();
 // Tempo decorrido desde a abertura (ex.: "agora", "23min", "1h05") — p/ os cards.
 const tempoDecorrido = (iso?: string | null): string => {
@@ -99,11 +112,12 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   // achatado: Produtos / Categorias / Impressoras entram direto como telas.
   const abasDisp = useMemo(() => {
     const a: { id: string; label: string }[] = [{ id: "comandas", label: "Comandas" }];
+    if (podeOperar) a.push({ id: "caixa", label: "Caixa" });
     if (podeRelatorios) a.push({ id: "relatorios", label: "Relatórios" });
     if (podeProdutos) a.push({ id: "produtos", label: "Produtos" }, { id: "categorias", label: "Categorias" });
     if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
     return a;
-  }, [podeRelatorios, podeProdutos, podeEstacoes]);
+  }, [podeOperar, podeRelatorios, podeProdutos, podeEstacoes]);
   const [tab, setTab] = useTabPersistida<string>("comandas", "comandas", abasDisp.map((a) => a.id));
 
   const abertas = useMemo(() => comandas.filter((c) => c.status === "aberta"), [comandas]);
@@ -180,7 +194,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
                 {/* Navegação entre as telas do módulo (Config achatado em Produtos/Categorias/Impressoras) */}
                 {abasDisp.map((a) => {
-                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : a.id === "produtos" ? <Package size={16} /> : a.id === "categorias" ? <Tag size={16} /> : <Printer size={16} />;
+                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "caixa" ? <Banknote size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : a.id === "produtos" ? <Package size={16} /> : a.id === "categorias" ? <Tag size={16} /> : <Printer size={16} />;
                   const divisor = a.id === "produtos";   // separa "operação" (Comandas/Relatórios) da "config"
                   return (
                     <Fragment key={a.id}>
@@ -214,8 +228,9 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       ) : (<>
       {tabEfetiva === "comandas" && (
         <>
-          {podeOperar && <CaixaBar caixa={caixa} onAbrir={() => setCaixaModal("abrir")} onSangria={() => setCaixaModal("sangria")} onReforco={() => setCaixaModal("reforco")} onFechar={() => setCaixaModal("fechar")} />}
-          {/* Vendas só com caixa aberto. Sem caixa, o CaixaBar mostra só "Abrir caixa". */}
+          {/* Sem caixa aberto: gate central. O controle do caixa (reforço/sangria/
+              fechar) fica no Menu → Caixa, não aqui na tela de vendas. */}
+          {podeOperar && !caixa && <AbrirCaixaTile onAbrir={() => setCaixaModal("abrir")} />}
           {podeOperar && caixa && (
             <div className="grid grid-cols-2 gap-2 mb-3">
               <button onClick={() => setAbrindo("conta")} className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Plus size={18} /> Abrir comanda</button>
@@ -261,6 +276,10 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
             );
           })()}
         </>
+      )}
+
+      {tabEfetiva === "caixa" && podeOperar && (
+        <div className="max-w-lg mx-auto"><CaixaPanel caixa={caixa} comandas={comandas} onAbrir={() => setCaixaModal("abrir")} onSangria={() => setCaixaModal("sangria")} onReforco={() => setCaixaModal("reforco")} onFechar={() => setCaixaModal("fechar")} /></div>
       )}
 
       {tabEfetiva === "relatorios" && podeRelatorios && (
@@ -352,43 +371,82 @@ function EstacoesPanel({ rid, estacoes, categorias }: { rid: string; estacoes: C
   );
 }
 
-// ── Caixa (sessão de PDV): barra de status + modais ───────────────────────
-function CaixaBar({ caixa, onAbrir, onSangria, onReforco, onFechar }: {
-  caixa: ComandaCaixa | null; onAbrir: () => void; onSangria: () => void; onReforco: () => void; onFechar: () => void;
-}) {
-  if (!caixa) {
-    return (
-      <div className="mb-3 flex flex-col items-center justify-center text-center gap-5 min-h-[52vh]">
-        <button onClick={onAbrir} className="w-52 h-52 sm:w-56 sm:h-56 rounded-3xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white shadow-lg hover:shadow-xl flex flex-col items-center justify-center gap-4 transition-all">
-          <Banknote size={56} strokeWidth={1.75} />
-          <span className="text-xl font-extrabold tracking-tight">Abrir caixa</span>
-        </button>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Abra o caixa para começar a vender.</p>
-      </div>
-    );
-  }
-  const dt = new Date(caixa.abertoEm);
-  const hora = dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  const data = dt.toLocaleDateString("pt-BR");
+// ── Caixa (sessão de PDV) ──────────────────────────────────────────────────
+// Ladrilho central de "Abrir caixa" (gate na tela de vendas quando não há caixa).
+function AbrirCaixaTile({ onAbrir }: { onAbrir: () => void }) {
   return (
-    <div className="mb-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/15 p-3">
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-bold text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Caixa aberto · {data} {hora}</div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400">fundo {fmtR(caixa.fundoTroco)}{caixa.abertoPorNome ? ` · ${caixa.abertoPorNome}` : ""}</div>
+    <div className="flex flex-col items-center justify-center text-center gap-6 min-h-[62vh] px-4">
+      <button onClick={onAbrir} className="w-full max-w-[260px] aspect-square rounded-[32px] bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white shadow-[0_18px_40px_-16px_rgba(79,70,229,0.7)] flex flex-col items-center justify-center gap-5 transition-all active:scale-[0.98]">
+        <div className="w-20 h-20 rounded-3xl bg-white/15 grid place-items-center"><Banknote size={40} strokeWidth={1.75} /></div>
+        <span className="text-xl font-extrabold tracking-tight">Abrir caixa</span>
+      </button>
+      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[260px]">Abra o caixa para começar a vender.</p>
+    </div>
+  );
+}
+
+// Tela do Caixa (Menu → Caixa): status + resumo ao vivo + reforço/sangria/fechar.
+function CaixaPanel({ caixa, comandas, onAbrir, onSangria, onReforco, onFechar }: {
+  caixa: ComandaCaixa | null; comandas: Comanda[]; onAbrir: () => void; onSangria: () => void; onReforco: () => void; onFechar: () => void;
+}) {
+  if (!caixa) return <AbrirCaixaTile onAbrir={onAbrir} />;
+  const dt = new Date(caixa.abertoEm);
+  const quando = `${dt.toLocaleDateString("pt-BR")} ${dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  // Resumo ao vivo (desde a abertura).
+  const inicio = caixa.abertoEm;
+  const map = new Map<string, number>();
+  for (const c of comandas) for (const p of c.pagamentos || []) if (p.em && p.em >= inicio) map.set(p.forma, (map.get(p.forma) || 0) + p.valor);
+  const porForma = [...map.entries()].map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor);
+  const vendasTotal = porForma.reduce((s, f) => s + f.valor, 0);
+  const dinheiroVendas = porForma.filter((f) => /dinheiro/i.test(f.forma)).reduce((s, f) => s + f.valor, 0);
+  const sangrias = (caixa.movimentos || []).filter((m) => m.tipo === "sangria").reduce((s, m) => s + m.valor, 0);
+  const reforcos = (caixa.movimentos || []).filter((m) => m.tipo === "reforco").reduce((s, m) => s + m.valor, 0);
+  const dinheiroEsperado = caixa.fundoTroco + dinheiroVendas + reforcos - sangrias;
+  const Linha = ({ l, v, forte }: { l: string; v: string; forte?: boolean }) => (
+    <div className={`flex justify-between ${forte ? "font-bold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}><span>{l}</span><span className="tabular-nums">{v}</span></div>
+  );
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/15 p-3">
+        <div className="text-[14px] font-bold text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Caixa aberto</div>
+        <div className="text-[12px] text-gray-500 dark:text-gray-400">desde {quando} · fundo {fmtR(caixa.fundoTroco)}{caixa.abertoPorNome ? ` · ${caixa.abertoPorNome}` : ""}</div>
+      </div>
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-[13px] space-y-1">
+        <Linha l="Vendas" v={fmtR(vendasTotal)} forte />
+        {porForma.map((f) => <Linha key={f.forma} l={`· ${f.forma}`} v={fmtR(f.valor)} />)}
+        <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-1.5" />
+        <Linha l="Fundo de troco" v={fmtR(caixa.fundoTroco)} />
+        <Linha l="Dinheiro de vendas" v={fmtR(dinheiroVendas)} />
+        {reforcos > 0 && <Linha l="Reforços" v={`+ ${fmtR(reforcos)}`} />}
+        {sangrias > 0 && <Linha l="Sangrias" v={`− ${fmtR(sangrias)}`} />}
+        <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-1.5" />
+        <Linha l="Dinheiro esperado na gaveta" v={fmtR(dinheiroEsperado)} forte />
+      </div>
+      {(caixa.movimentos || []).length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+          <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-gray-800">Movimentos</div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {[...(caixa.movimentos || [])].reverse().map((m, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-2 text-[13px]">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${m.tipo === "sangria" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"}`}>{m.tipo === "sangria" ? "Sangria" : "Reforço"}</span>
+                <span className="flex-1 text-gray-500 truncate">{m.motivo || ""}{m.porNome ? ` · ${m.porNome}` : ""}</span>
+                <span className="tabular-nums font-semibold">{m.tipo === "sangria" ? "−" : "+"} {fmtR(m.valor)}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <button onClick={onFechar} className="shrink-0 h-9 px-3 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[13px] font-bold">Fechar caixa</button>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={onReforco} className="h-11 rounded-xl border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-semibold">+ Reforço</button>
+        <button onClick={onSangria} className="h-11 rounded-xl border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">− Sangria</button>
       </div>
-      <div className="flex gap-2 mt-2">
-        <button onClick={onReforco} className="flex-1 h-9 rounded-lg border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[13px] font-semibold">+ Reforço</button>
-        <button onClick={onSangria} className="flex-1 h-9 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-[13px] font-semibold">− Sangria</button>
-      </div>
+      <button onClick={onFechar} className="w-full h-12 rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold">Fechar caixa</button>
     </div>
   );
 }
 
 function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (fundo: number) => Promise<void> }) {
-  const [fundo, setFundo] = useState("");
+  const [fundoC, setFundoC] = useState(0);
   const [saving, setSaving] = useState(false);
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -401,15 +459,12 @@ function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (
         <div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Fundo de troco</label>
-            <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
-              <input value={fundo} onChange={(e) => setFundo(e.target.value)} inputMode="decimal" autoFocus placeholder="0,00" className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-            </div>
+            <MoneyInput cents={fundoC} onChange={setFundoC} autoFocus />
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
           <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
-          <button onClick={async () => { setSaving(true); try { await onAbrir(parseReais(fundo)); } finally { setSaving(false); } }} disabled={saving} className="h-10 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Abrindo…" : "Abrir caixa"}</button>
+          <button onClick={async () => { setSaving(true); try { await onAbrir(fundoC / 100); } finally { setSaving(false); } }} disabled={saving} className="h-10 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Abrindo…" : "Abrir caixa"}</button>
         </div>
       </div>
     </div>
@@ -419,11 +474,11 @@ function AbrirCaixaModal({ onClose, onAbrir }: { onClose: () => void; onAbrir: (
 function MovimentoCaixaModal({ tipo, meNome, onClose, onConfirmar }: {
   tipo: "sangria" | "reforco"; meNome: string; onClose: () => void; onConfirmar: (m: ComandaCaixaMov) => Promise<void>;
 }) {
-  const [valor, setValor] = useState("");
+  const [valorC, setValorC] = useState(0);
   const [motivo, setMotivo] = useState("");
   const [saving, setSaving] = useState(false);
   const sangria = tipo === "sangria";
-  const v = parseReais(valor);
+  const v = valorC / 100;
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -433,10 +488,7 @@ function MovimentoCaixaModal({ tipo, meNome, onClose, onConfirmar }: {
         </div>
         <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3">{sangria ? "Retirada de dinheiro da gaveta (ex.: sangria pro cofre)." : "Entrada de dinheiro na gaveta (ex.: reforço de troco)."}</p>
         <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Valor</label>
-        <div className="relative mb-3">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
-          <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" autoFocus placeholder="0,00" className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-        </div>
+        <div className="mb-3"><MoneyInput cents={valorC} onChange={setValorC} autoFocus /></div>
         <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Motivo (opcional)</label>
         <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder={sangria ? "ex.: sangria pro cofre" : "ex.: troco do banco"} className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
         <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
@@ -449,12 +501,13 @@ function MovimentoCaixaModal({ tipo, meNome, onClose, onConfirmar }: {
 }
 
 function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
-  caixa: ComandaCaixa; comandas: Comanda[]; onClose: () => void; onFechar: (contado: number, obs: string, resumo: ComandaCaixa["resumo"]) => Promise<void>;
+  caixa: ComandaCaixa; comandas: Comanda[]; onClose: () => void; onFechar: (contadoDinheiro: number, obs: string, resumo: ComandaCaixa["resumo"]) => Promise<void>;
 }) {
-  const [contado, setContado] = useState("");
+  const [conf, setConf] = useState<Record<string, number>>({});   // conferido por forma, em CENTAVOS
+  const [touched, setTouched] = useState(false);
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
-  // Resumo do período (desde a abertura até agora): pagamentos por forma.
+  // Resumo do período (desde a abertura): pagamentos por forma.
   const resumo = useMemo(() => {
     const inicio = caixa.abertoEm, fim = new Date().toISOString();
     const noPer = (em?: string | null) => !!em && em >= inicio && em <= fim;
@@ -469,8 +522,16 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
     const dinheiroEsperado = +(caixa.fundoTroco + dinheiroVendas + reforcos - sangrias).toFixed(2);
     return { vendasTotal: +vendasTotal.toFixed(2), nComandas: comandasNoPer.size, porForma, dinheiroVendas: +dinheiroVendas.toFixed(2), sangrias: +sangrias.toFixed(2), reforcos: +reforcos.toFixed(2), dinheiroEsperado, diferenca: 0 };
   }, [caixa, comandas]);
-  const contadoN = parseReais(contado);
-  const diferenca = +(contadoN - resumo.dinheiroEsperado).toFixed(2);
+  // Formas a conferir: Dinheiro (esperado = fundo+vendas−sangrias+reforços) + demais formas.
+  const formasConf = useMemo(() => {
+    const arr: { forma: string; esperado: number }[] = [{ forma: "Dinheiro", esperado: resumo.dinheiroEsperado }];
+    for (const f of resumo.porForma) if (!/dinheiro/i.test(f.forma)) arr.push({ forma: f.forma, esperado: +f.valor.toFixed(2) });
+    return arr;
+  }, [resumo]);
+  const setForma = (forma: string, cents: number) => { setConf((p) => ({ ...p, [forma]: cents })); setTouched(true); };
+  const conferencia = formasConf.map((f) => { const conferido = (conf[f.forma] || 0) / 100; return { forma: f.forma, esperado: f.esperado, conferido, diferenca: +(conferido - f.esperado).toFixed(2) }; });
+  const diferencaTotal = +conferencia.reduce((s, c) => s + c.diferenca, 0).toFixed(2);
+  const contadoDinheiro = (conf["Dinheiro"] || 0) / 100;
   const Linha = ({ l, v, forte }: { l: string; v: string; forte?: boolean }) => (
     <div className={`flex justify-between ${forte ? "font-bold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}><span>{l}</span><span className="tabular-nums">{v}</span></div>
   );
@@ -481,32 +542,44 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
           <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Banknote size={16} className="text-indigo-500" /> Fechar caixa</div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 text-[13px] space-y-1">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 text-[13px] space-y-1 mb-3">
           <Linha l={`Vendas (${resumo.nComandas})`} v={fmtR(resumo.vendasTotal)} forte />
           {resumo.porForma.map((f) => <Linha key={f.forma} l={`· ${f.forma}`} v={fmtR(f.valor)} />)}
           <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-1.5" />
           <Linha l="Fundo de troco" v={fmtR(caixa.fundoTroco)} />
-          <Linha l="Dinheiro de vendas" v={fmtR(resumo.dinheiroVendas)} />
           {resumo.reforcos > 0 && <Linha l="Reforços" v={`+ ${fmtR(resumo.reforcos)}`} />}
           {resumo.sangrias > 0 && <Linha l="Sangrias" v={`− ${fmtR(resumo.sangrias)}`} />}
-          <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-1.5" />
-          <Linha l="Dinheiro esperado na gaveta" v={fmtR(resumo.dinheiroEsperado)} forte />
         </div>
-        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1 mt-3">Dinheiro contado na gaveta</label>
-        <div className="relative">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
-          <input value={contado} onChange={(e) => setContado(e.target.value)} inputMode="decimal" autoFocus placeholder="0,00" className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+        {/* Conferência por forma de pagamento (pra conciliar) */}
+        <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Conferência por forma</div>
+        <div className="space-y-2.5">
+          {formasConf.map((f) => {
+            const c = conferencia.find((x) => x.forma === f.forma)!;
+            const temValor = (conf[f.forma] || 0) > 0;
+            return (
+              <div key={f.forma} className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-100">{f.forma}</span>
+                  <span className="text-[11px] text-gray-400">esperado <b className="tabular-nums text-gray-600 dark:text-gray-300">{fmtR(f.esperado)}</b></span>
+                </div>
+                <MoneyInput cents={conf[f.forma] || 0} onChange={(cents) => setForma(f.forma, cents)} />
+                {temValor && Math.abs(c.diferenca) >= 0.005 && (
+                  <div className={`mt-1 text-[11px] font-semibold ${c.diferenca > 0 ? "text-sky-600 dark:text-sky-400" : "text-rose-600 dark:text-rose-400"}`}>{c.diferenca > 0 ? `Sobra ${fmtR(c.diferenca)}` : `Quebra ${fmtR(Math.abs(c.diferenca))}`}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
-        {contado.trim() !== "" && (
-          <div className={`mt-2 text-center text-[13px] font-bold rounded-lg py-2 ${Math.abs(diferenca) < 0.005 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : diferenca > 0 ? "bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300" : "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"}`}>
-            {Math.abs(diferenca) < 0.005 ? "Caixa bateu certinho ✓" : diferenca > 0 ? `Sobra de ${fmtR(diferenca)}` : `Quebra de ${fmtR(Math.abs(diferenca))}`}
+        {touched && (
+          <div className={`mt-3 text-center text-[13px] font-bold rounded-lg py-2 ${Math.abs(diferencaTotal) < 0.005 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : diferencaTotal > 0 ? "bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300" : "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"}`}>
+            {Math.abs(diferencaTotal) < 0.005 ? "Caixa bateu certinho ✓" : diferencaTotal > 0 ? `Sobra total de ${fmtR(diferencaTotal)}` : `Quebra total de ${fmtR(Math.abs(diferencaTotal))}`}
           </div>
         )}
         <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1 mt-3">Observação (opcional)</label>
         <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: quebra por troco errado" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
         <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
           <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
-          <button onClick={async () => { setSaving(true); try { await onFechar(contadoN, obs, { ...resumo, diferenca }); } finally { setSaving(false); } }} disabled={saving || contado.trim() === ""} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Fechando…" : "Fechar caixa"}</button>
+          <button onClick={async () => { setSaving(true); try { await onFechar(contadoDinheiro, obs, { ...resumo, diferenca: diferencaTotal, conferencia }); } finally { setSaving(false); } }} disabled={saving || !touched} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Fechando…" : "Fechar caixa"}</button>
         </div>
       </div>
     </div>

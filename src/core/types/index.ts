@@ -6699,7 +6699,9 @@ export type ComandaCaixa = {
     sangrias: number;
     reforcos: number;
     dinheiroEsperado: number;        // fundo + dinheiroVendas + reforços − sangrias
-    diferenca: number;               // contado − esperado (sobra>0 / quebra<0)
+    diferenca: number;               // total conferido − total esperado (sobra>0 / quebra<0)
+    // Conferência por forma de pagamento (pra conciliar depois).
+    conferencia?: Array<{ forma: string; esperado: number; conferido: number; diferenca: number }>;
   } | null;
   obs?: string | null;
 };
