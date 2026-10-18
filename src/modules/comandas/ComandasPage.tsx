@@ -1575,7 +1575,7 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
   const itensConsumidos = noPeriodo.reduce((s, c) => s + c.itens.reduce((a, i) => a + (i.porPeso ? 1 : i.qtd), 0), 0);
   const porForma = useMemo(() => {
     const m = new Map<string, number>();
-    for (const c of noPeriodo) for (const p of c.pagamentos || []) m.set(p.forma, (m.get(p.forma) || 0) + p.valor);
+    for (const c of noPeriodo) for (const p of c.pagamentos || []) { const f = baseForma(p.forma); m.set(f, (m.get(f) || 0) + p.valor); }
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [comandas, d0, d1]); // eslint-disable-line react-hooks/exhaustive-deps
   // Quebra por data DENTRO do período (mais recente primeiro).
@@ -1788,7 +1788,7 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
           <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[52vh] overflow-y-auto">
             {vendasOrdenadas.map((c) => {
               const es = c.fechadoEm || c.criadoEm; const hora = es ? new Date(es).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
-              const formas = [...new Set((c.pagamentos || []).map((p) => p.forma))].join(", ");
+              const formas = [...new Set((c.pagamentos || []).map((p) => baseForma(p.forma)))].join(", ");
               const temNfce = !!c.nfce?.chave;
               const nfceCancelada = !!c.nfce?.canceladoEm;
               return (
