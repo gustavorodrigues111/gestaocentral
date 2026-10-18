@@ -160,8 +160,14 @@ export async function firestorePatchCampos(colecao: string, docId: string, updat
   const token = await idToken();
   const root: Record<string, unknown> = {};
   const mask: string[] = [];
+  // No updateMask, cada segmento do caminho é um identificador simples
+  // ([A-Za-z_][A-Za-z0-9_]*) OU uma string entre crases. Segmentos com hífen,
+  // acento, espaço etc. PRECISAM de crase (ex.: checks.`d-atum`), senão o
+  // Firestore rejeita (400). A KEY do mapa em si aceita qualquer coisa.
+  const escSeg = (s: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) ? s : "`" + s.replace(/[`\\]/g, "\\$&") + "`";
+  const maskPath = (p: string) => p.split(".").map(escSeg).join(".");
   for (const [path, v] of Object.entries(updates)) {
-    mask.push(path);
+    mask.push(maskPath(path));
     if (v === undefined) continue;                 // no updateMask sem field → apaga
     const e = encVal(v);
     if (!e) continue;
