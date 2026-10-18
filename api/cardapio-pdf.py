@@ -388,6 +388,23 @@ def render(estado):
                 left_pairs.append((sec, it)); acc += h
             else:
                 right_pairs.append((sec, it))
+        # Anti-órfão: se uma seção foi quebrada entre as colunas deixando só 1 item
+        # de um lado (ex.: 1 tinto sozinho no pé da esquerda), junta a seção inteira
+        # do outro lado. Seções grandes (quebra ~meio a meio) seguem quebradas.
+        if left_pairs and right_pairs and left_pairs[-1][0] == right_pairs[0][0]:
+            s = left_pairs[-1][0]
+            lrun = 0
+            for sec, _ in reversed(left_pairs):
+                if sec == s: lrun += 1
+                else: break
+            rrun = 0
+            for sec, _ in right_pairs:
+                if sec == s: rrun += 1
+                else: break
+            if lrun <= 1 and len(left_pairs) > lrun:
+                right_pairs[:0] = left_pairs[-lrun:]; del left_pairs[-lrun:]
+            elif rrun <= 1 and len(right_pairs) > rrun:
+                left_pairs.extend(right_pairs[:rrun]); del right_pairs[:rrun]
         def regroup(pairs):
             out = []
             for sec, it in pairs:
