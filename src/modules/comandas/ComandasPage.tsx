@@ -1543,21 +1543,32 @@ const addDias = (base: string, n: number) => { const d = new Date(base + "T12:00
 const brData = (d: string) => d.split("-").reverse().join("/");
 function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comanda[]; categorias: ComandaCategoria[]; onAbrir?: (id: string) => void }) {
   const hoje = ymd(new Date());
-  const [preset, setPreset] = useState("hoje");
-  const [de, setDe] = useState(hoje);
-  const [ate, setAte] = useState(hoje);
+  // Intervalo [de, ate] de um preset relativo, sempre a partir de HOJE.
+  const rangeFor = (id: string): [string, string] => {
+    if (id === "ontem") { const o = addDias(hoje, -1); return [o, o]; }
+    if (id === "7d") return [addDias(hoje, -6), hoje];
+    if (id === "mes") return [hoje.slice(0, 7) + "-01", hoje];
+    return [hoje, hoje];
+  };
+  // Período fica fixado entre visitas (sobrevive a abrir/fechar o cupom e a reloads).
+  // Presets relativos (ontem/7d/mês) são recalculados pra hoje; "custom" restaura as datas salvas.
+  const salvoPeriodo = (() => { try { return JSON.parse(localStorage.getItem("comandas_rel_periodo") || "null") as { preset?: string; de?: string; ate?: string } | null; } catch { return null; } })();
+  const presetIni = salvoPeriodo?.preset || "hoje";
+  const [deIni, ateIni] = presetIni === "custom" ? [salvoPeriodo?.de || hoje, salvoPeriodo?.ate || hoje] : rangeFor(presetIni);
+  const [preset, setPreset] = useState(presetIni);
+  const [de, setDe] = useState(deIni);
+  const [ate, setAte] = useState(ateIni);
   const [ordemVendas, setOrdemVendas] = useState<"recentes" | "maior" | "menor">("recentes");
   const [ordemProd, setOrdemProd] = useState<"valor" | "qtd">("valor");
   const [horaSel, setHoraSel] = useState<number | null>(null);   // barra clicada no gráfico de horário
   const PRESETS = [{ id: "hoje", label: "Hoje" }, { id: "ontem", label: "Ontem" }, { id: "7d", label: "7 dias" }, { id: "mes", label: "Este mês" }, { id: "custom", label: "Período" }];
   function aplicar(id: string) {
     setPreset(id);
-    if (id === "hoje") { setDe(hoje); setAte(hoje); }
-    else if (id === "ontem") { const o = addDias(hoje, -1); setDe(o); setAte(o); }
-    else if (id === "7d") { setDe(addDias(hoje, -6)); setAte(hoje); }
-    else if (id === "mes") { setDe(hoje.slice(0, 7) + "-01"); setAte(hoje); }
+    if (id !== "custom") { const [a, b] = rangeFor(id); setDe(a); setAte(b); }
     // custom: mantém o intervalo atual e libera os inputs
   }
+  // Persiste o período escolhido pra ele ficar fixado.
+  useEffect(() => { try { localStorage.setItem("comandas_rel_periodo", JSON.stringify({ preset, de, ate })); } catch { /* ignore */ } }, [preset, de, ate]);
   // Normaliza (de ≤ ate) pra comparação por string YYYY-MM-DD.
   const [d0, d1] = de <= ate ? [de, ate] : [ate, de];
   // Dia da venda no fuso LOCAL (BRT), não UTC — senão venda da noite de ontem
@@ -1768,7 +1779,7 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
               const sel = horaSel === x.h;
               return (
                 <button key={x.h} onClick={() => setHoraSel(sel ? null : x.h)} title={`${x.h}h — ${x.q} lançamento(s) · ${x.c} comanda(s) · ${fmtR(x.v)}`}
-                  className={`flex-1 min-w-0 rounded-t transition-all ${sel ? "bg-indigo-700 ring-2 ring-indigo-400" : x.q === porHora.maxQ ? "bg-indigo-600" : "bg-indigo-300 dark:bg-indigo-700 hover:bg-indigo-400"}`}
+                  className={`flex-1 min-w-0 rounded-t transition-all ${sel ? "bg-indigo-600 ring-2 ring-indigo-400" : "bg-indigo-200 dark:bg-indigo-800 hover:bg-indigo-300 dark:hover:bg-indigo-700"}`}
                   style={{ height: `${Math.max(2, (x.q / porHora.maxQ) * 100)}%` }} />
               );
             })}
