@@ -6639,6 +6639,13 @@ export type ComandaFiscalConfig = {
   emitCnpj?: string | null;            // CNPJ (com ou sem máscara)
   emitIe?: string | null;              // inscrição estadual
   emitEndereco?: string | null;        // endereço completo (rua, nº, bairro, cidade/UF)
+  // Gorjeta / taxa de serviço — opcional, SUGERIDA na conta; se paga entra no
+  // total mas NÃO no cálculo do imposto (na NFC-e vai como item NCM 00000000 /
+  // CST 40 / PIS-COFINS 08, imposto zero — igual à Altec).
+  gorjetaAtiva?: boolean;
+  gorjetaPercentual?: number | null;   // ex.: 10
+  gorjetaCategoriaIds?: string[];      // categorias com gorjeta em TODOS os produtos
+  gorjetaProdutoIds?: string[];        // produtos avulsos com gorjeta
   atualizadoEm?: string | null;
 };
 
@@ -6719,7 +6726,12 @@ export type Comanda = {
   modo?: "conta" | "togo";             // conta aberta (fica consumindo) × leva e vai embora
   pessoas?: number;                    // nº de pessoas na comanda (controle do dia + divisão sugerida)
   itens: ComandaItem[];
-  total: number;
+  total: number;                       // subtotal dos PRODUTOS (sem gorjeta)
+  // Gorjeta / taxa de serviço (opcional). `gorjetaSugerida` = % sobre os itens
+  // elegíveis; `gorjeta` = o que foi EFETIVAMENTE pago (0 = não paga), editável
+  // no caixa. A pagar = total + (gorjeta||0).
+  gorjetaSugerida?: number | null;
+  gorjeta?: number | null;
   pagamentos: ComandaPagamento[];
   valorPago: number;
   criadoEm: string;

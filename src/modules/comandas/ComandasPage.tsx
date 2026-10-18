@@ -45,6 +45,23 @@ const baseForma = (f: string): string => (f || "").split(" · ")[0].trim();
 // Formas padrão sempre exibidas na conferência do caixa (p/ conciliar).
 const FORMAS_PADRAO = ["Dinheiro", "Cartão (Crédito)", "Cartão (Débito)", "Pix (TEF)"];
 
+// ── Gorjeta / taxa de serviço ──────────────────────────────────────────────
+// Sugestão = % (do fiscalCfg) sobre o total dos itens elegíveis (categoria inteira
+// marcada OU produto avulso marcado). `gorjeta` (paga) é decidida no fechamento;
+// até lá vale a sugestão. A pagar = produtos + gorjeta efetiva.
+function gorjetaSugeridaDe(itens: ComandaItem[], cfg: ComandaFiscalConfig | null | undefined): number {
+  if (!cfg?.gorjetaAtiva) return 0;
+  const pct = cfg.gorjetaPercentual || 0;
+  if (pct <= 0) return 0;
+  const cats = new Set(cfg.gorjetaCategoriaIds || []);
+  const prods = new Set(cfg.gorjetaProdutoIds || []);
+  if (!cats.size && !prods.size) return 0;
+  const base = itens.reduce((s, i) => (cats.has(i.categoriaId || "") || prods.has(i.produtoId || "")) ? s + (i.total || 0) : s, 0);
+  return +(base * pct / 100).toFixed(2);
+}
+const gorjetaEfetiva = (c: Comanda): number => (c.gorjeta != null ? c.gorjeta : (c.gorjetaSugerida || 0));
+const totalAPagarComanda = (c: Comanda): number => +(((c.total || 0) + gorjetaEfetiva(c))).toFixed(2);
+
 // Input de dinheiro estilo maquininha: digita e preenche dos centavos p/ a
 // esquerda (1 → 0,01 → 0,12 → 1,23…). Guarda o valor em CENTAVOS (number).
 function MoneyInput({ cents, onChange, autoFocus, className }: { cents: number; onChange: (c: number) => void; autoFocus?: boolean; className?: string }) {
@@ -299,7 +316,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                       <span>{c.itens.length} item(ns){c.pessoas && c.pessoas > 1 ? ` · ${c.pessoas}p` : ""}</span>
                       {aberta && c.criadoEm && <span className={`inline-flex items-center gap-0.5 ${velha ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-gray-400"}`}><Clock size={10} /> {tempoDecorrido(c.criadoEm)}</span>}
                     </div>
-                    <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(c.total)}{parcial && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 ml-1">falta {fmtR(c.total - (c.valorPago || 0))}</span>}</div>
+                    <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(totalAPagarComanda(c))}{parcial && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 ml-1">falta {fmtR(totalAPagarComanda(c) - (c.valorPago || 0))}</span>}</div>
                   </button>
                   );
                 })}
@@ -773,7 +790,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
 
   function recompor(itens: ComandaItem[]): Partial<Comanda> {
     const total = itens.reduce((s, i) => s + (i.total || 0), 0);
-    return { itens, total };
+    return { itens, total, gorjetaSugerida: gorjetaSugeridaDe(itens, fiscalCfg) };
   }
   async function patch(campos: Partial<Comanda>) {
     await salvarComanda({ ...comanda, ...campos } as Comanda);
@@ -1000,8 +1017,11 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       id: uid(), restaurantId: rid, tipo: "conta", rotulo: "CONTA", comandaId: comanda.id,
       comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
       titulo: nomeRest || "CONTA",
-      linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
-      total: fmtR(comanda.total),
+      linhas: [
+        ...agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
+        ...(gorjetaEfetiva(comanda) > 0 ? [{ nome: "Serviço", qtd: null, valor: fmtR(gorjetaEfetiva(comanda)) }] : []),
+      ],
+      total: fmtR(totalAPagarComanda(comanda)),
       rodape: (comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
       status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
     };
@@ -1019,7 +1039,8 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
         </div>
         <div className="text-right">
           <div className="text-[10px] uppercase text-gray-400 font-bold">Total</div>
-          <div className="text-lg font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums leading-none">{fmtR(comanda.total)}</div>
+          <div className="text-lg font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums leading-none">{fmtR(totalAPagarComanda(comanda))}</div>
+          {gorjetaEfetiva(comanda) > 0 && <div className="text-[10px] text-gray-400 tabular-nums">+{fmtR(gorjetaEfetiva(comanda))} serviço</div>}
         </div>
       </div>
 
@@ -1131,7 +1152,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
               <Printer size={17} /> Imprimir cozinha{pendentesProducao.length ? ` (${pendentesProducao.length})` : ""}
             </button>
             <button onClick={pedirFechar} className="basis-full sm:basis-0 sm:flex-1 h-11 rounded-xl bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-1.5">
-              <Check size={18} /> Fechar · {fmtR(comanda.total)}
+              <Check size={18} /> Fechar · {fmtR(totalAPagarComanda(comanda))}
             </button>
           </>
           )
@@ -1141,7 +1162,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       </div>
 
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
-      {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} onClose={() => setFechar(false)} onFechado={aposFecharVenda} />}
+      {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} fiscalCfg={fiscalCfg} onClose={() => setFechar(false)} onFechado={aposFecharVenda} />}
       {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} onImprimir={() => void reimprimirConta()} />}
       {cpfModal && (
         <NfceInputModal
@@ -1247,8 +1268,10 @@ function ContaClienteView({ comanda, nomeRest, logoUrl, onClose, onImprimir }: {
 // Cupom (comanda/recibo) — visual inspirado em cupom fiscal. Reusado na tela do
 // cliente e na comanda fechada. Logo da empresa vem do módulo Sites.
 function ContaCupom({ comanda, nomeRest, logoUrl }: { comanda: Comanda; nomeRest: string; logoUrl: string | null }) {
-  const saldo = +(comanda.total - (comanda.valorPago || 0)).toFixed(2);
-  const porPessoa = comanda.pessoas && comanda.pessoas > 1 ? +(comanda.total / comanda.pessoas).toFixed(2) : null;
+  const gorj = gorjetaEfetiva(comanda);
+  const aPagar = totalAPagarComanda(comanda);
+  const saldo = +(aPagar - (comanda.valorPago || 0)).toFixed(2);
+  const porPessoa = comanda.pessoas && comanda.pessoas > 1 ? +(aPagar / comanda.pessoas).toFixed(2) : null;
   return (
     <div className="mx-auto w-full max-w-[380px] bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4 font-mono text-[13px] text-gray-900 dark:text-gray-100">
       <div className="text-center">
@@ -1271,7 +1294,11 @@ function ContaCupom({ comanda, nomeRest, logoUrl }: { comanda: Comanda; nomeRest
         {comanda.itens.length === 0 && <div className="text-gray-400 text-center py-2">Sem itens.</div>}
       </div>
       <div className="border-t border-dashed border-gray-300 dark:border-gray-700 my-2" />
-      <div className="flex items-center justify-between text-lg font-extrabold"><span>TOTAL</span><span className="tabular-nums">{fmtR(comanda.total)}</span></div>
+      {gorj > 0 && (<>
+        <div className="flex items-center justify-between text-[13px]"><span>Produtos</span><span className="tabular-nums">{fmtR(comanda.total)}</span></div>
+        <div className="flex items-center justify-between text-[13px]"><span>Serviço{comanda.gorjeta == null ? " (sugerido)" : ""}</span><span className="tabular-nums">{fmtR(gorj)}</span></div>
+      </>)}
+      <div className="flex items-center justify-between text-lg font-extrabold"><span>TOTAL</span><span className="tabular-nums">{fmtR(aPagar)}</span></div>
       {porPessoa && <div className="flex items-center justify-between text-[12px] text-gray-500 mt-0.5"><span>Sugestão por pessoa ({comanda.pessoas})</span><span className="tabular-nums">{fmtR(porPessoa)}</span></div>}
       {(comanda.pagamentos || []).length > 0 && (
         <div className="mt-2 text-[12px] text-gray-600 dark:text-gray-300">
@@ -1330,10 +1357,17 @@ function PesoModal({ produto, onClose, onConfirmar }: { produto: ComandaProduto;
 }
 
 // ── Fechar / pagar (com split: vários pagamentos nomeados) ──────────────────
-function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFechado }: {
-  comanda: Comanda; meNome: string; nomeRest: string; rid: string; logoUrl: string | null; onClose: () => void; onFechado: () => void;
+function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClose, onFechado }: {
+  comanda: Comanda; meNome: string; nomeRest: string; rid: string; logoUrl: string | null; fiscalCfg: ComandaFiscalConfig | null; onClose: () => void; onFechado: () => void;
 }) {
-  const saldo = +(comanda.total - comanda.valorPago).toFixed(2);
+  // Gorjeta sugerida (congelada no recompor); o atendente confirma/edita/remove.
+  const gorjSugerida = comanda.gorjetaSugerida || 0;
+  const gorjPct = fiscalCfg?.gorjetaPercentual || 0;
+  const [incluirGorj, setIncluirGorj] = useState(gorjSugerida > 0);
+  const [gorjTxt, setGorjTxt] = useState(gorjSugerida > 0 ? gorjSugerida.toFixed(2).replace(".", ",") : "");
+  const gorjVal = incluirGorj ? Math.max(0, +(parseFloat((gorjTxt || "").replace(/\./g, "").replace(",", ".")) || 0).toFixed(2)) : 0;
+  const totalPagar = +(comanda.total + gorjVal).toFixed(2);
+  const saldo = +(totalPagar - comanda.valorPago).toFixed(2);
   const [pessoas, setPessoas] = useState(String(comanda.pessoas || 1));
   const [linhas, setLinhas] = useState<ComandaPagamento[]>([]);   // pagamentos sendo lançados agora
   const [valorTxt, setValorTxt] = useState("");
@@ -1345,7 +1379,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   const [formaManual, setFormaManual] = useState("Cartão (Crédito)");
   const [autoFechar, setAutoFechar] = useState(false);  // ao TEF aprovar e quitar, fecha sozinho
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
-  const porPessoa = +(comanda.total / nPessoas).toFixed(2);
+  const porPessoa = +(totalPagar / nPessoas).toFixed(2);
   const [preImpresso, setPreImpresso] = useState(false);
   async function imprimirPreConta() {
     await superseedContaJobs(rid, comanda.id);
@@ -1353,8 +1387,11 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
       id: uid(), restaurantId: rid, tipo: "conta", rotulo: "PRÉ-CONTA", comandaId: comanda.id,
       comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
       titulo: nomeRest || "CONTA",
-      linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
-      total: fmtR(comanda.total),
+      linhas: [
+        ...agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
+        ...(gorjVal > 0 ? [{ nome: `Serviço${gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""}`, qtd: null, valor: fmtR(gorjVal) }] : []),
+      ],
+      total: fmtR(totalPagar),
       rodape: (comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
       status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
     });
@@ -1392,9 +1429,11 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
       const linhasFinais = valorIn > 0 ? [...linhas, { forma: "Dinheiro", valor: +valorIn.toFixed(2), em: new Date().toISOString(), porNome: meNome }] : linhas;
       const pags: ComandaPagamento[] = [...comanda.pagamentos, ...linhasFinais];
       const valorPago = +pags.reduce((s, p) => s + p.valor, 0).toFixed(2);
-      const quitou = valorPago >= comanda.total - 0.001;
+      const quitou = valorPago >= totalPagar - 0.001;
       await salvarComanda({
         ...comanda, pessoas: nPessoas, pagamentos: pags, valorPago,
+        // Congela a gorjeta ao FECHAR (0 = não paga). Parcial: mantém a atual.
+        gorjeta: quitou ? gorjVal : (comanda.gorjeta ?? null),
         status: quitou ? "fechada" : "aberta",
         fechadoEm: quitou ? new Date().toISOString() : null,
         fechadoPorNome: quitou ? meNome : null,
@@ -1405,9 +1444,12 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           id: uid(), restaurantId: rid, tipo: "conta", rotulo: "CONTA", comandaId: comanda.id,
           comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
           titulo: nomeRest || "CONTA",
-          linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
-          total: fmtR(comanda.total),
-          rodape: `${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(comanda.total - valorPago)}`}`,
+          linhas: [
+            ...agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
+            ...(gorjVal > 0 ? [{ nome: `Serviço${gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""}`, qtd: null, valor: fmtR(gorjVal) }] : []),
+          ],
+          total: fmtR(totalPagar),
+          rodape: `${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(totalPagar - valorPago)}`}`,
           status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
         };
         await criarPrintJob(job);
@@ -1424,10 +1466,39 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
         <div className="rounded-xl bg-gray-50 dark:bg-gray-800/40 p-3 mb-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600 dark:text-gray-300">Total</span>
-            <span className="text-xl font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums">{fmtR(comanda.total)}</span>
-          </div>
+          {gorjSugerida > 0 ? (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600 dark:text-gray-300">Produtos</span>
+              <span className="tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtR(comanda.total)}</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600 dark:text-gray-300">Total</span>
+              <span className="text-xl font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums">{fmtR(comanda.total)}</span>
+            </div>
+          )}
+          {/* Gorjeta sugerida — opcional, valor editável, pode remover */}
+          {gorjSugerida > 0 && (
+            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <label className="flex items-center justify-between gap-2 cursor-pointer">
+                <span className="inline-flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300">
+                  <input type="checkbox" checked={incluirGorj} onChange={(e) => setIncluirGorj(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
+                  Gorjeta{gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""} <span className="text-[11px] text-gray-400">sugerida</span>
+                </span>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[12px] text-gray-400">R$</span>
+                  <input value={gorjTxt} onChange={(e) => setGorjTxt(e.target.value)} inputMode="decimal" disabled={!incluirGorj} className="w-24 h-8 pl-7 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums disabled:opacity-40" />
+                </div>
+              </label>
+              <p className="text-[10px] text-gray-400 mt-1">Opcional — ajuste o valor ou desmarque se o cliente não pagar.</p>
+            </div>
+          )}
+          {gorjSugerida > 0 && (
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Total a pagar</span>
+              <span className="text-xl font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums">{fmtR(totalPagar)}</span>
+            </div>
+          )}
           {comanda.valorPago > 0 && <div className="flex items-center justify-between text-[12px] text-gray-500 mt-0.5"><span>Já pago antes</span><span className="tabular-nums">{fmtR(comanda.valorPago)} · falta {fmtR(saldo)}</span></div>}
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
             <div className="inline-flex items-center gap-1.5 text-sm">
@@ -1580,9 +1651,10 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
 
   const abertas = noPeriodo.filter((c) => c.status === "aberta");
   const fechadas = noPeriodo.filter((c) => c.status === "fechada");
-  const emAberto = abertas.reduce((s, c) => s + (c.total - (c.valorPago || 0)), 0);
+  const emAberto = abertas.reduce((s, c) => s + (totalAPagarComanda(c) - (c.valorPago || 0)), 0);
   const recebido = noPeriodo.reduce((s, c) => s + (c.valorPago || 0), 0);
-  const faturamento = noPeriodo.reduce((s, c) => s + (c.total || 0), 0);
+  const faturamento = noPeriodo.reduce((s, c) => s + totalAPagarComanda(c), 0);   // produtos + gorjeta
+  const servico = noPeriodo.reduce((s, c) => s + gorjetaEfetiva(c), 0);           // só a gorjeta (serviço)
   const pessoas = noPeriodo.reduce((s, c) => s + (c.pessoas || 1), 0);
   const itensConsumidos = noPeriodo.reduce((s, c) => s + c.itens.reduce((a, i) => a + (i.porPeso ? 1 : i.qtd), 0), 0);
   const porForma = useMemo(() => {
@@ -1690,7 +1762,7 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <Card label="Faturamento" valor={fmtR(faturamento)} tone="text-indigo-700 dark:text-indigo-300" hint={`${noPeriodo.length} comanda(s)`} />
+        <Card label="Faturamento" valor={fmtR(faturamento)} tone="text-indigo-700 dark:text-indigo-300" hint={servico > 0 ? `inclui ${fmtR(servico)} serviço` : `${noPeriodo.length} comanda(s)`} />
         <Card label="Recebido" valor={fmtR(recebido)} tone="text-emerald-600 dark:text-emerald-300" hint={`${fechadas.length} paga(s)`} />
         <Card label="Em aberto" valor={fmtR(emAberto)} tone={emAberto > 0 ? "text-amber-600 dark:text-amber-300" : undefined} hint={`${abertas.length} aberta(s)`} />
         <Card label="Ticket médio" valor={fmtR(ticketMedio)} hint={`${fmtR(ticketPessoa)}/pessoa`} />
@@ -1832,7 +1904,7 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
                   {temNfce && (nfceCancelada
                     ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300 shrink-0">NFC-e cancelada</span>
                     : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300 shrink-0">NFC-e</span>)}
-                  <span className="w-20 text-right tabular-nums text-[13px] font-semibold text-gray-900 dark:text-gray-100 shrink-0">{fmtR(c.total)}</span>
+                  <span className="w-20 text-right tabular-nums text-[13px] font-semibold text-gray-900 dark:text-gray-100 shrink-0">{fmtR(totalAPagarComanda(c))}</span>
                 </button>
               );
             })}
@@ -2185,12 +2257,108 @@ function CategoriasPanel({ rid, produtos, categorias }: { rid: string; produtos:
 }
 
 // ── Cadastros (menu único: Categorias · Produtos · Fiscal · Impressoras) ────
+// ── Gorjeta (aba Cadastros › Gorjeta) ───────────────────────────────────────
+// % + onde aplica (categoria inteira e/ou produtos avulsos). Salva no fiscalCfg.
+function GorjetaEditor({ rid, cfg, categorias, produtos }: { rid: string; cfg: ComandaFiscalConfig | null; categorias: ComandaCategoria[]; produtos: ComandaProduto[] }) {
+  const [ativa, setAtiva] = useState(false);
+  const [pct, setPct] = useState("10");
+  const [cats, setCats] = useState<Set<string>>(new Set());
+  const [prods, setProds] = useState<Set<string>>(new Set());
+  const [exp, setExp] = useState<Set<string>>(new Set());
+  const [salvo, setSalvo] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!cfg) return;
+    setAtiva(!!cfg.gorjetaAtiva);
+    setPct(cfg.gorjetaPercentual != null ? String(cfg.gorjetaPercentual).replace(".", ",") : "10");
+    setCats(new Set(cfg.gorjetaCategoriaIds || []));
+    setProds(new Set(cfg.gorjetaProdutoIds || []));
+  }, [cfg]);
+  const catsOrd = useMemo(() => [...categorias].sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0)), [categorias]);
+  const prodsDaCat = (cid: string) => produtos.filter((p) => (p.categoriaId || "") === cid && p.ativo !== false);
+  function toggleCat(cid: string) {
+    const n = new Set(cats);
+    if (n.has(cid)) n.delete(cid);
+    else { n.add(cid); const np = new Set(prods); prodsDaCat(cid).forEach((p) => np.delete(p.id)); setProds(np); }
+    setCats(n);
+  }
+  function toggleProd(pid: string) { const n = new Set(prods); if (n.has(pid)) n.delete(pid); else n.add(pid); setProds(n); }
+  function toggleExp(cid: string) { const n = new Set(exp); if (n.has(cid)) n.delete(cid); else n.add(cid); setExp(n); }
+  async function salvar() {
+    setSaving(true);
+    try {
+      const p = parseFloat((pct || "").replace(",", ".")) || 0;
+      await salvarFiscalConfig(rid, { ...(cfg || {}), restaurantId: rid, gorjetaAtiva: ativa, gorjetaPercentual: p, gorjetaCategoriaIds: [...cats], gorjetaProdutoIds: [...prods] });
+      setSalvo(true); setTimeout(() => setSalvo(false), 2500);
+    } finally { setSaving(false); }
+  }
+  const inp = "h-10 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
+  return (
+    <div className="space-y-3">
+      <label className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 cursor-pointer">
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Cobrar gorjeta (taxa de serviço)</span>
+        <input type="checkbox" checked={ativa} onChange={(e) => setAtiva(e.target.checked)} className="accent-indigo-600 w-5 h-5" />
+      </label>
+      {ativa && (<>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="text-sm text-gray-600 dark:text-gray-300">Percentual</label>
+          <div className="relative">
+            <input value={pct} onChange={(e) => setPct(e.target.value)} inputMode="decimal" className={`${inp} w-24 text-right pr-7 tabular-nums`} />
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
+          </div>
+          <span className="text-[12px] text-gray-400">sugerido na conta</span>
+        </div>
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">Aplica em</div>
+          <p className="text-[12px] text-gray-400 mb-2">Marque a <b>categoria inteira</b> ou abra (▸) e escolha <b>produtos específicos</b>.</p>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+            {catsOrd.map((c) => {
+              const ps = prodsDaCat(c.id);
+              const catOn = cats.has(c.id);
+              const nSel = ps.filter((p) => prods.has(p.id)).length;
+              return (
+                <div key={c.id}>
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                      <input type="checkbox" checked={catOn} onChange={() => toggleCat(c.id)} className="accent-indigo-600 w-4 h-4 shrink-0" />
+                      <span className="text-[13px] font-medium text-gray-800 dark:text-gray-100 truncate">{c.nome}</span>
+                      <span className="text-[11px] text-gray-400 shrink-0">({ps.length})</span>
+                      {catOn && <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300 shrink-0">categoria inteira</span>}
+                      {!catOn && nSel > 0 && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300 shrink-0">{nSel} produto(s)</span>}
+                    </label>
+                    {!catOn && ps.length > 0 && <button onClick={() => toggleExp(c.id)} className="text-[13px] text-gray-400 px-1 shrink-0">{exp.has(c.id) ? "▾" : "▸"}</button>}
+                  </div>
+                  {!catOn && exp.has(c.id) && (
+                    <div className="pl-9 pr-3 pb-2 space-y-0.5">
+                      {ps.length === 0 ? <div className="text-[12px] text-gray-400 py-1">Nenhum produto.</div> : ps.map((p) => (
+                        <label key={p.id} className="flex items-center gap-2 py-1 cursor-pointer">
+                          <input type="checkbox" checked={prods.has(p.id)} onChange={() => toggleProd(p.id)} className="accent-indigo-600 w-4 h-4 shrink-0" />
+                          <span className="text-[12px] text-gray-700 dark:text-gray-200 truncate">{p.nome}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </>)}
+      <div className="flex items-center gap-2 pt-1">
+        <button onClick={() => void salvar()} disabled={saving} className="h-10 px-5 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">Salvar</button>
+        {salvo && <span className="text-[13px] font-semibold text-emerald-600 dark:text-emerald-400">salvo ✓</span>}
+      </div>
+      <p className="text-[11px] text-gray-400 leading-relaxed">A gorjeta é <b>sugerida</b> na conta; no fechamento o atendente confirma, pode <b>ajustar o valor ou remover</b>. Se paga, entra no total — e (quando a NFC-e estiver ligada) sai como item de <b>imposto zero</b>.</p>
+    </div>
+  );
+}
+
 function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podeProdutos, podeEstacoes }: {
   rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; fiscalCfg: ComandaFiscalConfig | null; podeProdutos: boolean; podeEstacoes: boolean;
 }) {
   const subs = useMemo(() => {
     const a: { id: string; label: string }[] = [];
-    if (podeProdutos) a.push({ id: "categorias", label: "Categorias" }, { id: "produtos", label: "Produtos" }, { id: "fiscal", label: "Fiscal" });
+    if (podeProdutos) a.push({ id: "categorias", label: "Categorias" }, { id: "produtos", label: "Produtos" }, { id: "gorjeta", label: "Gorjeta" }, { id: "fiscal", label: "Fiscal" });
     if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
     return a;
   }, [podeProdutos, podeEstacoes]);
@@ -2205,6 +2373,7 @@ function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podePr
       </div>
       {atual === "categorias" && <CategoriasPanel rid={rid} produtos={produtos} categorias={categorias} />}
       {atual === "produtos" && <ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} fiscalCfg={fiscalCfg} />}
+      {atual === "gorjeta" && <GorjetaEditor rid={rid} cfg={fiscalCfg} categorias={categorias} produtos={produtos} />}
       {atual === "fiscal" && <FiscalPadraoEditor rid={rid} cfg={fiscalCfg} />}
       {atual === "impressoras" && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
     </div>
