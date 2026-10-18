@@ -388,9 +388,12 @@ def render(estado):
                 left_pairs.append((sec, it)); acc += h
             else:
                 right_pairs.append((sec, it))
-        # Anti-órfão: se uma seção foi quebrada entre as colunas deixando só 1 item
-        # de um lado (ex.: 1 tinto sozinho no pé da esquerda), junta a seção inteira
-        # do outro lado. Seções grandes (quebra ~meio a meio) seguem quebradas.
+        # Anti-órfão CIENTE DE ESPAÇO: se uma seção foi quebrada entre as colunas
+        # deixando só 1 item de um lado, junta a seção inteira do outro lado —
+        # SÓ SE a coluna de destino ainda couber (senão deixa quebrada pra não
+        # estourar). Seções grandes (quebra ~meio a meio) seguem quebradas.
+        AREA_COL = 822.3 - HDR_BOT   # altura útil da coluna da carta
+        col_h = lambda pairs: sum(item_height(c, it) for _, it in pairs)
         if left_pairs and right_pairs and left_pairs[-1][0] == right_pairs[0][0]:
             s = left_pairs[-1][0]
             lrun = 0
@@ -401,9 +404,12 @@ def render(estado):
             for sec, _ in right_pairs:
                 if sec == s: rrun += 1
                 else: break
-            if lrun <= 1 and len(left_pairs) > lrun:
+            lh, rh = col_h(left_pairs), col_h(right_pairs)
+            move_l = sum(item_height(c, it) for _, it in left_pairs[-lrun:])
+            move_r = sum(item_height(c, it) for _, it in right_pairs[:rrun])
+            if lrun <= 1 and len(left_pairs) > lrun and rh + move_l <= AREA_COL:
                 right_pairs[:0] = left_pairs[-lrun:]; del left_pairs[-lrun:]
-            elif rrun <= 1 and len(right_pairs) > rrun:
+            elif rrun <= 1 and len(right_pairs) > rrun and lh + move_r <= AREA_COL:
                 left_pairs.extend(right_pairs[:rrun]); del right_pairs[:rrun]
         def regroup(pairs):
             out = []
