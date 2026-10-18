@@ -382,9 +382,12 @@ def render(estado):
         draw_cover(c, estado.get('curadoria'))   # página 1 da carta: Curadoria (esq) + capa (dir)
         flat = [(sec, it, item_height(c, it)) for sec, items in vinhos for it in items]
         total = sum(h for _, _, h in flat) or 1
+        # Divisão CONTÍGUA: enche a esquerda em ordem até ~metade; assim que um item
+        # vai pra direita, TODOS os seguintes vão também. (Sem isto, um item pequeno
+        # mais à frente "voltava" pra esquerda e embaralhava a ordem de leitura.)
         left_pairs, right_pairs, acc = [], [], 0.0
         for sec, it, h in flat:
-            if acc + h / 2 <= total / 2:
+            if not right_pairs and acc + h / 2 <= total / 2:
                 left_pairs.append((sec, it)); acc += h
             else:
                 right_pairs.append((sec, it))
