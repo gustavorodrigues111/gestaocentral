@@ -53,6 +53,15 @@ function createWindow() {
     },
   });
   win.loadURL(cfg.url || "https://comandas.planejamento.app");
+  // Fix "às vezes não dá pra digitar": o Chromium às vezes perde o FOCO DE TECLADO
+  // do conteúdo web mesmo com a janela focada (clica mas não digita). Re-focar o
+  // webContents quando a janela ganha foco / é restaurada resolve sem precisar
+  // fechar e abrir. (Antes o jeito de "voltar" era reabrir, que refocava.)
+  const refocar = () => { try { if (!win.isDestroyed()) win.webContents.focus(); } catch { /* ignore */ } };
+  win.on("focus", refocar);
+  win.on("show", refocar);
+  win.on("restore", refocar);
+  win.webContents.on("did-finish-load", refocar);
   // Atalhos (sem menu): Cmd/Ctrl+R ou F5 = recarregar (pega a versão nova do
   // sistema na hora); Cmd/Ctrl+Shift+R = recarregar ignorando cache.
   win.webContents.on("before-input-event", (event, input) => {
