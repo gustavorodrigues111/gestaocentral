@@ -968,7 +968,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       titulo: fiscalCfg?.emitRazao || nomeRest || "NFC-e",
       linhas: [
         ...agruparItens(c.itens).map((g) => ({ nome: g.nome, qtd: g.porPeso ? `${fmtNum(g.qtd, 3)}kg` : `${g.qtd}x`, valor: fmtR(g.total) })),
-        ...(gorjetaEfetiva(c) > 0 ? [{ nome: "Gorjeta / Serviço", qtd: "", valor: fmtR(gorjetaEfetiva(c)) }] : []),
+        ...(gorjetaEfetiva(c) > 0 ? [{ nome: "Gorjeta", qtd: "", valor: fmtR(gorjetaEfetiva(c)) }] : []),
       ],
       total: fmtR(totalAPagarComanda(c)),
       rodape: (c.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
@@ -1022,7 +1022,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       titulo: nomeRest || "CONTA",
       linhas: [
         ...agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
-        ...(gorjetaEfetiva(comanda) > 0 ? [{ nome: "Serviço", qtd: null, valor: fmtR(gorjetaEfetiva(comanda)) }] : []),
+        ...(gorjetaEfetiva(comanda) > 0 ? [{ nome: comanda.gorjeta == null ? "Gorjeta sugerida" : "Gorjeta", qtd: null, valor: fmtR(gorjetaEfetiva(comanda)) }] : []),
       ],
       total: fmtR(totalAPagarComanda(comanda)),
       rodape: (comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
@@ -1299,7 +1299,7 @@ function ContaCupom({ comanda, nomeRest, logoUrl }: { comanda: Comanda; nomeRest
       <div className="border-t border-dashed border-gray-300 dark:border-gray-700 my-2" />
       {gorj > 0 && (<>
         <div className="flex items-center justify-between text-[13px]"><span>Produtos</span><span className="tabular-nums">{fmtR(comanda.total)}</span></div>
-        <div className="flex items-center justify-between text-[13px]"><span>Serviço{comanda.gorjeta == null ? " (sugerido)" : ""}</span><span className="tabular-nums">{fmtR(gorj)}</span></div>
+        <div className="flex items-center justify-between text-[13px]"><span>{comanda.gorjeta == null ? "Gorjeta sugerida" : "Gorjeta"}</span><span className="tabular-nums">{fmtR(gorj)}</span></div>
       </>)}
       <div className="flex items-center justify-between text-lg font-extrabold"><span>TOTAL</span><span className="tabular-nums">{fmtR(aPagar)}</span></div>
       {porPessoa && <div className="flex items-center justify-between text-[12px] text-gray-500 mt-0.5"><span>Sugestão por pessoa ({comanda.pessoas})</span><span className="tabular-nums">{fmtR(porPessoa)}</span></div>}
@@ -1392,7 +1392,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
       titulo: nomeRest || "CONTA",
       linhas: [
         ...agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
-        ...(gorjVal > 0 ? [{ nome: `Serviço${gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""}`, qtd: null, valor: fmtR(gorjVal) }] : []),
+        ...(gorjVal > 0 ? [{ nome: `Gorjeta sugerida${gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""}`, qtd: null, valor: fmtR(gorjVal) }] : []),
       ],
       total: fmtR(totalPagar),
       rodape: (comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
@@ -1449,7 +1449,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
           titulo: nomeRest || "CONTA",
           linhas: [
             ...agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
-            ...(gorjVal > 0 ? [{ nome: `Serviço${gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""}`, qtd: null, valor: fmtR(gorjVal) }] : []),
+            ...(gorjVal > 0 ? [{ nome: `Gorjeta${gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""}`, qtd: null, valor: fmtR(gorjVal) }] : []),
           ],
           total: fmtR(totalPagar),
           rodape: `${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(totalPagar - valorPago)}`}`,
