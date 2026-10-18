@@ -1546,6 +1546,8 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
   const [preset, setPreset] = useState("hoje");
   const [de, setDe] = useState(hoje);
   const [ate, setAte] = useState(hoje);
+  const [ordemVendas, setOrdemVendas] = useState<"recentes" | "maior" | "menor">("recentes");
+  const [ordemProd, setOrdemProd] = useState<"valor" | "qtd">("valor");
   const PRESETS = [{ id: "hoje", label: "Hoje" }, { id: "ontem", label: "Ontem" }, { id: "7d", label: "7 dias" }, { id: "mes", label: "Este mês" }, { id: "custom", label: "Período" }];
   function aplicar(id: string) {
     setPreset(id);
@@ -1591,16 +1593,16 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
   const ticketMedio = noPeriodo.length ? faturamento / noPeriodo.length : 0;
   const ticketPessoa = pessoas ? faturamento / pessoas : 0;
 
-  // Produtos mais vendidos no período (por faturamento; mostra também a qtd).
+  // Produtos mais vendidos no período (ordenável por valor OU quantidade).
   const maisVendidos = useMemo(() => {
     const m = new Map<string, { nome: string; qtd: number; total: number; porPeso: boolean }>();
     for (const c of noPeriodo) for (const it of c.itens) {
       const o = m.get(it.nome) || { nome: it.nome, qtd: 0, total: 0, porPeso: !!it.porPeso };
       o.qtd += it.qtd || 0; o.total += it.total || 0; m.set(it.nome, o);
     }
-    return [...m.values()].sort((a, b) => b.total - a.total);
-  }, [comandas, d0, d1]); // eslint-disable-line react-hooks/exhaustive-deps
-  const maxProd = maisVendidos[0]?.total || 1;
+    return [...m.values()].sort((a, b) => ordemProd === "qtd" ? b.qtd - a.qtd : b.total - a.total);
+  }, [comandas, d0, d1, ordemProd]); // eslint-disable-line react-hooks/exhaustive-deps
+  const maxProd = (ordemProd === "qtd" ? maisVendidos[0]?.qtd : maisVendidos[0]?.total) || 1;
 
   // Faturamento por categoria (cruza categoriaId do item com o catálogo).
   const porCategoria = useMemo(() => {
@@ -1615,6 +1617,37 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
     const soma = arr.reduce((s, x) => s + x.total, 0) || 1;
     return arr.map((x) => ({ ...x, pct: x.total / soma }));
   }, [comandas, d0, d1, categorias]); // eslint-disable-line react-hooks/exhaustive-deps
+  const maxForma = porForma[0]?.[1] || 1;
+  const somaForma = porForma.reduce((s, [, v]) => s + v, 0) || 1;
+
+  // Lançamentos de produto por hora do dia (fuso local) — mostra os picos de venda.
+  const porHora = useMemo(() => {
+    const qtd = new Array(24).fill(0);   // nº de lançamentos (linhas de item)
+    const val = new Array(24).fill(0);   // faturamento lançado na hora
+    for (const c of noPeriodo) for (const it of c.itens) {
+      const s = it.criadoEm; if (!s) continue;
+      const h = new Date(s).getHours();
+      if (h < 0 || h > 23) continue;
+      qtd[h] += 1; val[h] += it.total || 0;
+    }
+    const comAlgo = qtd.map((q, h) => ({ h, q, v: val[h] })).filter((x) => x.q > 0);
+    const hMin = comAlgo.length ? comAlgo[0].h : 0;
+    const hMax = comAlgo.length ? comAlgo[comAlgo.length - 1].h : 0;
+    const faixa = [];
+    for (let h = hMin; h <= hMax; h++) faixa.push({ h, q: qtd[h], v: val[h] });
+    const maxQ = Math.max(1, ...faixa.map((x) => x.q));
+    const pico = comAlgo.length ? comAlgo.reduce((a, b) => (b.q > a.q ? b : a)) : null;
+    return { faixa, maxQ, pico, total: comAlgo.reduce((s, x) => s + x.q, 0) };
+  }, [comandas, d0, d1]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lista de vendas ordenável.
+  const vendasOrdenadas = useMemo(() => {
+    const arr = [...noPeriodo];
+    if (ordemVendas === "maior") arr.sort((a, b) => (b.total || 0) - (a.total || 0));
+    else if (ordemVendas === "menor") arr.sort((a, b) => (a.total || 0) - (b.total || 0));
+    else arr.sort((a, b) => (b.fechadoEm || b.criadoEm || "").localeCompare(a.fechadoEm || a.criadoEm || ""));
+    return arr;
+  }, [comandas, d0, d1, ordemVendas]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Card = ({ label, valor, tone, hint }: { label: string; valor: string; tone?: string; hint?: string }) => (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
@@ -1659,30 +1692,47 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
       {porForma.length > 0 && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Recebido por forma</div>
-          <div className="flex flex-wrap gap-2">
-            {porForma.map(([f, v]) => <span key={f} className="text-[12px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{f} <b className="tabular-nums">{fmtR(v)}</b></span>)}
+          <div className="space-y-2">
+            {porForma.map(([f, v]) => (
+              <div key={f}>
+                <div className="flex items-center gap-2 text-[12px]">
+                  <span className="flex-1 min-w-0 truncate text-gray-700 dark:text-gray-200">{f}</span>
+                  <span className="tabular-nums text-gray-400">{Math.round((v / somaForma) * 100)}%</span>
+                  <span className="w-20 text-right tabular-nums font-semibold text-emerald-600 dark:text-emerald-300">{fmtR(v)}</span>
+                </div>
+                <div className="mt-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"><div className="h-full bg-emerald-400 dark:bg-emerald-600 rounded-full" style={{ width: `${Math.max(3, (v / maxForma) * 100)}%` }} /></div>
+              </div>
+            ))}
           </div>
         </div>
       )}
-      {/* Mais vendidos no período (por faturamento) */}
+      {/* Mais vendidos no período — ordenável por valor ou quantidade */}
       {maisVendidos.length > 0 && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-800">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Mais vendidos</span>
-            <span className="text-[12px] text-gray-500">{maisVendidos.length} produto(s)</span>
+            <div className="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5">
+              <button onClick={() => setOrdemProd("valor")} className={`px-2 h-6 rounded-md text-[11px] font-bold ${ordemProd === "valor" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Valor</button>
+              <button onClick={() => setOrdemProd("qtd")} className={`px-2 h-6 rounded-md text-[11px] font-bold ${ordemProd === "qtd" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Qtd</button>
+            </div>
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[48vh] overflow-y-auto">
-            {maisVendidos.slice(0, 20).map((p, i) => (
+            {maisVendidos.slice(0, 30).map((p, i) => {
+              const metric = ordemProd === "qtd" ? p.qtd : p.total;
+              const qtdTxt = p.porPeso ? `${fmtNum(p.qtd, 2)} kg` : `${p.qtd}x`;
+              return (
               <div key={p.nome} className="px-3 py-2">
                 <div className="flex items-center gap-2 text-[13px]">
                   <span className="w-5 text-right tabular-nums text-gray-400 shrink-0">{i + 1}</span>
                   <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-100">{p.nome}</span>
-                  <span className="tabular-nums text-[12px] text-gray-400 shrink-0">{p.porPeso ? `${fmtNum(p.qtd, 2)} kg` : `${p.qtd}x`}</span>
-                  <span className="w-20 text-right tabular-nums font-semibold text-indigo-700 dark:text-indigo-300 shrink-0">{fmtR(p.total)}</span>
+                  {ordemProd === "qtd"
+                    ? <><span className="tabular-nums text-[12px] text-gray-400 shrink-0">{fmtR(p.total)}</span><span className="w-16 text-right tabular-nums font-semibold text-indigo-700 dark:text-indigo-300 shrink-0">{qtdTxt}</span></>
+                    : <><span className="tabular-nums text-[12px] text-gray-400 shrink-0">{qtdTxt}</span><span className="w-20 text-right tabular-nums font-semibold text-indigo-700 dark:text-indigo-300 shrink-0">{fmtR(p.total)}</span></>}
                 </div>
-                <div className="mt-1 h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"><div className="h-full bg-indigo-400 dark:bg-indigo-600 rounded-full" style={{ width: `${Math.max(3, (p.total / maxProd) * 100)}%` }} /></div>
+                <div className="mt-1 h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"><div className="h-full bg-indigo-400 dark:bg-indigo-600 rounded-full" style={{ width: `${Math.max(3, (metric / maxProd) * 100)}%` }} /></div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1704,15 +1754,39 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
           </div>
         </div>
       )}
+      {/* Horário de venda — lançamentos de produto por hora do dia (picos) */}
+      {porHora.faixa.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Horário de venda</span>
+            {porHora.pico && <span className="text-[11px] text-gray-500">pico <b className="text-indigo-600 dark:text-indigo-300 tabular-nums">{porHora.pico.h}h</b> · {porHora.pico.q} lanç. · {fmtR(porHora.pico.v)}</span>}
+          </div>
+          <div className="flex items-end gap-0.5 h-24">
+            {porHora.faixa.map((x) => (
+              <div key={x.h} title={`${x.h}h — ${x.q} lançamento(s) · ${fmtR(x.v)}`} className={`flex-1 min-w-0 rounded-t ${x.q === porHora.maxQ ? "bg-indigo-600" : "bg-indigo-300 dark:bg-indigo-700"}`} style={{ height: `${Math.max(2, (x.q / porHora.maxQ) * 100)}%` }} />
+            ))}
+          </div>
+          <div className="flex gap-0.5 mt-1">
+            {porHora.faixa.map((x) => (
+              <span key={x.h} className="flex-1 min-w-0 text-center text-[9px] text-gray-400 tabular-nums">{x.h}</span>
+            ))}
+          </div>
+          <div className="text-[10px] text-gray-400 text-center mt-1">lançamentos de produto por hora ({porHora.total} no período)</div>
+        </div>
+      )}
       {/* Lista de vendas (individuais) — clique abre o cupom p/ reimprimir/emitir NFC-e/reabrir */}
       {noPeriodo.length > 0 && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Vendas{umDia ? "" : " no período"}</span>
-            <span className="text-[12px] text-gray-500">{noPeriodo.length} comanda(s)</span>
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 shrink-0">Vendas{umDia ? "" : " no período"} <span className="text-gray-300 dark:text-gray-600">({noPeriodo.length})</span></span>
+            <div className="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5">
+              <button onClick={() => setOrdemVendas("recentes")} className={`px-2 h-6 rounded-md text-[11px] font-bold ${ordemVendas === "recentes" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Recentes</button>
+              <button onClick={() => setOrdemVendas("maior")} className={`px-2 h-6 rounded-md text-[11px] font-bold ${ordemVendas === "maior" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Maior</button>
+              <button onClick={() => setOrdemVendas("menor")} className={`px-2 h-6 rounded-md text-[11px] font-bold ${ordemVendas === "menor" ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Menor</button>
+            </div>
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[52vh] overflow-y-auto">
-            {[...noPeriodo].sort((a, b) => (b.fechadoEm || b.criadoEm || "").localeCompare(a.fechadoEm || a.criadoEm || "")).map((c) => {
+            {vendasOrdenadas.map((c) => {
               const es = c.fechadoEm || c.criadoEm; const hora = es ? new Date(es).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
               const formas = [...new Set((c.pagamentos || []).map((p) => p.forma))].join(", ");
               const temNfce = !!c.nfce?.chave;
