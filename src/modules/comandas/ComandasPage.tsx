@@ -1548,6 +1548,7 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
   const [ate, setAte] = useState(hoje);
   const [ordemVendas, setOrdemVendas] = useState<"recentes" | "maior" | "menor">("recentes");
   const [ordemProd, setOrdemProd] = useState<"valor" | "qtd">("valor");
+  const [horaSel, setHoraSel] = useState<number | null>(null);   // barra clicada no gráfico de horário
   const PRESETS = [{ id: "hoje", label: "Hoje" }, { id: "ontem", label: "Ontem" }, { id: "7d", label: "7 dias" }, { id: "mes", label: "Este mês" }, { id: "custom", label: "Período" }];
   function aplicar(id: string) {
     setPreset(id);
@@ -1624,17 +1625,18 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
   const porHora = useMemo(() => {
     const qtd = new Array(24).fill(0);   // nº de lançamentos (linhas de item)
     const val = new Array(24).fill(0);   // faturamento lançado na hora
+    const cmd: Set<string>[] = Array.from({ length: 24 }, () => new Set<string>()); // comandas distintas c/ lançamento na hora
     for (const c of noPeriodo) for (const it of c.itens) {
       const s = it.criadoEm; if (!s) continue;
       const h = new Date(s).getHours();
       if (h < 0 || h > 23) continue;
-      qtd[h] += 1; val[h] += it.total || 0;
+      qtd[h] += 1; val[h] += it.total || 0; cmd[h].add(c.id);
     }
-    const comAlgo = qtd.map((q, h) => ({ h, q, v: val[h] })).filter((x) => x.q > 0);
+    const comAlgo = qtd.map((q, h) => ({ h, q, v: val[h], c: cmd[h].size })).filter((x) => x.q > 0);
     const hMin = comAlgo.length ? comAlgo[0].h : 0;
     const hMax = comAlgo.length ? comAlgo[comAlgo.length - 1].h : 0;
-    const faixa = [];
-    for (let h = hMin; h <= hMax; h++) faixa.push({ h, q: qtd[h], v: val[h] });
+    const faixa: { h: number; q: number; v: number; c: number }[] = [];
+    for (let h = hMin; h <= hMax; h++) faixa.push({ h, q: qtd[h], v: val[h], c: cmd[h].size });
     const maxQ = Math.max(1, ...faixa.map((x) => x.q));
     const pico = comAlgo.length ? comAlgo.reduce((a, b) => (b.q > a.q ? b : a)) : null;
     return { faixa, maxQ, pico, total: comAlgo.reduce((s, x) => s + x.q, 0) };
@@ -1762,16 +1764,32 @@ function RelatorioComandas({ comandas, categorias, onAbrir }: { comandas: Comand
             {porHora.pico && <span className="text-[11px] text-gray-500">pico <b className="text-indigo-600 dark:text-indigo-300 tabular-nums">{porHora.pico.h}h</b> · {porHora.pico.q} lanç. · {fmtR(porHora.pico.v)}</span>}
           </div>
           <div className="flex items-end gap-0.5 h-24">
-            {porHora.faixa.map((x) => (
-              <div key={x.h} title={`${x.h}h — ${x.q} lançamento(s) · ${fmtR(x.v)}`} className={`flex-1 min-w-0 rounded-t ${x.q === porHora.maxQ ? "bg-indigo-600" : "bg-indigo-300 dark:bg-indigo-700"}`} style={{ height: `${Math.max(2, (x.q / porHora.maxQ) * 100)}%` }} />
-            ))}
+            {porHora.faixa.map((x) => {
+              const sel = horaSel === x.h;
+              return (
+                <button key={x.h} onClick={() => setHoraSel(sel ? null : x.h)} title={`${x.h}h — ${x.q} lançamento(s) · ${x.c} comanda(s) · ${fmtR(x.v)}`}
+                  className={`flex-1 min-w-0 rounded-t transition-all ${sel ? "bg-indigo-700 ring-2 ring-indigo-400" : x.q === porHora.maxQ ? "bg-indigo-600" : "bg-indigo-300 dark:bg-indigo-700 hover:bg-indigo-400"}`}
+                  style={{ height: `${Math.max(2, (x.q / porHora.maxQ) * 100)}%` }} />
+              );
+            })}
           </div>
           <div className="flex gap-0.5 mt-1">
             {porHora.faixa.map((x) => (
-              <span key={x.h} className="flex-1 min-w-0 text-center text-[9px] text-gray-400 tabular-nums">{x.h}</span>
+              <button key={x.h} onClick={() => setHoraSel(horaSel === x.h ? null : x.h)} className={`flex-1 min-w-0 text-center text-[9px] tabular-nums ${horaSel === x.h ? "text-indigo-600 dark:text-indigo-300 font-bold" : "text-gray-400"}`}>{x.h}</button>
             ))}
           </div>
-          <div className="text-[10px] text-gray-400 text-center mt-1">lançamentos de produto por hora ({porHora.total} no período)</div>
+          {(() => {
+            const d = horaSel != null ? porHora.faixa.find((x) => x.h === horaSel) : null;
+            if (d) return (
+              <div className="mt-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 px-3 py-2 text-[12px] flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5">
+                <b className="text-indigo-700 dark:text-indigo-300 tabular-nums">{d.h}h–{d.h + 1}h</b>
+                <span className="text-gray-600 dark:text-gray-300"><b className="tabular-nums">{d.c}</b> comanda(s)</span>
+                <span className="text-gray-600 dark:text-gray-300"><b className="tabular-nums">{d.q}</b> lançamento(s)</span>
+                <span className="text-emerald-600 dark:text-emerald-300 font-semibold tabular-nums">{fmtR(d.v)}</span>
+              </div>
+            );
+            return <div className="text-[10px] text-gray-400 text-center mt-1">toque numa barra pra ver a hora · {porHora.total} lançamentos no período</div>;
+          })()}
         </div>
       )}
       {/* Lista de vendas (individuais) — clique abre o cupom p/ reimprimir/emitir NFC-e/reabrir */}
