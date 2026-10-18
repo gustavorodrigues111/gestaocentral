@@ -966,8 +966,11 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       id: uid(), restaurantId: rid, tipo: "danfce", rotulo: "DANFE NFC-e", comandaId: c.id,
       comandaNumero: c.numero, clienteNome: c.clienteNome, estacaoId: null, logoUrl,
       titulo: fiscalCfg?.emitRazao || nomeRest || "NFC-e",
-      linhas: agruparItens(c.itens).map((g) => ({ nome: g.nome, qtd: g.porPeso ? `${fmtNum(g.qtd, 3)}kg` : `${g.qtd}x`, valor: fmtR(g.total) })),
-      total: fmtR(c.total),
+      linhas: [
+        ...agruparItens(c.itens).map((g) => ({ nome: g.nome, qtd: g.porPeso ? `${fmtNum(g.qtd, 3)}kg` : `${g.qtd}x`, valor: fmtR(g.total) })),
+        ...(gorjetaEfetiva(c) > 0 ? [{ nome: "Gorjeta / Serviço", qtd: "", valor: fmtR(gorjetaEfetiva(c)) }] : []),
+      ],
+      total: fmtR(totalAPagarComanda(c)),
       rodape: (c.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("\n"),
       nfce: {
         chave: n.chave, numero: n.numero, serie: n.serie, protocolo: n.protocolo, qrcodeUrl: n.qrcodeUrl, qrDataUrl, urlConsulta: n.urlConsulta,

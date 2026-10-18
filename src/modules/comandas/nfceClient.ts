@@ -135,6 +135,43 @@ export function montarNfce(
     item.ibs_valor_total = String(r2(ibsUfV + ibsMunV));
     return item;
   });
+
+  // Gorjeta / taxa de serviço paga → entra na nota como item de IMPOSTO ZERO
+  // (igual à Altec: NCM 00000000, ICMS CST 40 isento, PIS/COFINS CST 08 sem
+  // incidência). IBS/CBS segue o mesmo tratamento de teste dos produtos (período
+  // de teste 2026, simbólico). Assim o valor "entra" mas não tem imposto real.
+  const gorj = r2(comanda.gorjeta || 0);
+  if (gorj > 0) {
+    items.push({
+      numero_item: String(items.length + 1),
+      codigo_produto: "GORJETA",
+      codigo_ncm: "00000000",
+      cfop: cfopPadrao || "5102",
+      descricao: "Gorjeta / Taxa de servico",
+      quantidade_comercial: 1,
+      quantidade_tributavel: 1,
+      valor_unitario_comercial: gorj,
+      valor_unitario_tributavel: gorj,
+      valor_bruto: gorj,
+      unidade_comercial: "UN",
+      unidade_tributavel: "UN",
+      icms_origem: origemPadrao,
+      icms_situacao_tributaria: "40",      // ICMS isento (sem destaque)
+      pis_situacao_tributaria: "08",       // PIS sem incidência
+      cofins_situacao_tributaria: "08",    // COFINS sem incidência
+      ibs_cbs_situacao_tributaria: ibsCbsCst,
+      ibs_cbs_classificacao_tributaria: ibsCbsClass,
+      ibs_cbs_base_calculo: gorj,
+      cbs_aliquota: String(cbsAliq),
+      cbs_valor: String(r2((gorj * cbsAliq) / 100)),
+      ibs_uf_aliquota: String(ibsUfAliq),
+      ibs_uf_valor: String(r2((gorj * ibsUfAliq) / 100)),
+      ibs_mun_aliquota: String(ibsMunAliq),
+      ibs_mun_valor: String(r2((gorj * ibsMunAliq) / 100)),
+      ibs_valor_total: String(r2((gorj * ibsUfAliq) / 100 + (gorj * ibsMunAliq) / 100)),
+    });
+  }
+
   // Agrupa formas de pagamento por código.
   const m = new Map<string, number>();
   for (const pg of comanda.pagamentos || []) m.set(codForma(pg.forma), (m.get(codForma(pg.forma)) || 0) + pg.valor);
