@@ -36,6 +36,8 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
   const [auto, setAuto] = useState(true);
   const [teste, setTeste] = useState<ComandaPrintJob | null>(null);
   const ocupadoRef = useRef(false);
+  const vivoRef = useRef(true);
+  useEffect(() => () => { vivoRef.current = false; }, []);
   // Tamanho da fonte da comanda de PRODUÇÃO (px do item), por dispositivo.
   const [fonteProd, setFonteProd] = useState<number>(() => { try { return parseInt(localStorage.getItem("comandas_fonte_producao") || "", 10) || 22; } catch { return 22; } });
   const mudarFonte = (px: number) => { setFonteProd(px); try { localStorage.setItem("comandas_fonte_producao", String(px)); } catch { /* */ } };
@@ -73,7 +75,8 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
     // App de caixa (Electron): imprime DIRETO na Epson por IP (ESC/POS), sem
     // diálogo. Fora do app: window.print() (Chrome --kiosk-printing).
     const bridge = (typeof window !== "undefined" ? (window as unknown as { pdvBridge?: { print: (j: unknown) => Promise<{ ok: boolean; error?: string }> } }).pdvBridge : undefined);
-    const t = setTimeout(async () => {
+    setTimeout(async () => {
+      if (!vivoRef.current) { ocupadoRef.current = false; return; }   // componente desmontou
       let ok = true;
       if (bridge) {
         try { const r = await bridge.print(prox); ok = !!r?.ok; if (!ok) console.error("[pdvBridge]", r?.error); } catch { ok = false; }
@@ -85,7 +88,10 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
       setAtual(null);
       ocupadoRef.current = false;
     }, bridge ? 50 : 400);
-    return () => clearTimeout(t);
+    // IMPORTANTE: sem clearTimeout no cleanup. Cancelar o timer quando chega outro
+    // job deixaria `ocupadoRef` preso (a trava nunca liberava) e travava a fila
+    // INTEIRA — era o "parou de imprimir tudo". O timer agora sempre completa e
+    // libera a trava; o próprio `ocupadoRef` impede agendar dois ao mesmo tempo.
   }, [jobs, auto]);
 
   const alvo = atual || teste;
