@@ -92,14 +92,6 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
-    // ── /paginasChecklist ── estado compartilhado de checklists de páginas
-    //   públicas (ex.: /paginas/jantar-soeta.html). Só o usuário de serviço
-    //   grava/lê (via /api/checklist); a página pública nunca toca aqui direto.
-    //   Dado não sensível (marcações de lista). ───────────────────────────────
-    match /paginasChecklist/{id} {
-      allow read, write: if authed();
-    }
-
     // ── Altec/Riser (PDV/vendas) ── vendasAltec (feed diário do PDV) + status
     //   do sync. Gravado pelo conector api/altec-sync; lido pelo agente de
     //   vendas e módulos (fechamento, gorjetas). ────────────────────────────
