@@ -29,6 +29,20 @@ const STATUS_RECEBE: Record<ScheduleStatus, boolean> = {
   falta_i:   false,
 };
 
+// Cargo "recebe produção": recebe mesmo na FOLGA (trabalha nos dias em volta),
+// mas NÃO em ausência de verdade — férias e faltas (justificada/injustificada)
+// deixam de receber. (Diferença do STATUS_RECEBE normal: folga = true aqui.)
+const STATUS_RECEBE_PRODUCAO: Record<ScheduleStatus, boolean> = {
+  trabalho:  true,
+  comp_trab: true,
+  comp:      true,
+  folga:     true,   // ← produção recebe na folga
+  ferias:    false,  // ← mas NÃO em férias
+  falta_j:   false,  // ← nem falta justificada
+  falta_i:   false,  // ← nem falta injustificada
+  freela:    false,
+};
+
 export type DivisaoResult = {
   itens: DivisaoItem[];
   totalPontos: number;
@@ -131,10 +145,11 @@ export function calcularDivisaoDia(
 
     if (cargo.recebeProducao) {
       // Cargo "recebe produção" = recebe gorjeta de TODAS as unidades de
-      // atendimento em TODO dia que a casa arrecadou, independente da escala/
-      // presença (folga inclusive) e da unidade onde está lotado. Vale tanto
-      // em single quanto em multi-unidade. Só exige estar ATIVO no dia
-      // (admitido e não demitido) — já checado por empregadoAtivoEm acima.
+      // atendimento em TODO dia que a casa arrecadou, independente da unidade
+      // onde está lotado e mesmo na FOLGA (trabalha nos dias em volta). PORÉM
+      // NÃO recebe em ausência de verdade — FÉRIAS e FALTAS deixam de fora.
+      // Dia sem status (nenhuma escala) segue recebendo (independente da escala).
+      if (status && !STATUS_RECEBE_PRODUCAO[status]) continue;
       motivo = "producao";
     } else {
       // Cargo normal: precisa ter trabalhado
