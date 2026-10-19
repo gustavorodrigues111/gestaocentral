@@ -23,6 +23,7 @@ import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, PAPEL_WHATSAPP_ICON, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
+import { PAISES } from "../eventos/paises";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; falhou?: boolean; incerto?: boolean; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
@@ -2302,7 +2303,25 @@ function EditarContatoModal({ nomeAtual, numeroAtual, onSalvar, onFechar }: {
 function NovaConversaModal({ pessoas, onAbrir, onClose }: { pessoas: Pessoa[]; onAbrir: (waId: string, pessoaId?: string) => void; onClose: () => void }) {
   const [fone, setFone] = useState("");
   const [busca, setBusca] = useState("");
-  const norm = (raw: string) => { let d = (raw || "").replace(/\D/g, ""); if (!d) return ""; if (d.length <= 11) d = "55" + d; return d; };
+  const [paisIso, setPaisIso] = useState("BR");
+  const pais = PAISES.find(p => p.iso === paisIso) || PAISES[0];
+  // Normalização do número DIGITADO, ciente do país escolhido. BR mantém a
+  // regra antiga (prefixa 55 por comprimento — seguro inclusive p/ DDD 55).
+  // Outros países: prefixa o DDI quando vem só o número local; "OUTROS" (DDI
+  // vazio) = o usuário digitou o número internacional completo, não mexe.
+  const norm = (raw: string) => {
+    const d = soDig(raw);
+    if (!d) return "";
+    if (!pais.ddi) return d;                                  // "Outro país": número já com DDI
+    if (pais.iso === "BR") return d.length <= 11 ? "55" + d : d;
+    const ddi = pais.ddi;
+    if (d.length >= pais.minLen && d.length <= pais.maxLen) return ddi + d;  // só local → add DDI
+    if (d.startsWith(ddi)) return d;                          // já veio com DDI
+    return ddi + d;
+  };
+  // Número da PESSOA cadastrada (BR por padrão), independente do país escolhido
+  // pro campo manual.
+  const normBR = (raw: string) => { const d = soDig(raw); if (!d) return ""; return d.length <= 11 ? "55" + d : d; };
   const comFone = useMemo(() => {
     const s = busca.trim().toLowerCase(); const sd = soDig(busca);
     return [...pessoas].filter(p => !!soDig(p.whatsapp))
@@ -2316,12 +2335,21 @@ function NovaConversaModal({ pessoas, onAbrir, onClose }: { pessoas: Pessoa[]; o
       <div className="space-y-4">
         <div>
           <label className="text-[11px] font-semibold text-gray-500 uppercase">Digitar um número</label>
-          <div className="flex gap-2 mt-1">
-            <input value={fone} onChange={e => setFone(e.target.value)} className={inp} placeholder="Ex.: 11 98888-7777" inputMode="tel"
+          <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] gap-2 mt-1">
+            <select value={paisIso} onChange={e => setPaisIso(e.target.value)} className={`${inp} sm:w-auto`} title="País do número">
+              {PAISES.map(p => <option key={p.iso} value={p.iso}>{p.flag} {p.nome}{p.ddi ? ` (+${p.ddi})` : ""}</option>)}
+            </select>
+            <input value={fone} onChange={e => setFone(e.target.value)} className={inp}
+              placeholder={pais.iso === "BR" ? "Ex.: 11 98888-7777" : pais.ddi ? "Só o número local" : "Número completo com DDI"} inputMode="tel"
               onKeyDown={e => { if (e.key === "Enter" && norm(fone)) onAbrir(norm(fone)); }} />
             <Button onClick={() => { const w = norm(fone); if (!w) { alert("Número inválido."); return; } onAbrir(w); }} disabled={!norm(fone)}>Abrir</Button>
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">DDI 55 (Brasil) é assumido se você não colocar.</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            {pais.iso === "BR" ? "DDI 55 (Brasil) é assumido se você não colocar."
+              : pais.ddi ? `Vou enviar com DDI +${pais.ddi} (${pais.nome}) — digite só o número local, sem o DDI.`
+              : "País não listado: digite o número internacional completo, com DDI (sem o \"+\")."}
+            {norm(fone) && <span className="block mt-0.5 text-gray-500">Vai abrir: <span className="font-mono">+{norm(fone)}</span></span>}
+          </p>
         </div>
         <div>
           <label className="text-[11px] font-semibold text-gray-500 uppercase">Ou escolher uma pessoa cadastrada</label>
@@ -2329,7 +2357,7 @@ function NovaConversaModal({ pessoas, onAbrir, onClose }: { pessoas: Pessoa[]; o
           <div className="max-h-56 overflow-y-auto mt-1.5 rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {comFone.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Nenhuma pessoa com WhatsApp encontrada.</div>}
             {comFone.map(p => (
-              <button key={p.id} type="button" onClick={() => onAbrir(norm(p.whatsapp || ""), p.id)} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/40">
+              <button key={p.id} type="button" onClick={() => onAbrir(normBR(p.whatsapp || ""), p.id)} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/40">
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome}</div>
                 <div className="text-[11px] text-gray-400">{foneBonito(p.whatsapp || "")}</div>
               </button>
