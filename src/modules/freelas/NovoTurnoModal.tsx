@@ -327,7 +327,7 @@ export function NovoTurnoModal({
                     onClick={() => setMostrarCadastro(true)}
                     className="w-full text-left px-3 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
                   >
-                    + Cadastrar novo freela
+                    + Novo freela / buscar por CPF
                   </button>
                 </div>
               )}
@@ -337,6 +337,7 @@ export function NovoTurnoModal({
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-900">
                   <CadastroPorCpf
                     restaurantId={restaurantId}
+                    empregados={empregados}
                     onConcluido={(p) => {
                       setMostrarCadastro(false);
                       setSelecionado({ tipo: "freela", pessoa: p });

@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { TriangleAlert, CheckCircle2 } from "lucide-react";
 import {
-  addDoc, arrayUnion, collection, doc, getDocs, limit, query, updateDoc, where,
+  addDoc, arrayUnion, collection, doc, getDoc, getDocs, limit, query, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { Pessoa } from "../../core/types";
+import type { Pessoa, Empregado } from "../../core/types";
 import { onlyDigits } from "./helpers";
 
 type Props = {
   restaurantId: string;
+  // Empregados DESTE restaurante (inclui demitidos) — pra achar por CPF sem query.
+  empregados?: Empregado[];
   // Quando termina, devolve a Pessoa pronta pra ser usada (cadastrada ou
   // vinculada). O caller fecha o sub-modal e seleciona ela.
   onConcluido: (pessoa: Pessoa) => void;
@@ -22,6 +24,9 @@ type EstadoBusca =
   | { tipo: "buscando" }
   | { tipo: "existe_aqui"; pessoa: Pessoa }
   | { tipo: "existe_outro"; pessoa: Pessoa }
+  // Sem Pessoa, mas é/foi EMPREGADO (demitido aqui ou de outro restaurante).
+  // Vira freela (Pessoa nova) carregando o nome; PIX é pedido. SEM acesso.
+  | { tipo: "existe_empregado"; emp: Empregado; mesmoRest: boolean }
   | { tipo: "novo" };
 
 // Sub-modal de cadastro rápido começando pelo CPF. Ao completar 11 dígitos,
@@ -29,7 +34,7 @@ type EstadoBusca =
 //   - já está nesse rid → bloqueia novo cadastro, oferece selecionar
 //   - existe em outro rid → oferece vincular (puxa nome/whats/pix)
 //   - não existe → mostra form completo
-export function CadastroPorCpf({ restaurantId, onConcluido, onCancelar }: Props) {
+export function CadastroPorCpf({ restaurantId, empregados = [], onConcluido, onCancelar }: Props) {
   const [cpf, setCpf] = useState("");
   const [busca, setBusca] = useState<EstadoBusca>({ tipo: "vazio" });
   const [nome, setNome] = useState("");
@@ -60,6 +65,36 @@ export function CadastroPorCpf({ restaurantId, onConcluido, onCancelar }: Props)
         query(collection(db, "pessoas"), where("cpf", "==", d), limit(1)),
       );
       if (snap.empty) {
+        // Não tem Pessoa com esse CPF — procura em EMPREGADOS (demitido daqui /
+        // de outro restaurante sem Pessoa). Local primeiro (grátis), depois global.
+        let emp = empregados.find((e) => e.cpf && onlyDigits(e.cpf) === d) || null;
+        if (!emp) {
+          try {
+            const es = await getDocs(query(collection(db, "empregados"), where("cpf", "==", d), limit(1)));
+            if (!es.empty) emp = { id: es.docs[0].id, ...es.docs[0].data() } as Empregado;
+          } catch { /* sem índice/erro → segue como novo */ }
+        }
+        if (emp) {
+          // Se o empregado já tem Pessoa vinculada, reaproveita ela (evita duplicar).
+          if (emp.pessoaId) {
+            try {
+              const pdoc = await getDoc(doc(db, "pessoas", emp.pessoaId));
+              if (pdoc.exists()) {
+                const pp = { id: pdoc.id, ...pdoc.data() } as Pessoa;
+                if (pp.restaurantIds?.includes(restaurantId)) {
+                  setBusca({ tipo: "existe_aqui", pessoa: pp });
+                } else {
+                  setBusca({ tipo: "existe_outro", pessoa: pp });
+                  setNome(pp.nome || emp.nome || ""); setPix(pp.pix || ""); setWhatsapp(pp.whatsapp || "");
+                }
+                return;
+              }
+            } catch { /* segue como existe_empregado */ }
+          }
+          setBusca({ tipo: "existe_empregado", emp, mesmoRest: emp.restaurantId === restaurantId });
+          setNome(emp.nome || ""); setPix(""); setWhatsapp("");
+          return;
+        }
         setBusca({ tipo: "novo" });
         // Pré-preenche o foco no nome — campos limpos
         setNome(""); setPix(""); setWhatsapp("");
@@ -217,6 +252,27 @@ export function CadastroPorCpf({ restaurantId, onConcluido, onCancelar }: Props)
             <Button onClick={vincularExistente} disabled={saving}>
               {saving ? "Vinculando…" : "Vincular e usar"}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {busca.tipo === "existe_empregado" && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-3">
+          <div className="text-sm text-gray-800 dark:text-gray-100">
+            <CheckCircle2 size={14} className="inline align-[-2px] mr-1" />Encontrei <strong>{busca.emp.nome}</strong> — {busca.mesmoRest
+              ? (busca.emp.estaAtivo ? "já é empregado aqui." : "já foi empregado aqui (demitido).")
+              : "já é/foi empregado em outro restaurante."}
+            <div className="text-[11px] text-gray-600 dark:text-gray-400 mt-1">
+              Vai entrar como <strong>freela</strong> aqui, <strong>sem acesso ao sistema</strong>. Confirme o nome e informe o PIX:
+            </div>
+          </div>
+          <Input label="Nome *" value={nome} onChange={(e) => setNome(e.target.value)} />
+          <Input label="Chave PIX *" value={pix} onChange={(e) => setPix(e.target.value)} placeholder="CPF, email, telefone ou chave aleatória" />
+          <Input label="WhatsApp *" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} inputMode="tel" placeholder="(11) 99999-9999" />
+          {err && <div className="text-xs text-red-600 dark:text-red-400">{err}</div>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={onCancelar} disabled={saving}>Cancelar</Button>
+            <Button onClick={salvarNovo} disabled={saving}>{saving ? "Salvando…" : "Usar como freela"}</Button>
           </div>
         </div>
       )}
