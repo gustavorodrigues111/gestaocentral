@@ -1426,7 +1426,7 @@
 "titulo": "Contrato de trabalho com confidencialidade, LGPD e tempo de contribuição",
 "categoria": "Admissão e contratos",
 "quando_usar": "Na admissão de empregado em jornada padrão (44 horas semanais), quando se quer um contrato individual completo, com cláusulas de confidencialidade e propriedade intelectual, LGPD, uso de imagem e voz, regras de WhatsApp e acompanhamento do tempo de contribuição no MEU INSS (empregado próximo da aposentadoria).",
-"observacoes": "Modelo pensado para assinatura digital/eletrônica: as assinaturas da empregadora, do empregado e das duas testemunhas são \"indicadas na assinatura eletrônica do instrumento\", e o próprio texto avisa que, se a assinatura for digital, o bloco de assinaturas manuscritas deve ser retirado. O empregado tem 30 dias, contados da assinatura, para entregar o extrato de tempo de contribuição do MEU INSS. Prazo de experiência de 45 dias, prorrogável por mais 45. No quadro sintético, os campos FUNÇÃO, REMUNERAÇÃO, DESCRIÇÃO DAS ATIVIDADES e e-mail/WhatsApp de contato vêm com orientações entre parênteses e são editados manualmente — não estão entre os brancos automáticos; a qualificação do empregado também não é preenchida aqui (o modelo remete à assinatura eletrônica).",
+"observacoes": "Modelo pensado para assinatura digital/eletrônica: as assinaturas da empregadora, do empregado e das duas testemunhas são \"indicadas na assinatura eletrônica do instrumento\", e o próprio texto avisa que, se a assinatura for digital, o bloco de assinaturas manuscritas deve ser retirado. O empregado tem 30 dias, contados da assinatura, para entregar o extrato de tempo de contribuição do MEU INSS. Prazo de experiência de 45 dias, prorrogável por mais 45. No quadro sintético, os campos FUNÇÃO, REMUNERAÇÃO, DESCRIÇÃO DAS ATIVIDADES e e-mail/WhatsApp de contato vêm com orientações entre parênteses e são editados manualmente — não estão entre os brancos automáticos. A qualificação do empregado (nome, CPF e endereço) é preenchida no quadro sintético: nome e CPF vêm automáticos do cadastro; o endereço é digitado.",
 "campos": [
 {
 "token": "DATA",
@@ -1435,6 +1435,30 @@
 "obrigatorio": true,
 "origem": "data",
 "ajuda": "O modelo tem um único campo \"Data:\""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "empregado",
+"ajuda": ""
 },
 {
 "token": "RAZAO_SOCIAL",
