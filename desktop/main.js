@@ -9,6 +9,14 @@ const path = require("path");
 const { imprimir, testar } = require("./print");
 const { autoUpdater } = require("electron-updater");
 
+// Fix forte do "não dá pra digitar" no Windows: o Chromium às vezes acha que a
+// janela está ENCOBERTA (occlusion) e para de entregar input/render até um
+// blur/focus. Desligar essa detecção resolve o caso clássico (teclado some no
+// meio da sessão, mouse funciona). Só no Windows; no mac é no-op.
+if (process.platform === "win32") {
+  app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+}
+
 // Auto-update: baixa a versão nova em segundo plano e INSTALA ao fechar o app
 // (não interrompe o operador no meio da venda). Feed público no GCS (generic).
 // Windows: funciona sem assinatura. macOS: só com app assinado (limitação Apple).
