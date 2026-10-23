@@ -71,6 +71,9 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Caixa fica aberto o dia todo; sem throttling o Chromium não degrada o
+      // tratamento de input/timers quando acha que a janela está "em 2º plano".
+      backgroundThrottling: false,
     },
   });
   win.loadURL(cfg.url || "https://comandas.planejamento.app");
@@ -83,6 +86,17 @@ function createWindow() {
   win.on("show", refocar);
   win.on("restore", refocar);
   win.webContents.on("did-finish-load", refocar);
+  // Rede de segurança: às vezes o teclado some NO MEIO da sessão, sem a janela
+  // perder o foco (os eventos acima não disparam). Este monitor re-foca o
+  // conteúdo só quando a JANELA está focada mas o teclado NÃO — é exatamente o
+  // estado do bug, e não rouba foco de outros apps.
+  const guardaFoco = setInterval(() => {
+    try {
+      if (win.isDestroyed()) return;
+      if (win.isFocused() && !win.webContents.isFocused()) win.webContents.focus();
+    } catch { /* ignore */ }
+  }, 1200);
+  win.on("closed", () => { clearInterval(guardaFoco); });
   // Atalhos (sem menu): Cmd/Ctrl+R ou F5 = recarregar (pega a versão nova do
   // sistema na hora); Cmd/Ctrl+Shift+R = recarregar ignorando cache.
   win.webContents.on("before-input-event", (event, input) => {
