@@ -11,10 +11,12 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // URLs dos instaladores do App de Caixa (hospedar no Firebase Storage e colar
 // aqui). Vazio → mostra "em breve". Quando preenchido, viram botões de download.
 // Mesmos arquivos do feed de auto-update (pdv-updates/, token compartilhado) —
-// 1 upload serve download + update.
+// 1 upload serve download + update. Ao publicar nova versão: subir os arquivos,
+// atualizar APP_CAIXA_VERSION e os nomes nos links abaixo.
+const APP_CAIXA_VERSION = "1.0.5";
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.4-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
-  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.4.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.5-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.5.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
@@ -179,10 +181,13 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
           <div className="font-bold text-[13px] inline-flex items-center gap-1.5"><Printer size={14} /> App de caixa (recomendado)</div>
           <p className="opacity-90 mt-0.5">Instale o <b>Planejamento PDV</b> no computador do caixa: abre direto o sistema e imprime na Epson <b>por IP</b> (sem Chrome, sem diálogo, com corte e QR). Também funciona offline.</p>
           {(APP_CAIXA_DOWNLOAD.mac || APP_CAIXA_DOWNLOAD.win) ? (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg)</a>}
-              {APP_CAIXA_DOWNLOAD.win && <a href={APP_CAIXA_DOWNLOAD.win} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Windows (.exe)</a>}
-            </div>
+            <>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg) · v{APP_CAIXA_VERSION}</a>}
+                {APP_CAIXA_DOWNLOAD.win && <a href={APP_CAIXA_DOWNLOAD.win} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Windows (.exe) · v{APP_CAIXA_VERSION}</a>}
+              </div>
+              <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1.5">Versão disponível: <b>v{APP_CAIXA_VERSION}</b>. No caixa, confira em Aplicativos instalados se já está nessa versão.</p>
+            </>
           ) : (
             <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1.5">Instaladores em breve. Enquanto isso, use a configuração do Chrome abaixo.</p>
           )}

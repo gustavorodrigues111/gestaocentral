@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -744,6 +744,8 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
   const [busca, setBusca] = useState("");
   const [catSel, setCatSel] = useState<string>("todas");   // "todas" | categoriaId | "sem"
   const [abaMob, setAbaMob] = useState<"produtos" | "itens">("produtos");   // mobile: alterna grade de produtos × itens lançados (desktop mostra os dois)
+  const [editNome, setEditNome] = useState(false);          // edição inline do nome do cliente
+  const [nomeDraft, setNomeDraft] = useState("");
   const [pesoDe, setPesoDe] = useState<ComandaProduto | null>(null);   // produto por peso aguardando o peso
   const [fechar, setFechar] = useState(false);
   const [verConta, setVerConta] = useState(false);          // tela pra mostrar ao cliente
@@ -1037,7 +1039,26 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <button onClick={() => void sair()} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center" title="Voltar à lista">←</button>
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-gray-900 dark:text-gray-100 truncate leading-tight">#{comanda.numero} · {comanda.clienteNome}{comanda.modo === "togo" && <span className="text-[11px] text-emerald-600 ml-1">to-go</span>}</div>
+          {editNome ? (
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-gray-900 dark:text-gray-100 shrink-0">#{comanda.numero} ·</span>
+              <input
+                value={nomeDraft}
+                onChange={(e) => setNomeDraft(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") { void patch({ clienteNome: nomeDraft.trim() || comanda.clienteNome }); setEditNome(false); } if (e.key === "Escape") setEditNome(false); }}
+                placeholder="nome do cliente"
+                className="min-w-0 flex-1 h-8 px-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
+              />
+              <button onClick={() => { void patch({ clienteNome: nomeDraft.trim() || comanda.clienteNome }); setEditNome(false); }} className="w-8 h-8 shrink-0 grid place-items-center rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white" title="Salvar nome"><Check size={16} /></button>
+              <button onClick={() => setEditNome(false)} className="w-8 h-8 shrink-0 grid place-items-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" title="Cancelar"><X size={16} /></button>
+            </div>
+          ) : (
+            <div className="font-bold text-gray-900 dark:text-gray-100 truncate leading-tight inline-flex items-center gap-1.5 max-w-full">
+              <span className="truncate">#{comanda.numero} · {comanda.clienteNome}{comanda.modo === "togo" && <span className="text-[11px] text-emerald-600 ml-1">to-go</span>}</span>
+              {editavel && <button onClick={() => { setNomeDraft(comanda.clienteNome); setEditNome(true); }} className="shrink-0 w-7 h-7 grid place-items-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-800" title="Editar nome do cliente"><Pencil size={14} /></button>}
+            </div>
+          )}
           <div className="text-[11px] text-gray-500">{comanda.itens.length} item(ns)</div>
         </div>
         <div className="text-right">
