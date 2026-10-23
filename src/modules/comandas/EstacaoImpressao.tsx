@@ -37,12 +37,27 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
   const [teste, setTeste] = useState<ComandaPrintJob | null>(null);
   const ocupadoRef = useRef(false);
   const vivoRef = useRef(true);
+  // Jobs já processados (impressos/erro/expirados) cujo listener do Firestore
+  // ainda pode não ter removido da lista — evita reimprimir enquanto a fila
+  // avança sozinha. `tick` re-dispara o loop logo após cada impressão, sem
+  // esperar o ida-e-volta ao Firestore (era o "a 2ª comanda só sai quando
+  // atualizo/reabro").
+  const feitosRef = useRef<Set<string>>(new Set());
+  const [tick, setTick] = useState(0);
   useEffect(() => () => { vivoRef.current = false; }, []);
   // Tamanho da fonte da comanda de PRODUÇÃO (px do item), por dispositivo.
   const [fonteProd, setFonteProd] = useState<number>(() => { try { return parseInt(localStorage.getItem("comandas_fonte_producao") || "", 10) || 22; } catch { return 22; } });
   const mudarFonte = (px: number) => { setFonteProd(px); try { localStorage.setItem("comandas_fonte_producao", String(px)); } catch { /* */ } };
 
   useEffect(() => { if (!rid) return; return ouvirPrintJobsPendentes(rid, setTodosJobs); }, [rid]);
+
+  // Poda os ids "feitos" que o listener já removeu da fila — evita crescer sem
+  // limite e libera reprocesso caso um id volte a aparecer pendente.
+  useEffect(() => {
+    if (feitosRef.current.size === 0) return;
+    const vivos = new Set(todosJobs.map((j) => j.id));
+    for (const id of [...feitosRef.current]) if (!vivos.has(id)) feitosRef.current.delete(id);
+  }, [todosJobs]);
 
   // Filtra os jobs que ESTA estação deve imprimir. Sem estacaoId (?estacao=1):
   // imprime tudo (impressora única). Com estacaoId: imprime os dela; contas
@@ -60,14 +75,14 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
   // Processa 1 job por vez: renderiza o ticket, chama window.print(), marca.
   useEffect(() => {
     if (!auto || ocupadoRef.current) return;
-    const prox = jobs[0];
+    const prox = jobs.find((j) => !feitosRef.current.has(j.id));
     if (!prox) return;
     ocupadoRef.current = true;
     // Fila presa: NÃO imprime ticket velho (a comanda já pode ter mudado). Jobs
     // com mais de 10min são descartados — evita sair conta/produção desatualizada.
     const idadeMin = (Date.now() - new Date(prox.criadoEm || 0).getTime()) / 60000;
     if (idadeMin > 10) {
-      marcarPrintJob(prox.id, "erro").catch(() => {}).finally(() => { ocupadoRef.current = false; });
+      marcarPrintJob(prox.id, "erro").then(() => { feitosRef.current.add(prox.id); }).catch(() => {}).finally(() => { ocupadoRef.current = false; setTick((t) => t + 1); });
       setLog((l) => [{ id: prox.id, titulo: prox.titulo + " (expirado — fila presa)", em: new Date().toLocaleTimeString("pt-BR"), ok: false }, ...l].slice(0, 30));
       return;
     }
@@ -83,16 +98,19 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
       } else {
         try { window.print(); } catch { ok = false; }
       }
-      try { await marcarPrintJob(prox.id, ok ? "impresso" : "erro"); } catch { /* o listener retenta */ }
+      // Marca `feito` SÓ se conseguiu gravar o status (impresso/erro). Se a
+      // gravação falhar (offline), NÃO entra em feitos → é retentado.
+      try { await marcarPrintJob(prox.id, ok ? "impresso" : "erro"); feitosRef.current.add(prox.id); } catch { /* o listener/tick retenta */ }
       setLog((l) => [{ id: prox.id, titulo: prox.titulo, em: new Date().toLocaleTimeString("pt-BR"), ok }, ...l].slice(0, 30));
       setAtual(null);
       ocupadoRef.current = false;
+      setTick((t) => t + 1);   // avança pro próximo job da fila IMEDIATAMENTE
     }, bridge ? 50 : 400);
     // IMPORTANTE: sem clearTimeout no cleanup. Cancelar o timer quando chega outro
     // job deixaria `ocupadoRef` preso (a trava nunca liberava) e travava a fila
     // INTEIRA — era o "parou de imprimir tudo". O timer agora sempre completa e
     // libera a trava; o próprio `ocupadoRef` impede agendar dois ao mesmo tempo.
-  }, [jobs, auto]);
+  }, [jobs, auto, tick]);
 
   const alvo = atual || teste;
   const origin = typeof window !== "undefined" ? window.location.origin : "https://comandas.planejamento.app";
