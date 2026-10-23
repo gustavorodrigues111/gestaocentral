@@ -581,6 +581,17 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
     const todas = [...new Set([...FORMAS_PADRAO, ...resumo.porForma.map((f) => f.forma)])];
     return todas.map((forma) => ({ forma, esperado: /dinheiro/i.test(forma) ? resumo.dinheiroEsperado : +val(forma).toFixed(2) }));
   }, [resumo]);
+  // Pré-carrega a conferência com o valor ESPERADO de cada forma — o operador
+  // só confere/ajusta onde diferir (cartão/Pix do TEF já batem). Agiliza e evita
+  // digitar na maioria dos casos. Roda 1x quando as formas ficam prontas; não
+  // sobrescreve ajustes já feitos nem se chegar venda nova com o modal aberto.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || formasConf.length === 0) return;
+    setConf(Object.fromEntries(formasConf.map((f) => [f.forma, Math.round(f.esperado * 100)])));
+    setTouched(true);
+    prefilled.current = true;
+  }, [formasConf]);
   const setForma = (forma: string, cents: number) => { setConf((p) => ({ ...p, [forma]: cents })); setTouched(true); };
   const conferencia = formasConf.map((f) => { const conferido = (conf[f.forma] || 0) / 100; return { forma: f.forma, esperado: f.esperado, conferido, diferenca: +(conferido - f.esperado).toFixed(2) }; });
   const diferencaTotal = +conferencia.reduce((s, c) => s + c.diferenca, 0).toFixed(2);
@@ -604,7 +615,8 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
           {resumo.sangrias > 0 && <Linha l="Sangrias" v={`− ${fmtR(resumo.sangrias)}`} />}
         </div>
         {/* Conferência por forma de pagamento (pra conciliar) */}
-        <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Conferência por forma</div>
+        <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-0.5">Conferência por forma</div>
+        <div className="text-[11px] text-gray-400 mb-1.5">Já vem com o valor esperado — ajuste só o que divergir (confira o dinheiro).</div>
         <div className="space-y-2.5">
           {formasConf.map((f) => {
             const c = conferencia.find((x) => x.forma === f.forma)!;
