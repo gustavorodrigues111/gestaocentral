@@ -14,8 +14,29 @@ const { autoUpdater } = require("electron-updater");
 // Windows: funciona sem assinatura. macOS: só com app assinado (limitação Apple).
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
+// O feed (comandas.planejamento.app/pdv-update) responde com 302 pro Storage.
+// O download DIFERENCIAL (blockmap + HTTP Range) costuma quebrar atrás de
+// redirect e nem sempre cai pro download completo → update falhava calado.
+// Força sempre o download completo do instalador (82MB; feed já validado).
+autoUpdater.disableDifferentialDownload = true;
+
+// Log de diagnóstico do updater em arquivo (userData/update.log) — sem dep
+// extra. Serve pra enxergar POR QUE um update não veio, direto no caixa.
+function logUpd(nivel, ...args) {
+  try {
+    const linha = `[${new Date().toISOString()}] ${nivel} ${args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" ")}\n`;
+    fs.appendFileSync(path.join(app.getPath("userData"), "update.log"), linha);
+  } catch { /* ignore */ }
+}
+autoUpdater.logger = { info: (...a) => logUpd("INFO", ...a), warn: (...a) => logUpd("WARN", ...a), error: (...a) => logUpd("ERROR", ...a), debug: (...a) => logUpd("DEBUG", ...a) };
+autoUpdater.on("error", (e) => logUpd("ERROR", "update error:", e && e.message ? e.message : String(e)));
+autoUpdater.on("checking-for-update", () => logUpd("INFO", "checando updates…"));
+autoUpdater.on("update-available", (i) => logUpd("INFO", "update disponível:", i && i.version));
+autoUpdater.on("update-not-available", (i) => logUpd("INFO", "sem update (atual é a última):", i && i.version));
+autoUpdater.on("download-progress", (p) => logUpd("INFO", "baixando:", Math.round(p.percent) + "%"));
+autoUpdater.on("update-downloaded", (i) => logUpd("INFO", "update baixado, instala ao fechar:", i && i.version));
 function checarUpdates() {
-  try { autoUpdater.checkForUpdates().catch(() => {}); } catch { /* sem rede / não configurado */ }
+  try { autoUpdater.checkForUpdates().catch((e) => logUpd("ERROR", "checkForUpdates rejeitou:", e && e.message ? e.message : String(e))); } catch (e) { logUpd("ERROR", "checarUpdates throw:", String(e)); }
 }
 
 // Config: defaults → config.json embutido (defaults de fábrica) → config do
