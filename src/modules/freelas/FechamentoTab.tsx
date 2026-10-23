@@ -17,7 +17,7 @@ import {
 import { diasNoMes, diasRemuneracaoMensalista, gorjetaMensalDe, mensalistasAtivosNoMes } from "./mensalista";
 import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
 import { getActiveSplitVersion } from "../gorjetas/splitRules";
-import { nomeMes } from "../../core/utils/date";
+import { nomeMes, fmtBRDateTime } from "../../core/utils/date";
 
 // Desloca a competência "YYYY-MM" em ±N meses.
 function shiftMes(comp: string, delta: number): string {
@@ -864,6 +864,17 @@ function fmtDataCurta(ymd: string): string {
   return `${d}/${m}`;
 }
 
+// Auditoria do turno: quem lançou e quando (data + hora). Mostrada em cada
+// linha de turno (precificação e pronto pra lote).
+function LancadoPor({ shift }: { shift: FreelaShift }) {
+  if (!shift.lancadoPorNome && !shift.lancadoEm) return null;
+  return (
+    <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+      lançado{shift.lancadoPorNome ? ` por ${shift.lancadoPorNome}` : ""}{shift.lancadoEm ? ` · ${fmtBRDateTime(shift.lancadoEm)}` : ""}{shift.lancadoRetroativo ? " · retroativo" : ""}
+    </div>
+  );
+}
+
 // ─── Linhas: Aguardando precificação ─────────────────────────────────────
 
 // Tarifas predeterminadas — auto-inicialização pela última do mesmo freela.
@@ -1107,6 +1118,7 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancel
         {semPix && (
           <div className="text-[10px] text-red-600 inline-flex items-center gap-1"><TriangleAlert size={10} /> sem PIX</div>
         )}
+        <LancadoPor shift={shift} />
       </td>
       <td className="px-2 py-3 text-xs text-gray-700 dark:text-gray-300">
         {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""}
@@ -1164,6 +1176,7 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancela
           <div className="text-[11px] text-gray-500 tabular-nums">{fmtDataCurta(shift.date)}</div>
           <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 break-words">{shift.nomeSnapshot}</div>
           {semPix && <div className="text-[10px] text-red-600 inline-flex items-center gap-1"><TriangleAlert size={10} /> sem PIX</div>}
+          <LancadoPor shift={shift} />
         </div>
         <div className="text-right shrink-0">
           <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total + gorjetaInfo.valor)}</div>
@@ -1241,6 +1254,7 @@ function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle, onCancelar
       <td className="px-2 py-2 text-gray-700 dark:text-gray-300 tabular-nums">{fmtDataCurta(shift.date)}</td>
       <td className="px-2 py-2 font-medium text-gray-900 dark:text-gray-100 truncate">
         <span className="inline-flex items-center gap-1.5">{shift.nomeSnapshot} <CanceladoBadge shift={shift} /></span>
+        <LancadoPor shift={shift} />
       </td>
       <td className="px-2 py-2 text-xs text-gray-700 dark:text-gray-300">
         {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
@@ -1283,6 +1297,7 @@ function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle, onCancelar,
           <div>
             <div className="text-[11px] text-gray-500 tabular-nums">{fmtDataCurta(shift.date)}</div>
             <div className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-1.5">{shift.nomeSnapshot} <CanceladoBadge shift={shift} /></div>
+            <LancadoPor shift={shift} />
           </div>
           <div className="text-right">
             <div className={`text-sm font-bold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{fmtBR(diaria + (cancelado ? 0 : gorjeta))}</div>

@@ -5,7 +5,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { type Empregado, type FreelaShift, type FreelasCortePagamento, type Pessoa } from "../../core/types";
-import { todayYmd } from "../../core/utils/date";
+import { todayYmd, fmtBRDateTime } from "../../core/utils/date";
 import { NovoTurnoModal } from "./NovoTurnoModal";
 import { HorarioModal } from "./HorarioModal";
 import { calcHoras, fmtHoras, intervaloTotalDoShift, somaIntervalos } from "./helpers";
@@ -247,6 +247,12 @@ function RowTurno({ shift, hoje, podeOperar, cortes, onAlterar }: { shift: Freel
         <span className="tabular-nums">{fmtDataCurta(shift.date)}</span>
         {shift.area && <span> · {shift.area}</span>}
       </div>
+      {/* auditoria: quem lançou o turno e quando */}
+      {(shift.lancadoPorNome || shift.lancadoEm) && (
+        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+          lançado{shift.lancadoPorNome ? ` por ${shift.lancadoPorNome}` : ""}{shift.lancadoEm ? ` · ${fmtBRDateTime(shift.lancadoEm)}` : ""}{shift.lancadoRetroativo ? " · retroativo" : ""}
+        </div>
+      )}
 
       {/* botões de ação: grid 2 colunas, todos com texto e mesmo tamanho */}
       {temAcoes && (
