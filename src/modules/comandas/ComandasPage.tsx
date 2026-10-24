@@ -888,6 +888,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       const marcadoEm = nowIso();
       const itensAtu = comanda.itens.map((i) => (i.producao && !i.impressoEm ? { ...i, impressoEm: marcadoEm } : i));
       await patch(recompor(itensAtu));
+      onClose();   // enviou a produção → volta pra tela principal (lista de comandas)
     } finally { setSalvandoImpr(false); }
   }
 
