@@ -6720,6 +6720,9 @@ export type Comanda = {
   restaurantId: string;
   numero: string;                      // nº da pulseira (ou identificador livre)
   clienteNome: string;
+  // Referência DISCRETA pra localizar a turma: mesa/lugar (ex.: "Mesa 5",
+  // "Varanda", "Balcão"). Identificação respeitosa por LOCAL, não por pessoa.
+  local?: string | null;
   cpf?: string | null;
   telefone?: string | null;
   status: ComandaStatus;

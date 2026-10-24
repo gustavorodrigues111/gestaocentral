@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -183,7 +183,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     const max = comandas.reduce((m, c) => { const n = parseInt((c.numero || "").replace(/\D/g, ""), 10); return Number.isFinite(n) && n > m ? n : m; }, 0);
     return String(max + 1);
   }
-  async function abrirComanda(dados: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) {
+  async function abrirComanda(dados: { numero: string; clienteNome: string; local?: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) {
     if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
     // Cliente: usa o selecionado; se tem telefone + nome e não é cadastrado, cria no CRM.
     let clienteId = dados.clienteId || null;
@@ -193,6 +193,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     }
     const c: Comanda = {
       id: uid(), restaurantId: rid, numero: dados.numero.trim() || proximoNumero(), clienteNome: dados.clienteNome.trim(),
+      local: dados.local?.trim() || null,
       cpf: dados.cpf?.trim() || null, telefone: tel || null, clienteId, pessoas: dados.pessoas || 1,
       status: "aberta", caixaId: caixa.id, modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
@@ -328,6 +329,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                         : c.modo === "togo" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">to-go</span>}
                     </div>
                     <div className="font-bold text-gray-900 dark:text-gray-100 truncate mt-1.5">{c.clienteNome || "—"}</div>
+                    {c.local && <div className="text-[11px] text-indigo-600 dark:text-indigo-300 font-medium truncate inline-flex items-center gap-0.5"><MapPin size={10} className="shrink-0" /> {c.local}</div>}
                     <div className="text-[12px] text-gray-500 flex items-center gap-1.5 flex-wrap">
                       <span>{c.itens.length} item(ns){c.pessoas && c.pessoas > 1 ? ` · ${c.pessoas}p` : ""}</span>
                       {aberta && ultPed && <span className={`inline-flex items-center gap-0.5 tabular-nums ${corTempo}`}><Clock size={10} /> {tempoVivo(ultPed)}</span>}
@@ -680,10 +682,11 @@ function AbrirComandaModal({ modo, clientes, onClose, onAbrir }: {
   modo: "conta" | "togo";
   clientes: Cliente[];
   onClose: () => void;
-  onAbrir: (d: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) => Promise<void>;
+  onAbrir: (d: { numero: string; clienteNome: string; local?: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) => Promise<void>;
 }) {
   const [numero, setNumero] = useState("");
   const [nome, setNome] = useState("");
+  const [local, setLocal] = useState("");
   const [tel, setTel] = useState("");
   const [pessoas, setPessoas] = useState(1);
   const [clienteId, setClienteId] = useState<string | null>(null);
@@ -707,7 +710,7 @@ function AbrirComandaModal({ modo, clientes, onClose, onAbrir }: {
     if (!togo && !nome.trim()) { setErr("Informe o nome do cliente."); return; }
     const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
-    try { await onAbrir({ numero: numero.trim(), clienteNome, telefone: tel, pessoas: Math.max(1, pessoas), modo, clienteId }); }
+    try { await onAbrir({ numero: numero.trim(), clienteNome, local: local.trim() || undefined, telefone: tel, pessoas: Math.max(1, pessoas), modo, clienteId }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); setSaving(false); }
   }
   const campo = "w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
@@ -728,6 +731,11 @@ function AbrirComandaModal({ modo, clientes, onClose, onAbrir }: {
           <div>
             <label className={rotulo}>Nº da comanda (opcional)</label>
             <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12 · deixe vazio p/ automático" className={`${campo} tabular-nums`} />
+          </div>
+          <div>
+            <label className={rotulo}>Local / mesa (opcional)</label>
+            <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex.: Mesa 5 · Varanda · Balcão" className={campo} />
+            <p className="text-[11px] text-gray-400 mt-1">Referência pra localizar a turma pelo lugar.</p>
           </div>
           <div>
             <label className={rotulo}>Quantidade de pessoas</label>
@@ -782,6 +790,8 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
   const [abaMob, setAbaMob] = useState<"produtos" | "itens">("produtos");   // mobile: alterna grade de produtos × itens lançados (desktop mostra os dois)
   const [editNome, setEditNome] = useState(false);          // edição inline do nome do cliente
   const [nomeDraft, setNomeDraft] = useState("");
+  const [editLocal, setEditLocal] = useState(false);        // edição inline do local/mesa
+  const [localDraft, setLocalDraft] = useState("");
   const [pesoDe, setPesoDe] = useState<ComandaProduto | null>(null);   // produto por peso aguardando o peso
   const [fechar, setFechar] = useState(false);
   const [verConta, setVerConta] = useState(false);          // tela pra mostrar ao cliente
@@ -1096,7 +1106,21 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
               {editavel && <button onClick={() => { setNomeDraft(comanda.clienteNome); setEditNome(true); }} className="shrink-0 w-7 h-7 grid place-items-center rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-800" title="Editar nome do cliente"><Pencil size={14} /></button>}
             </div>
           )}
-          <div className="text-[11px] text-gray-500">{comanda.itens.length} item(ns)</div>
+          <div className="text-[11px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+            <span>{comanda.itens.length} item(ns)</span>
+            {editLocal ? (
+              <span className="inline-flex items-center gap-1">
+                <input value={localDraft} onChange={(e) => setLocalDraft(e.target.value)} autoFocus placeholder="mesa / local"
+                  onKeyDown={(e) => { if (e.key === "Enter") { void patch({ local: localDraft.trim() || null }); setEditLocal(false); } if (e.key === "Escape") setEditLocal(false); }}
+                  className="h-6 px-1.5 w-32 rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900 text-[11px] text-gray-900 dark:text-gray-100" />
+                <button onClick={() => { void patch({ local: localDraft.trim() || null }); setEditLocal(false); }} className="text-indigo-600" title="Salvar"><Check size={13} /></button>
+              </span>
+            ) : comanda.local ? (
+              <button type="button" onClick={() => { if (!editavel) return; setLocalDraft(comanda.local || ""); setEditLocal(true); }} className="inline-flex items-center gap-0.5 text-indigo-600 dark:text-indigo-300 font-medium"><MapPin size={11} /> {comanda.local}{editavel && <Pencil size={9} className="ml-0.5 opacity-60" />}</button>
+            ) : editavel ? (
+              <button type="button" onClick={() => { setLocalDraft(""); setEditLocal(true); }} className="inline-flex items-center gap-0.5 text-gray-400 hover:text-indigo-600"><MapPin size={11} /> + local</button>
+            ) : null}
+          </div>
         </div>
         <div className="text-right">
           <div className="text-[10px] uppercase text-gray-400 font-bold">Total</div>
