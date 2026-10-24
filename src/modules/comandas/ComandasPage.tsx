@@ -79,15 +79,19 @@ function MoneyInput({ cents, onChange, autoFocus, className }: { cents: number; 
 }
 const nowIso = () => new Date().toISOString();
 // Tempo decorrido desde a abertura (ex.: "agora", "23min", "1h05") — p/ os cards.
-const tempoDecorrido = (iso?: string | null): string => {
+// Relógio vivo: rola com segundos (M:SS) na 1ª hora, depois Hh MM.
+const tempoVivo = (iso?: string | null): string => {
   if (!iso) return "";
-  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (min < 1) return "agora";
-  if (min < 60) return `${min}min`;
-  const h = Math.floor(min / 60), m = min % 60;
-  return `${h}h${m ? String(m).padStart(2, "0") : ""}`;
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  const m = Math.floor(s / 60), sec = s % 60;
+  if (m < 60) return `${m}:${String(sec).padStart(2, "0")}`;
+  const h = Math.floor(m / 60), mm = m % 60;
+  return `${h}h${String(mm).padStart(2, "0")}`;
 };
-const minutosDecorridos = (iso?: string | null): number => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 60000) : 0;
+// Último pedido da comanda = item mais recente (ou abertura se vazia). Base do
+// degradê de envelhecimento (verde → vermelho em 30 min sem novo pedido).
+const ultimoPedidoEm = (c: { itens?: ComandaItem[]; criadoEm: string }): string =>
+  (c.itens && c.itens.length) ? c.itens.reduce((mx, i) => (i.criadoEm > mx ? i.criadoEm : mx), c.itens[0].criadoEm) : c.criadoEm;
 // Agrupa itens iguais (mesmo produto/preço) pra impressão: 2x Produto em vez de 2 linhas.
 function agruparItens(itens: ComandaItem[]): { nome: string; porPeso: boolean; qtd: number; total: number }[] {
   const m = new Map<string, { nome: string; porPeso: boolean; qtd: number; total: number }>();
@@ -118,6 +122,10 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
   const [caixaModal, setCaixaModal] = useState<null | "abrir" | "sangria" | "reforco" | "fechar">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
+  // Relógio vivo: re-renderiza a cada 1s pra o tempo decorrido rolar e o degradê
+  // de envelhecimento das comandas atualizar em tempo real.
+  const [, setRelogio] = useState(0);
+  useEffect(() => { const t = setInterval(() => setRelogio((x) => x + 1), 1000); return () => clearInterval(t); }, []);
   const [novaComanda, setNovaComanda] = useState<Comanda | null>(null);   // recém-criada (otimista, até o snapshot chegar)
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   const [cfgApp, setCfgApp] = useState(false);           // modal de ajustes da impressora (só no app de caixa)
@@ -300,11 +308,19 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                 {lista.map((c) => {
                   const aberta = c.status !== "fechada";
                   const parcial = aberta && (c.valorPago || 0) > 0.001;
-                  const mins = minutosDecorridos(c.criadoEm);
-                  const velha = aberta && mins >= 60;                   // muito tempo aberta → sinaliza
+                  const ultPed = ultimoPedidoEm(c);
+                  const minsUlt = ultPed ? (Date.now() - new Date(ultPed).getTime()) / 60000 : 0;
+                  const frac = Math.max(0, Math.min(1, minsUlt / 30));   // 0 = recém-pedido, 1 = 30min+ (crítico)
+                  const velha = aberta && frac >= 1;                     // 30min+ sem novo pedido
                   const dot = !aberta ? "bg-gray-300 dark:bg-gray-600" : (parcial || velha) ? "bg-amber-500" : "bg-emerald-500";
+                  // Degradê de envelhecimento: verde (140°) → vermelho (0°), tinta
+                  // translúcida SOBRE o fundo do card (funciona claro/escuro).
+                  const hue = Math.round(140 * (1 - frac));
+                  const alpha = (0.07 + 0.30 * frac).toFixed(2);
+                  const tint = aberta ? `linear-gradient(0deg, hsla(${hue},85%,48%,${alpha}), hsla(${hue},85%,48%,${alpha}))` : undefined;
+                  const corTempo = !aberta ? "text-gray-400" : frac >= 0.8 ? "text-rose-600 dark:text-rose-400 font-semibold" : frac >= 0.5 ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-gray-400";
                   return (
-                  <button key={c.id} onClick={() => setDetalhe(c.id)} className={`text-left rounded-2xl border p-3 shadow-sm ${c.status === "fechada" ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
+                  <button key={c.id} onClick={() => setDetalhe(c.id)} style={tint ? { backgroundImage: tint } : undefined} className={`text-left rounded-2xl border p-3 shadow-sm ${c.status === "fechada" ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
                     <div className="flex items-center justify-between gap-1">
                       <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"><span className={`w-2 h-2 rounded-full ${dot}`} />#{c.numero}</span>
                       {c.status === "fechada" ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">paga</span>
@@ -314,7 +330,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                     <div className="font-bold text-gray-900 dark:text-gray-100 truncate mt-1.5">{c.clienteNome || "—"}</div>
                     <div className="text-[12px] text-gray-500 flex items-center gap-1.5 flex-wrap">
                       <span>{c.itens.length} item(ns){c.pessoas && c.pessoas > 1 ? ` · ${c.pessoas}p` : ""}</span>
-                      {aberta && c.criadoEm && <span className={`inline-flex items-center gap-0.5 ${velha ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-gray-400"}`}><Clock size={10} /> {tempoDecorrido(c.criadoEm)}</span>}
+                      {aberta && ultPed && <span className={`inline-flex items-center gap-0.5 tabular-nums ${corTempo}`}><Clock size={10} /> {tempoVivo(ultPed)}</span>}
                     </div>
                     <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(totalAPagarComanda(c))}{parcial && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 ml-1">falta {fmtR(totalAPagarComanda(c) - (c.valorPago || 0))}</span>}</div>
                   </button>
