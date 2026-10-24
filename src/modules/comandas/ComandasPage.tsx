@@ -1610,25 +1610,18 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
               <button onClick={() => { setModoDinheiro(true); setValorTxt(parteSugerida.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold flex flex-col items-center justify-center gap-0.5"><Banknote size={20} /><span className="text-sm">Dinheiro</span></button>
             </div>
             <button onClick={() => { setModoManual(true); setValorTxt(parteSugerida.toFixed(2).replace(".", ",")); }} className="w-full mt-2 text-[12px] text-gray-500 dark:text-gray-400 underline underline-offset-2">TEF fora do ar? Lançar cartão/Pix cobrado direto na maquininha</button>
-            <button onClick={() => { setModoDesconto(true); setDescMotivo(""); }} className="w-full mt-1.5 text-[12px] text-amber-600 dark:text-amber-400 underline underline-offset-2">Fechar com desconto / cortesia (diferença {fmtR(faltaLive)})</button>
+            <button onClick={() => { setModoDesconto(true); setDescMotivo(""); }} className="w-full mt-1.5 text-[12px] text-amber-600 dark:text-amber-400 underline underline-offset-2">Fechar com desconto (−{fmtR(faltaLive)})</button>
           </>
         )}
         {restante > 0.001 && modoDesconto && (
           <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-bold text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><Tag size={14} /> Fechar com desconto</span>
-              <span className="text-[13px] font-extrabold text-amber-700 dark:text-amber-300 tabular-nums">− {fmtR(faltaLive)}</span>
+            <div className="flex items-center justify-between text-[13px] font-bold text-amber-700 dark:text-amber-300">
+              <span>Desconto na diferença</span><span className="tabular-nums">− {fmtR(faltaLive)}</span>
             </div>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">A diferença de {fmtR(faltaLive)} vai como desconto e a comanda fecha. Informe o motivo (obrigatório) — aparece no fechamento de caixa.</p>
-            <div className="flex flex-wrap gap-1.5">
-              {["Acerto de centavos", "Desconto", "Cortesia", "Erro na conta"].map((m) => (
-                <button key={m} type="button" onClick={() => setDescMotivo(m)} className={`text-[12px] px-2.5 py-1 rounded-full border ${descMotivo === m ? "bg-amber-500 border-amber-500 text-white" : "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300"}`}>{m}</button>
-              ))}
-            </div>
-            <input value={descMotivo} onChange={(e) => setDescMotivo(e.target.value)} placeholder="motivo do desconto (obrigatório)" className="w-full h-10 px-3 text-sm rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900" />
+            <input value={descMotivo} onChange={(e) => setDescMotivo(e.target.value)} autoFocus placeholder="motivo (obrigatório)" className="w-full h-11 px-3 text-sm rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900" />
             <div className="flex gap-2">
               <button onClick={() => { setModoDesconto(false); setDescMotivo(""); }} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 font-semibold text-sm">← Voltar</button>
-              <button onClick={() => void confirmar(descMotivo.trim())} disabled={saving || !descMotivo.trim()} className="flex-1 h-11 rounded-lg bg-amber-600 text-white font-bold disabled:opacity-40">{saving ? "Fechando…" : `Fechar com desconto de ${fmtR(faltaLive)}`}</button>
+              <button onClick={() => void confirmar(descMotivo.trim())} disabled={saving || !descMotivo.trim()} className="flex-1 h-11 rounded-lg bg-amber-600 text-white font-bold disabled:opacity-40">{saving ? "Fechando…" : "Fechar com desconto"}</button>
             </div>
           </div>
         )}
