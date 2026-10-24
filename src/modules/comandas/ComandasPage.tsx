@@ -23,6 +23,7 @@ import {
   ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
 } from "./comandasRepo";
 import { EstacaoImpressao, AppCaixaConfig } from "./EstacaoImpressao";
+import { MesaLayoutEditor } from "./MesaLayoutEditor";
 import { TefCobranca } from "./TefCobranca";
 import { montarNfce, nfceEmitir, nfceCancelar, lerNfce } from "./nfceClient";
 import QRCode from "qrcode";
@@ -132,6 +133,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [novaComanda, setNovaComanda] = useState<Comanda | null>(null);   // recém-criada (otimista, até o snapshot chegar)
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   const [cfgApp, setCfgApp] = useState(false);           // modal de ajustes da impressora (só no app de caixa)
+  const [editorSalao, setEditorSalao] = useState(false); // editor da planta do salão
   // Estação EMBUTIDA: este dispositivo também imprime (pro PC único do balcão
   // com a Epson — dispensa a aba separada). Lembrado por dispositivo.
   // Rodando DENTRO do app de caixa (Electron): a ponte de impressão existe →
@@ -267,6 +269,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                 <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
                 {temBridge && <button onClick={() => { setMenuAberto(false); setCfgApp(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Impressora do caixa (IP)</button>}
                 <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação (outra tela/PC)</a>
+                {podeOperar && <button onClick={() => { setMenuAberto(false); setEditorSalao(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><MapPin size={16} /> Editor do salão (planta)</button>}
                 {imprimirAqui && <div className="px-3 py-1 text-[10px] text-gray-400">"Imprimir aqui" está ON — este PC imprime direto. Não abra a Estação em outra aba junto, pra não duplicar.</div>}
                 {(onSwitchRestaurant || onLogout) && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
                 {onSwitchRestaurant && <button onClick={() => { setMenuAberto(false); onSwitchRestaurant(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Store size={16} /> Trocar restaurante</button>}
@@ -386,6 +389,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         </div>
       )}
       {abrindo && <AbrirComandaModal modo={abrindo} clientes={clientes} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
+      {editorSalao && <MesaLayoutEditor rid={rid} onClose={() => setEditorSalao(false)} />}
       {caixaModal === "abrir" && <AbrirCaixaModal onClose={() => setCaixaModal(null)} onAbrir={abrirCaixa} />}
       {(caixaModal === "sangria" || caixaModal === "reforco") && caixa && (
         <MovimentoCaixaModal tipo={caixaModal} meNome={meNome} onClose={() => setCaixaModal(null)} onConfirmar={addMovimentoCaixa} />

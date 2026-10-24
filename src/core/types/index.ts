@@ -6715,10 +6715,35 @@ export type ComandaCaixa = {
   obs?: string | null;
 };
 
+// ─── Planta do salão (visão superior) ───────────────────────────────────────
+// Mesa posicionada no layout. x/y/w/h em % do canvas (0–100).
+export type ComandaMesa = {
+  id: string;
+  nome: string;                        // "M1", "Mesa 5", "Varanda 2"
+  x: number; y: number;                // centro da mesa em % do canvas
+  w?: number; h?: number;              // tamanho em % (default ~10 × ~14)
+  formato?: "quad" | "red";            // quadrada (default) ou redonda
+};
+// Bloco de REFERÊNCIA pra se situar (não é mesa): calçada, rua, nosso imóvel,
+// vizinho (de qualquer lado) — nome livre/editável.
+export type ComandaAreaBloco = {
+  id: string;
+  nome: string;                        // "Calçada", "Rua", "Nosso imóvel", "Vizinho — Padaria"
+  x: number; y: number; w: number; h: number;   // retângulo em % do canvas
+};
+// 1 doc por restaurante: comandaLayout/{rid}.
+export type ComandaLayout = {
+  rid: string;
+  mesas: ComandaMesa[];
+  blocos?: ComandaAreaBloco[];
+  atualizadoEm?: string;
+};
+
 export type Comanda = {
   id: string;
   restaurantId: string;
   numero: string;                      // nº da pulseira (ou identificador livre)
+  mesaId?: string | null;              // mesa da planta (1 comanda por mesa)
   clienteNome: string;
   // Referência DISCRETA pra localizar a turma: mesa/lugar (ex.: "Mesa 5",
   // "Varanda", "Balcão"). Identificação respeitosa por LOCAL, não por pessoa.

@@ -5,7 +5,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, Cliente } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco } from "../../core/types";
 
 export const uid = () => { try { return crypto.randomUUID(); } catch { return "c" + Date.now() + Math.random().toString(36).slice(2); } };
 
@@ -52,6 +52,17 @@ export function ouvirFiscalConfig(rid: string, cb: (c: ComandaFiscalConfig | nul
 }
 export async function salvarFiscalConfig(rid: string, cfg: ComandaFiscalConfig): Promise<void> {
   await setDoc(doc(db, "comandasFiscalConfig", rid), sanitizeForFirestore({ ...cfg, restaurantId: rid, atualizadoEm: new Date().toISOString() }), { merge: true });
+}
+
+// ── Layout do salão (planta, visão superior) ───────────────────────────
+// 1 doc por restaurante: comandaLayout/{rid}.
+export function ouvirLayout(rid: string, cb: (l: ComandaLayout | null) => void): Unsubscribe {
+  return onSnapshot(doc(db, "comandaLayout", rid), (snap) => {
+    cb(snap.exists() ? ({ ...(snap.data() as ComandaLayout), rid }) : null);
+  }, (e) => console.error("[comandas] layout", e));
+}
+export async function salvarLayout(rid: string, mesas: ComandaMesa[], blocos: ComandaAreaBloco[]): Promise<void> {
+  await setDoc(doc(db, "comandaLayout", rid), sanitizeForFirestore({ rid, mesas, blocos, atualizadoEm: new Date().toISOString() }), { merge: true });
 }
 
 // ── Caixa (sessão de PDV) ──────────────────────────────────────────────
