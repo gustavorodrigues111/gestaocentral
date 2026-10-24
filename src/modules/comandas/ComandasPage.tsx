@@ -1415,6 +1415,8 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
   const [modoManual, setModoManual] = useState(false);   // plano B: cartão/Pix cobrado direto na maquininha
   const [formaManual, setFormaManual] = useState("Cartão (Crédito)");
   const [autoFechar, setAutoFechar] = useState(false);  // ao TEF aprovar e quitar, fecha sozinho
+  const [modoTef, setModoTef] = useState(false);   // passo de valor antes do TEF (cobrar parte ou tudo)
+  const [tefValor, setTefValor] = useState(0);     // valor que vai pra maquininha nesta cobrança
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
   const porPessoa = +(totalPagar / nPessoas).toFixed(2);
   const [preImpresso, setPreImpresso] = useState(false);
@@ -1442,6 +1444,11 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
   const pagoAgora = +(somaLinhas + (valorIn > 0 ? valorIn : 0)).toFixed(2);
   const faltaLive = Math.max(0, +(saldo - pagoAgora).toFixed(2));
   const troco = Math.max(0, +(pagoAgora - saldo).toFixed(2));
+  // Divisão: com "Dividir por" > 1, cada pagamento já vem sugerido com a parte
+  // (total ÷ pessoas); a última parte absorve o arredondamento. O operador pode
+  // cobrar cada parte no TEF (vários pagamentos), em dinheiro, ou editar o valor
+  // (divisão diferente / valor solto).
+  const parteSugerida = nPessoas > 1 && restante > porPessoa + 0.01 ? porPessoa : restante;
 
   function lancarDinheiro(v: number) {
     if (v <= 0) return;
@@ -1578,14 +1585,29 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
         )}
 
         {/* Forma de pagamento: Cartão/Pix (TEF), Dinheiro, ou manual (plano B) */}
-        {restante > 0.001 && !modoDinheiro && !modoManual && (
+        {restante > 0.001 && !modoDinheiro && !modoManual && !modoTef && (
           <>
+            {nPessoas > 1 && <div className="text-[11px] text-gray-400 mb-1.5 text-center">Dividido por {nPessoas} → cada parte <b className="text-indigo-600 dark:text-indigo-300">{fmtR(parteSugerida)}</b> (edite ao cobrar pra dividir diferente)</div>}
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setTefAberto(true)} className="h-16 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-bold flex flex-col items-center justify-center gap-0.5"><CreditCard size={20} /><span className="text-sm">Cartão / Pix</span><span className="text-[10px] font-normal opacity-70">maquininha (TEF)</span></button>
-              <button onClick={() => { setModoDinheiro(true); setValorTxt(restante.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold flex flex-col items-center justify-center gap-0.5"><Banknote size={20} /><span className="text-sm">Dinheiro</span></button>
+              <button onClick={() => { setModoTef(true); setValorTxt(parteSugerida.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-bold flex flex-col items-center justify-center gap-0.5"><CreditCard size={20} /><span className="text-sm">Cartão / Pix</span><span className="text-[10px] font-normal opacity-70">maquininha (TEF)</span></button>
+              <button onClick={() => { setModoDinheiro(true); setValorTxt(parteSugerida.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold flex flex-col items-center justify-center gap-0.5"><Banknote size={20} /><span className="text-sm">Dinheiro</span></button>
             </div>
-            <button onClick={() => { setModoManual(true); setValorTxt(restante.toFixed(2).replace(".", ",")); }} className="w-full mt-2 text-[12px] text-gray-500 dark:text-gray-400 underline underline-offset-2">TEF fora do ar? Lançar cartão/Pix cobrado direto na maquininha</button>
+            <button onClick={() => { setModoManual(true); setValorTxt(parteSugerida.toFixed(2).replace(".", ",")); }} className="w-full mt-2 text-[12px] text-gray-500 dark:text-gray-400 underline underline-offset-2">TEF fora do ar? Lançar cartão/Pix cobrado direto na maquininha</button>
           </>
+        )}
+        {restante > 0.001 && modoTef && (
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 p-3 space-y-2">
+            <span className="text-[12px] font-bold text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1"><CreditCard size={14} /> Cobrar no cartão/Pix (TEF)</span>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+              <input value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} inputMode="decimal" placeholder="valor a cobrar" autoFocus className="w-full h-12 pl-8 pr-2 text-right text-xl rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            </div>
+            <p className="text-[11px] text-gray-400">Cobre o total que falta ({fmtR(restante)}) ou só uma parte — pra dividir em vários cartões, cobre uma parte e repita.</p>
+            <div className="flex gap-2">
+              <button onClick={() => { setModoTef(false); setValorTxt(""); }} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 font-semibold text-sm">← Voltar</button>
+              <button onClick={() => { const v = Math.min(valorIn > 0 ? valorIn : restante, restante); setTefValor(v); setModoTef(false); setValorTxt(""); setTefAberto(true); }} disabled={valorIn <= 0} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white font-bold disabled:opacity-40">Cobrar {fmtR(Math.min(valorIn > 0 ? valorIn : restante, restante))}</button>
+            </div>
+          </div>
         )}
         {restante > 0.001 && modoManual && (
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
@@ -1634,7 +1656,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
 
       {tefAberto && (
         <TefCobranca
-          valor={Math.max(0, restante)}
+          valor={Math.max(0, Math.min(tefValor > 0 ? tefValor : restante, restante))}
           cpf={comanda.cpf || undefined}
           nome={comanda.clienteNome}
           onAprovado={(info) => { setLinhas((l) => [...l, { forma: info.forma + (info.nsu ? ` · NSU ${info.nsu}` : ""), valor: +info.valor.toFixed(2), em: new Date().toISOString(), porNome: meNome }]); setAutoFechar(true); }}
