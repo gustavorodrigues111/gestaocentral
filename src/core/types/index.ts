@@ -6707,6 +6707,8 @@ export type ComandaCaixa = {
     reforcos: number;
     dinheiroEsperado: number;        // fundo + dinheiroVendas + reforços − sangrias
     diferenca: number;               // total conferido − total esperado (sobra>0 / quebra<0)
+    descontos?: number;              // total de descontos de fechamento no período
+    nDescontos?: number;             // qtd de comandas fechadas com desconto
     // Conferência por forma de pagamento (pra conciliar depois).
     conferencia?: Array<{ forma: string; esperado: number; conferido: number; diferenca: number }>;
   } | null;
@@ -6734,6 +6736,10 @@ export type Comanda = {
   gorjeta?: number | null;
   pagamentos: ComandaPagamento[];
   valorPago: number;
+  // Diferença lançada como DESCONTO ao fechar (motivo OBRIGATÓRIO): quando o pago
+  // não cobre o total e o operador fecha mesmo assim (desconto, cortesia, acerto
+  // de centavos). NÃO é dinheiro recebido — fica FORA da conferência de caixa.
+  descontoFechamento?: { valor: number; motivo: string; porNome?: string; em: string } | null;
   criadoEm: string;
   criadoPor?: string;
   criadoPorNome?: string;

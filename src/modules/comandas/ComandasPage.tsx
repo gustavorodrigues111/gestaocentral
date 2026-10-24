@@ -455,6 +455,8 @@ function CaixaPanel({ caixa, comandas, onAbrir, onSangria, onReforco, onFechar }
   const sangrias = (caixa.movimentos || []).filter((m) => m.tipo === "sangria").reduce((s, m) => s + m.valor, 0);
   const reforcos = (caixa.movimentos || []).filter((m) => m.tipo === "reforco").reduce((s, m) => s + m.valor, 0);
   const dinheiroEsperado = caixa.fundoTroco + dinheiroVendas + reforcos - sangrias;
+  const descsPer = comandas.map((c) => c.descontoFechamento).filter((d): d is NonNullable<typeof d> => !!d && d.valor > 0 && !!d.em && d.em >= inicio);
+  const descontosTot = +descsPer.reduce((s, d) => s + d.valor, 0).toFixed(2);
   const Linha = ({ l, v, forte }: { l: string; v: string; forte?: boolean }) => (
     <div className={`flex justify-between ${forte ? "font-bold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}><span>{l}</span><span className="tabular-nums">{v}</span></div>
   );
@@ -472,6 +474,7 @@ function CaixaPanel({ caixa, comandas, onAbrir, onSangria, onReforco, onFechar }
         <Linha l="Dinheiro de vendas" v={fmtR(dinheiroVendas)} />
         {reforcos > 0 && <Linha l="Reforços" v={`+ ${fmtR(reforcos)}`} />}
         {sangrias > 0 && <Linha l="Sangrias" v={`− ${fmtR(sangrias)}`} />}
+        {descontosTot > 0 && <div className="flex justify-between text-amber-600 dark:text-amber-400"><span>Descontos ({descsPer.length})</span><span className="tabular-nums">− {fmtR(descontosTot)}</span></div>}
         <div className="border-t border-dashed border-gray-200 dark:border-gray-700 my-1.5" />
         <Linha l="Dinheiro esperado na gaveta" v={fmtR(dinheiroEsperado)} forte />
       </div>
@@ -573,7 +576,11 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
     const sangrias = (caixa.movimentos || []).filter((m) => m.tipo === "sangria").reduce((s, m) => s + m.valor, 0);
     const reforcos = (caixa.movimentos || []).filter((m) => m.tipo === "reforco").reduce((s, m) => s + m.valor, 0);
     const dinheiroEsperado = +(caixa.fundoTroco + dinheiroVendas + reforcos - sangrias).toFixed(2);
-    return { vendasTotal: +vendasTotal.toFixed(2), nComandas: comandasNoPer.size, porForma, dinheiroVendas: +dinheiroVendas.toFixed(2), sangrias: +sangrias.toFixed(2), reforcos: +reforcos.toFixed(2), dinheiroEsperado, diferenca: 0 };
+    // Descontos de fechamento lançados no período (não são dinheiro — ficam fora
+    // da conferência, mas entram no relatório).
+    const descsNoPer = comandas.map((c) => c.descontoFechamento).filter((d): d is NonNullable<typeof d> => !!d && d.valor > 0 && noPer(d.em));
+    const descontos = +descsNoPer.reduce((s, d) => s + d.valor, 0).toFixed(2);
+    return { vendasTotal: +vendasTotal.toFixed(2), nComandas: comandasNoPer.size, porForma, dinheiroVendas: +dinheiroVendas.toFixed(2), sangrias: +sangrias.toFixed(2), reforcos: +reforcos.toFixed(2), dinheiroEsperado, diferenca: 0, descontos, nDescontos: descsNoPer.length };
   }, [caixa, comandas]);
   // Formas a conferir: as padrão (Dinheiro/Crédito/Débito/Pix) SEMPRE + extras com venda.
   const formasConf = useMemo(() => {
@@ -613,6 +620,7 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
           <Linha l="Fundo de troco" v={fmtR(caixa.fundoTroco)} />
           {resumo.reforcos > 0 && <Linha l="Reforços" v={`+ ${fmtR(resumo.reforcos)}`} />}
           {resumo.sangrias > 0 && <Linha l="Sangrias" v={`− ${fmtR(resumo.sangrias)}`} />}
+          {(resumo.descontos || 0) > 0 && <div className="flex justify-between text-amber-600 dark:text-amber-400"><span>Descontos ({resumo.nDescontos})</span><span className="tabular-nums">− {fmtR(resumo.descontos || 0)}</span></div>}
         </div>
         {/* Conferência por forma de pagamento (pra conciliar) */}
         <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-0.5">Conferência por forma</div>
@@ -1417,6 +1425,8 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
   const [autoFechar, setAutoFechar] = useState(false);  // ao TEF aprovar e quitar, fecha sozinho
   const [modoTef, setModoTef] = useState(false);   // passo de valor antes do TEF (cobrar parte ou tudo)
   const [tefValor, setTefValor] = useState(0);     // valor que vai pra maquininha nesta cobrança
+  const [modoDesconto, setModoDesconto] = useState(false);   // lançar a diferença como desconto e fechar
+  const [descMotivo, setDescMotivo] = useState("");
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
   const porPessoa = +(totalPagar / nPessoas).toFixed(2);
   const [preImpresso, setPreImpresso] = useState(false);
@@ -1466,18 +1476,24 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
     if (autoFechar && somaLinhas >= saldo - 0.001 && !saving) { setAutoFechar(false); void confirmar(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFechar, somaLinhas]);
-  async function confirmar() {
+  async function confirmar(descontoMotivo?: string) {
     setSaving(true);
     try {
       // Inclui o valor digitado que ainda não foi adicionado à lista.
       const linhasFinais = valorIn > 0 ? [...linhas, { forma: "Dinheiro", valor: +valorIn.toFixed(2), em: new Date().toISOString(), porNome: meNome }] : linhas;
       const pags: ComandaPagamento[] = [...comanda.pagamentos, ...linhasFinais];
       const valorPago = +pags.reduce((s, p) => s + p.valor, 0).toFixed(2);
-      const quitou = valorPago >= totalPagar - 0.001;
+      // Desconto de fechamento: a diferença que falta vira desconto (motivo
+      // obrigatório) e a comanda fecha. Não é dinheiro recebido.
+      const descontoVal = descontoMotivo ? +(totalPagar - valorPago).toFixed(2) : 0;
+      const quitou = descontoMotivo ? true : valorPago >= totalPagar - 0.001;
       await salvarComanda({
         ...comanda, pessoas: nPessoas, pagamentos: pags, valorPago,
         // Congela a gorjeta ao FECHAR (0 = não paga). Parcial: mantém a atual.
         gorjeta: quitou ? gorjVal : (comanda.gorjeta ?? null),
+        descontoFechamento: descontoMotivo && descontoVal > 0.001
+          ? { valor: descontoVal, motivo: descontoMotivo, porNome: meNome, em: new Date().toISOString() }
+          : (comanda.descontoFechamento ?? null),
         status: quitou ? "fechada" : "aberta",
         fechadoEm: quitou ? new Date().toISOString() : null,
         fechadoPorNome: quitou ? meNome : null,
@@ -1491,6 +1507,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
           linhas: [
             ...agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
             ...(gorjVal > 0 ? [{ nome: `Gorjeta${gorjPct ? ` (${fmtNum(gorjPct, 0)}%)` : ""}`, qtd: null, valor: fmtR(gorjVal) }] : []),
+            ...(descontoVal > 0.001 ? [{ nome: `Desconto (${descontoMotivo})`, qtd: null, valor: `- ${fmtR(descontoVal)}` }] : []),
           ],
           total: fmtR(totalPagar),
           rodape: `${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(totalPagar - valorPago)}`}`,
@@ -1585,7 +1602,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
         )}
 
         {/* Forma de pagamento: Cartão/Pix (TEF), Dinheiro, ou manual (plano B) */}
-        {restante > 0.001 && !modoDinheiro && !modoManual && !modoTef && (
+        {restante > 0.001 && !modoDinheiro && !modoManual && !modoTef && !modoDesconto && (
           <>
             {nPessoas > 1 && <div className="text-[11px] text-gray-400 mb-1.5 text-center">Dividido por {nPessoas} → cada parte <b className="text-indigo-600 dark:text-indigo-300">{fmtR(parteSugerida)}</b> (edite ao cobrar pra dividir diferente)</div>}
             <div className="grid grid-cols-2 gap-2">
@@ -1593,7 +1610,27 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, fiscalCfg, onClo
               <button onClick={() => { setModoDinheiro(true); setValorTxt(parteSugerida.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold flex flex-col items-center justify-center gap-0.5"><Banknote size={20} /><span className="text-sm">Dinheiro</span></button>
             </div>
             <button onClick={() => { setModoManual(true); setValorTxt(parteSugerida.toFixed(2).replace(".", ",")); }} className="w-full mt-2 text-[12px] text-gray-500 dark:text-gray-400 underline underline-offset-2">TEF fora do ar? Lançar cartão/Pix cobrado direto na maquininha</button>
+            <button onClick={() => { setModoDesconto(true); setDescMotivo(""); }} className="w-full mt-1.5 text-[12px] text-amber-600 dark:text-amber-400 underline underline-offset-2">Fechar com desconto / cortesia (diferença {fmtR(faltaLive)})</button>
           </>
+        )}
+        {restante > 0.001 && modoDesconto && (
+          <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-bold text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><Tag size={14} /> Fechar com desconto</span>
+              <span className="text-[13px] font-extrabold text-amber-700 dark:text-amber-300 tabular-nums">− {fmtR(faltaLive)}</span>
+            </div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">A diferença de {fmtR(faltaLive)} vai como desconto e a comanda fecha. Informe o motivo (obrigatório) — aparece no fechamento de caixa.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {["Acerto de centavos", "Desconto", "Cortesia", "Erro na conta"].map((m) => (
+                <button key={m} type="button" onClick={() => setDescMotivo(m)} className={`text-[12px] px-2.5 py-1 rounded-full border ${descMotivo === m ? "bg-amber-500 border-amber-500 text-white" : "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300"}`}>{m}</button>
+              ))}
+            </div>
+            <input value={descMotivo} onChange={(e) => setDescMotivo(e.target.value)} placeholder="motivo do desconto (obrigatório)" className="w-full h-10 px-3 text-sm rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900" />
+            <div className="flex gap-2">
+              <button onClick={() => { setModoDesconto(false); setDescMotivo(""); }} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 font-semibold text-sm">← Voltar</button>
+              <button onClick={() => void confirmar(descMotivo.trim())} disabled={saving || !descMotivo.trim()} className="flex-1 h-11 rounded-lg bg-amber-600 text-white font-bold disabled:opacity-40">{saving ? "Fechando…" : `Fechar com desconto de ${fmtR(faltaLive)}`}</button>
+            </div>
+          </div>
         )}
         {restante > 0.001 && modoTef && (
           <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 p-3 space-y-2">
