@@ -154,6 +154,18 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   useEffect(() => { if (!rid) return; return ouvirEstacoes(rid, setEstacoes); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirComandas(rid, setComandas); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirFiscalConfig(rid, setFiscalCfg); }, [rid]);
+  // Limpa vendas rápidas FANTASMA (abertas, 0 item, 0 pago) abandonadas > 5min —
+  // ex.: app fechado sem usar. A que está aberta no detalhe agora é poupada.
+  useEffect(() => {
+    if (!podeOperar) return;
+    const agora = Date.now();
+    for (const c of comandas) {
+      if (c.status === "aberta" && c.clienteNome === "Venda rápida" && (c.itens?.length || 0) === 0 && (c.valorPago || 0) === 0 && c.id !== detalhe) {
+        if ((agora - new Date(c.criadoEm || 0).getTime()) / 60000 > 5) void excluirComanda(c.id).catch(() => {});
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comandas, detalhe]);
   useEffect(() => { if (!rid) return; return ouvirCaixaAberto(rid, setCaixa); }, [rid]);
   // Clientes (CRM) — carga única p/ o typeahead de abertura de comanda.
   useEffect(() => { if (!rid) return; let vivo = true; void lerClientes(rid).then((l) => { if (vivo) setClientes(l); }); return () => { vivo = false; }; }, [rid]);
