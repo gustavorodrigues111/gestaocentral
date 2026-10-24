@@ -13,17 +13,17 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { APP_VERSION_LABEL } from "../../core/version";
-import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov, Cliente } from "../../core/types";
+import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov, Cliente, ComandaLayout, ComandaMesa } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
   ouvirComandas, salvarComanda, excluirComanda, criarPrintJob, superseedContaJobs,
   ouvirCategorias, salvarCategoria, excluirCategoria,
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
-  ouvirFiscalConfig, salvarFiscalConfig,
+  ouvirFiscalConfig, salvarFiscalConfig, ouvirLayout,
   ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
 } from "./comandasRepo";
 import { EstacaoImpressao, AppCaixaConfig } from "./EstacaoImpressao";
-import { MesaLayoutEditor } from "./MesaLayoutEditor";
+import { MesaLayoutEditor, PlantaSalao, type MesaVista } from "./MesaLayoutEditor";
 import { TefCobranca } from "./TefCobranca";
 import { montarNfce, nfceEmitir, nfceCancelar, lerNfce } from "./nfceClient";
 import QRCode from "qrcode";
@@ -128,12 +128,15 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [, setRelogio] = useState(0);
   useEffect(() => { const t = setInterval(() => setRelogio((x) => x + 1), 1000); return () => clearInterval(t); }, []);
   // Modo de visualização da tela principal (persistido por dispositivo).
-  const [visao, setVisao] = useState<"cards" | "tempo">(() => { try { return (localStorage.getItem("comandas_visao") as "cards" | "tempo") || "cards"; } catch { return "cards"; } });
-  const mudarVisao = (v: "cards" | "tempo") => { setVisao(v); try { localStorage.setItem("comandas_visao", v); } catch { /* */ } };
+  const [visao, setVisao] = useState<"cards" | "tempo" | "layout">(() => { try { return (localStorage.getItem("comandas_visao") as "cards" | "tempo" | "layout") || "cards"; } catch { return "cards"; } });
+  const mudarVisao = (v: "cards" | "tempo" | "layout") => { setVisao(v); try { localStorage.setItem("comandas_visao", v); } catch { /* */ } };
+  const [layout, setLayout] = useState<ComandaLayout | null>(null);
+  useEffect(() => { if (!rid) return; return ouvirLayout(rid, setLayout); }, [rid]);
   const [novaComanda, setNovaComanda] = useState<Comanda | null>(null);   // recém-criada (otimista, até o snapshot chegar)
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   const [cfgApp, setCfgApp] = useState(false);           // modal de ajustes da impressora (só no app de caixa)
   const [editorSalao, setEditorSalao] = useState(false); // editor da planta do salão
+  const [mesaAbrir, setMesaAbrir] = useState<string | null>(null); // mesa pré-selecionada ao abrir comanda pela planta
   // Estação EMBUTIDA: este dispositivo também imprime (pro PC único do balcão
   // com a Epson — dispensa a aba separada). Lembrado por dispositivo.
   // Rodando DENTRO do app de caixa (Electron): a ponte de impressão existe →
@@ -188,7 +191,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     const max = comandas.reduce((m, c) => { const n = parseInt((c.numero || "").replace(/\D/g, ""), 10); return Number.isFinite(n) && n > m ? n : m; }, 0);
     return String(max + 1);
   }
-  async function abrirComanda(dados: { numero: string; clienteNome: string; local?: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) {
+  async function abrirComanda(dados: { numero: string; clienteNome: string; local?: string; mesaId?: string | null; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) {
     if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
     // Cliente: usa o selecionado; se tem telefone + nome e não é cadastrado, cria no CRM.
     let clienteId = dados.clienteId || null;
@@ -198,7 +201,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     }
     const c: Comanda = {
       id: uid(), restaurantId: rid, numero: dados.numero.trim() || proximoNumero(), clienteNome: dados.clienteNome.trim(),
-      local: dados.local?.trim() || null,
+      mesaId: dados.mesaId || null,
+      local: dados.local?.trim() || (dados.mesaId ? (layout?.mesas.find((m) => m.id === dados.mesaId)?.nome || null) : null),
       cpf: dados.cpf?.trim() || null, telefone: tel || null, clienteId, pessoas: dados.pessoas || 1,
       status: "aberta", caixaId: caixa.id, modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
@@ -309,14 +313,33 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 p-0.5 mb-3">
                 <button onClick={() => mudarVisao("cards")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "cards" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><LayoutGrid size={14} /> Cards</button>
                 <button onClick={() => mudarVisao("tempo")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "tempo" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Clock size={14} /> Por tempo</button>
+                <button onClick={() => mudarVisao("layout")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "layout" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><MapPin size={14} /> Layout</button>
               </div>
             );
+            if (visao === "layout") {
+              const info = (mesaId: string): MesaVista => {
+                const c = abertas.find((x) => x.mesaId === mesaId);
+                if (!c) return { ocupada: false, frac: 0 };
+                const u = ultimoPedidoEm(c); const mm = u ? (Date.now() - new Date(u).getTime()) / 60000 : 0;
+                return { ocupada: true, frac: Math.max(0, Math.min(1, mm / 30)), comandaId: c.id, sub: c.clienteNome, valor: fmtR(totalAPagarComanda(c)), tempo: tempoVivo(u) };
+              };
+              const onMesa = (mesaId: string, comandaId?: string) => {
+                if (comandaId) { setDetalhe(comandaId); return; }
+                if (!podeOperar) return;
+                if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
+                setMesaAbrir(mesaId); setAbrindo("conta");
+              };
+              return (<>{Switcher}<PlantaSalao mesas={layout?.mesas || []} blocos={layout?.blocos || []} info={info} onMesa={onMesa} /></>);
+            }
             if (abertas.length === 0) return (
+              <>
+              {Switcher}
               <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-gray-400">
                 <Receipt size={38} className="mx-auto mb-2 text-gray-300" />
                 <div className="font-semibold text-gray-600 dark:text-gray-300">Nenhuma comanda aberta</div>
                 {podeOperar && <div className="text-sm mt-1">Abra uma comanda pra começar a lançar.</div>}
               </div>
+              </>
             );
             return (
               <>
@@ -388,7 +411,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           </div>
         </div>
       )}
-      {abrindo && <AbrirComandaModal modo={abrindo} clientes={clientes} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
+      {abrindo && <AbrirComandaModal modo={abrindo} clientes={clientes} mesas={layout?.mesas || []} mesasOcupadas={new Set(abertas.map((c) => c.mesaId).filter(Boolean) as string[])} mesaInicial={mesaAbrir} onClose={() => { setAbrindo(null); setMesaAbrir(null); }} onAbrir={abrirComanda} />}
       {editorSalao && <MesaLayoutEditor rid={rid} onClose={() => setEditorSalao(false)} />}
       {caixaModal === "abrir" && <AbrirCaixaModal onClose={() => setCaixaModal(null)} onAbrir={abrirCaixa} />}
       {(caixaModal === "sangria" || caixaModal === "reforco") && caixa && (
@@ -696,15 +719,19 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
 }
 
 // ── Abrir comanda ────────────────────────────────────────────────────────
-function AbrirComandaModal({ modo, clientes, onClose, onAbrir }: {
+function AbrirComandaModal({ modo, clientes, mesas, mesasOcupadas, mesaInicial, onClose, onAbrir }: {
   modo: "conta" | "togo";
   clientes: Cliente[];
+  mesas?: ComandaMesa[];
+  mesasOcupadas?: Set<string>;
+  mesaInicial?: string | null;
   onClose: () => void;
-  onAbrir: (d: { numero: string; clienteNome: string; local?: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) => Promise<void>;
+  onAbrir: (d: { numero: string; clienteNome: string; local?: string; mesaId?: string | null; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) => Promise<void>;
 }) {
   const [numero, setNumero] = useState("");
   const [nome, setNome] = useState("");
   const [local, setLocal] = useState("");
+  const [mesaId, setMesaId] = useState<string | null>(mesaInicial || null);
   const [tel, setTel] = useState("");
   const [pessoas, setPessoas] = useState(1);
   const [clienteId, setClienteId] = useState<string | null>(null);
@@ -728,7 +755,7 @@ function AbrirComandaModal({ modo, clientes, onClose, onAbrir }: {
     if (!togo && !nome.trim()) { setErr("Informe o nome do cliente."); return; }
     const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
-    try { await onAbrir({ numero: numero.trim(), clienteNome, local: local.trim() || undefined, telefone: tel, pessoas: Math.max(1, pessoas), modo, clienteId }); }
+    try { await onAbrir({ numero: numero.trim(), clienteNome, local: local.trim() || undefined, mesaId, telefone: tel, pessoas: Math.max(1, pessoas), modo, clienteId }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); setSaving(false); }
   }
   const campo = "w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
@@ -750,8 +777,25 @@ function AbrirComandaModal({ modo, clientes, onClose, onAbrir }: {
             <label className={rotulo}>Nº da comanda (opcional)</label>
             <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12 · deixe vazio p/ automático" className={`${campo} tabular-nums`} />
           </div>
+          {!togo && (mesas || []).length > 0 && (
+            <div>
+              <label className={rotulo}>Mesa (da planta)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(mesas || []).map((m) => {
+                  const ocupada = mesasOcupadas?.has(m.id) && m.id !== mesaInicial;
+                  const sel = mesaId === m.id;
+                  return (
+                    <button key={m.id} type="button" disabled={ocupada} onClick={() => setMesaId(sel ? null : m.id)}
+                      className={`text-[12px] px-2.5 h-8 rounded-lg border font-semibold ${sel ? "bg-indigo-600 border-indigo-600 text-white" : ocupada ? "border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 line-through cursor-not-allowed" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+                      {m.nome}{ocupada ? " · ocupada" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div>
-            <label className={rotulo}>Local / mesa (opcional)</label>
+            <label className={rotulo}>{(mesas || []).length > 0 ? "Local / referência (opcional)" : "Local / mesa (opcional)"}</label>
             <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex.: Mesa 5 · Varanda · Balcão" className={campo} />
             <p className="text-[11px] text-gray-400 mt-1">Referência pra localizar a turma pelo lugar.</p>
           </div>

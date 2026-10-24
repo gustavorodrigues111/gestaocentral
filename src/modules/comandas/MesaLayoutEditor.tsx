@@ -8,6 +8,48 @@ import { X, Plus, Trash2, Square, Circle, Save, Map as MapIcon } from "lucide-re
 import { ouvirLayout, salvarLayout, uid } from "./comandasRepo";
 import type { ComandaMesa, ComandaAreaBloco } from "../../core/types";
 
+// Visão Layout (read-only): a planta pintada pelo envelhecimento de cada mesa.
+export type MesaVista = { ocupada: boolean; frac: number; sub?: string; valor?: string; tempo?: string; comandaId?: string };
+export function PlantaSalao({ mesas, blocos, info, onMesa }: {
+  mesas: ComandaMesa[]; blocos: ComandaAreaBloco[];
+  info: (mesaId: string) => MesaVista;
+  onMesa: (mesaId: string, comandaId?: string) => void;
+}) {
+  if (mesas.length === 0) return (
+    <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-gray-400">
+      <MapIcon size={36} className="mx-auto mb-2 text-gray-300" />
+      <div className="font-semibold text-gray-600 dark:text-gray-300">Salão sem planta ainda</div>
+      <div className="text-sm mt-1">Abra o Menu → <b>Editor do salão</b> pra posicionar as mesas.</div>
+    </div>
+  );
+  return (
+    <div className="relative w-full h-[64vh] rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950/40 overflow-hidden">
+      {blocos.map((b) => (
+        <div key={b.id} style={{ left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, height: `${b.h}%` }} className="absolute rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 bg-gray-100/40 dark:bg-gray-800/20">
+          <span className="absolute top-1 left-1.5 text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide truncate max-w-[92%]">{b.nome}</span>
+        </div>
+      ))}
+      {mesas.map((m) => {
+        const v = info(m.id);
+        const hue = Math.round(140 * (1 - v.frac)); const alpha = (0.16 + 0.42 * v.frac).toFixed(2);
+        const base = { left: `${m.x}%`, top: `${m.y}%`, width: `${m.w || 11}%`, height: `${m.h || 15}%`, transform: "translate(-50%,-50%)", borderRadius: m.formato === "red" ? "50%" : "10px" } as React.CSSProperties;
+        const style = v.ocupada ? { ...base, backgroundColor: `hsla(${hue},80%,50%,${alpha})`, borderColor: `hsla(${hue},70%,38%,0.9)` } : base;
+        return (
+          <button key={m.id} onClick={() => onMesa(m.id, v.comandaId)} style={style}
+            className={`absolute grid place-items-center text-center border-2 p-0.5 leading-tight overflow-hidden ${v.ocupada ? "text-gray-900 dark:text-gray-50 border-solid" : "border-dashed border-gray-300 dark:border-gray-600 bg-white/70 dark:bg-gray-800/40 text-gray-400"}`}>
+            <span className="text-[11px] font-bold truncate max-w-full">{m.nome}</span>
+            {v.ocupada ? (<>
+              {v.sub && <span className="text-[10px] truncate max-w-full">{v.sub}</span>}
+              {v.valor && <span className="text-[10px] font-bold tabular-nums">{v.valor}</span>}
+              {v.tempo && <span className="text-[9px] tabular-nums opacity-80">{v.tempo}</span>}
+            </>) : <span className="text-[9px]">livre</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function MesaLayoutEditor({ rid, onClose }: { rid: string; onClose: () => void }) {
   const [mesas, setMesas] = useState<ComandaMesa[]>([]);
   const [blocos, setBlocos] = useState<ComandaAreaBloco[]>([]);
