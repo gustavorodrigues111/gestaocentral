@@ -16,6 +16,11 @@ const { autoUpdater } = require("electron-updater");
 if (process.platform === "win32") {
   app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 }
+// Teclado some de tempos em tempos (clica mas não digita) no ASUS Vivobook:
+// nessa classe de máquina (gráficos Intel baratos) o processo de GPU do
+// Chromium trava e leva input/render junto. Um PDV não precisa de GPU, então
+// desligamos a aceleração — resolve travas que foco/oclusão não pegaram.
+app.disableHardwareAcceleration();
 
 // Auto-update: baixa a versão nova em segundo plano e INSTALA ao fechar o app
 // (não interrompe o operador no meio da venda). Feed público no GCS (generic).
