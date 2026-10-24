@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, LayoutGrid } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -126,6 +126,9 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   // de envelhecimento das comandas atualizar em tempo real.
   const [, setRelogio] = useState(0);
   useEffect(() => { const t = setInterval(() => setRelogio((x) => x + 1), 1000); return () => clearInterval(t); }, []);
+  // Modo de visualização da tela principal (persistido por dispositivo).
+  const [visao, setVisao] = useState<"cards" | "tempo">(() => { try { return (localStorage.getItem("comandas_visao") as "cards" | "tempo") || "cards"; } catch { return "cards"; } });
+  const mudarVisao = (v: "cards" | "tempo") => { setVisao(v); try { localStorage.setItem("comandas_visao", v); } catch { /* */ } };
   const [novaComanda, setNovaComanda] = useState<Comanda | null>(null);   // recém-criada (otimista, até o snapshot chegar)
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   const [cfgApp, setCfgApp] = useState(false);           // modal de ajustes da impressora (só no app de caixa)
@@ -296,8 +299,16 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           )}
 
           {(caixa || abertas.length > 0) && (() => {
-            const lista = abertas;   // tela principal = só abertas; as vendas (fechadas) ficam em Relatórios
-            if (lista.length === 0) return (
+            const mUlt = (c: Comanda) => { const u = ultimoPedidoEm(c); return u ? (Date.now() - new Date(u).getTime()) / 60000 : 0; };
+            // "Por tempo": mais crítico (sem pedir há mais tempo) primeiro.
+            const lista = visao === "tempo" ? [...abertas].sort((a, b) => mUlt(b) - mUlt(a)) : abertas;
+            const Switcher = (
+              <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 p-0.5 mb-3">
+                <button onClick={() => mudarVisao("cards")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "cards" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><LayoutGrid size={14} /> Cards</button>
+                <button onClick={() => mudarVisao("tempo")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "tempo" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Clock size={14} /> Por tempo</button>
+              </div>
+            );
+            if (abertas.length === 0) return (
               <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-gray-400">
                 <Receipt size={38} className="mx-auto mb-2 text-gray-300" />
                 <div className="font-semibold text-gray-600 dark:text-gray-300">Nenhuma comanda aberta</div>
@@ -305,6 +316,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               </div>
             );
             return (
+              <>
+              {Switcher}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                 {lista.map((c) => {
                   const aberta = c.status !== "fechada";
@@ -339,6 +352,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                   );
                 })}
               </div>
+              </>
             );
           })()}
         </>
