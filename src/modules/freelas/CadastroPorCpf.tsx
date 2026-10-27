@@ -166,14 +166,17 @@ export function CadastroPorCpf({ restaurantId, empregados = [], onConcluido, onC
     if (whatsT.length < 10) { setErr("WhatsApp inválido."); return; }
     setSaving(true);
     try {
+      // Vínculo ADITIVO (só cresce restaurantIds + atualiza dados de contato) —
+      // NÃO toca em `permissions` de propósito: a regra do Firestore trata
+      // permissions como campo sensível (anti-escalada) e barraria o write.
+      // Freela entra SEM entrada de permissão nesse rid = SEM acesso (ausência
+      // de permissions[rid] já significa nenhum acesso). hasAnyAccess=false.
       const updates: Record<string, unknown> = {
         restaurantIds: arrayUnion(restaurantId),
         nome: nomeT,
         pix: pixT,
         whatsapp: whatsT,
       };
-      // Garante que entra com permissions vazias no rid novo, sem sobrescrever outros
-      updates[`permissions.${restaurantId}`] = {};
       await updateDoc(doc(db, "pessoas", busca.pessoa.id), updates);
       const final: Pessoa = {
         ...busca.pessoa,
