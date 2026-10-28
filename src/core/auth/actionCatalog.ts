@@ -757,6 +757,23 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "producaoSisp",
+    icon: "fish",
+    label: "Produção SISP",
+    desc: "Fábrica de pescado sob inspeção (peixaria): recebimento, plano de produção, rendimento, estoque por lote e expedição/romaneio",
+    area: "operacao",
+    acoes: [
+      { id: "ver",        label: "Acessar o módulo (esteira de produção)" },
+      { id: "receber",    label: "Dar entrada de recebimento (matéria-prima)" },
+      { id: "planejar",   label: "Gerar plano de produção" },
+      { id: "produzir",   label: "Lançar produção e rendimento" },
+      { id: "expedir",    label: "Expedir / romaneio (loja, restaurante, atacado)" },
+      { id: "catalogo",   label: "Cadastrar espécies, cortes e fornecedores" },
+      { id: "relatorios", label: "Ver rendimento, produto parado e margem", sensivel: true },
+      { id: "config",     label: "Configurar registro SISP" },
+    ],
+  },
+  {
     id: "faturas",
     icon: "credit-card",
     label: "Faturas de Cartão",

@@ -75,6 +75,9 @@ export type ModuleId =
   // Operação
   | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas" | "eventos"
   | "horarios" | "seguranca"
+  // Produção SISP ART — fábrica de pescado sob inspeção (peixaria): recebimento,
+  // plano, rendimento, lote, romaneio, venda. Mobile-first.
+  | "producaoSisp"
   // Time
   | "escala" | "escalaPraticada" | "freelas" | "reunioes" | "trilha" | "ideias" | "planoDeAcao" | "whatsappInbox"
   // Rotinas — lembretes recorrentes de tarefas do sistema (fechar ponto etc.)
@@ -6824,6 +6827,210 @@ export type ComandaPrintJob = {
   criadoEm: string;
   criadoPorNome?: string | null;
   impressoEm?: string | null;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRODUÇÃO SISP ART (peixaria) — fábrica de pescado sob inspeção (SISP) com
+//  rastreabilidade da compra à venda. O módulo transita como ESTEIRA por status:
+//    recebimento → plano → produção (rendimento) → lote disponível → saída.
+//  F1 = recebimento + plano (hardware-free). Lote/peça/romaneio ficam definidos
+//  aqui para F2–F5, mas só F1 fica ativa. Serialização por peça só na LOJA.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type ProducaoSispConservacao = "ultracongelado" | "refrigerado";
+
+// ── Catálogo: espécie ────────────────────────────────────────────────────────
+export type ProducaoSispEspecie = {
+  id: string;
+  restaurantId: string;
+  nome: string;                         // nome vulgar (ex.: "Pescada amarela")
+  nomeCientifico?: string | null;       // p/ etiqueta de varejo
+  ativo: boolean;
+  ordem?: number;
+  criadoEm: string;
+};
+
+// ── Catálogo: corte / variação por espécie (o produto-alvo escolhido) ─────────
+export type ProducaoSispCorte = {
+  id: string;
+  restaurantId: string;
+  especieId: string;
+  nome: string;                         // como aparece na etiqueta (ex.: "Filé com pele")
+  rendimentoEsperadoPct?: number | null;// % esperado (alerta se destoar)
+  conservacaoPadrao?: ProducaoSispConservacao | null;
+  validadeDias?: { ultracongelado?: number | null; refrigerado?: number | null } | null;
+  precoVarejoKg?: number | null;        // R$/kg varejo (default; preço real pode vir do lote)
+  precoAtacadoKg?: number | null;       // R$/kg atacado (default)
+  ativo: boolean;
+  ordem?: number;
+  criadoEm: string;
+};
+
+// ── Fornecedor (dados básicos; reusa cadastro existente se houver) ────────────
+export type ProducaoSispFornecedor = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  cnpj?: string | null;
+  whatsapp?: string | null;
+  registroSanitario?: string | null;   // SIF/registro de origem (relevante pro SISP)
+  obs?: string | null;
+  ativo: boolean;
+  criadoEm: string;
+};
+
+// ── Recebimento (entrada de matéria-prima) ───────────────────────────────────
+// Peso informado por LEVA (caixas grandes/pesadas): total, por caixa ou nominal.
+export type ProducaoSispPesoModo = "total" | "porCaixa" | "nominal";
+
+export type ProducaoSispRecebimentoItem = {
+  id: string;
+  especieId: string;
+  qtdCaixas: number;
+  pesoModo: ProducaoSispPesoModo;
+  pesoBrutoKg: number;                  // total bruto da leva (kg) — base do rendimento
+  pesosPorCaixaKg?: number[] | null;    // detalhe opcional (modo "porCaixa")
+  pesoNominalCaixaKg?: number | null;   // modo "nominal" (ex.: 20)
+  temperaturaC?: number | null;         // temperatura de recebimento (digitada na v1)
+  conforme?: boolean | null;            // aprovado/rejeitado
+  motivoRejeicao?: string | null;
+  loteFornecedor?: string | null;
+  validadeOrigem?: string | null;       // ISO
+  fotoUrl?: string | null;              // foto da caixa (celular na v1)
+};
+
+export type ProducaoSispRecebimentoStatus = "aguardando_plano" | "planejado";
+
+export type ProducaoSispRecebimento = {
+  id: string;
+  restaurantId: string;
+  fornecedorId?: string | null;         // null = recebido sem fornecedor (pendência)
+  fornecedorNome?: string | null;       // snapshot
+  notaFornecedor?: string | null;       // nº nota/romaneio do fornecedor
+  obs?: string | null;
+  itens: ProducaoSispRecebimentoItem[];
+  status: ProducaoSispRecebimentoStatus;
+  recebidoEm: string;                   // ISO
+  recebidoPorId?: string | null;
+  recebidoPorNome?: string | null;
+  criadoEm: string;
+};
+
+// ── Plano de produção (divide a MP em produtos-alvo; 1 plano por recebimento) ─
+export type ProducaoSispPlanoAlvo = {
+  id: string;
+  especieId: string;
+  corteId: string;
+  conservacao: ProducaoSispConservacao;
+  gramagemPorcaoG?: number | null;      // g por porção (ex.: 400)
+  pesoBrutoDestinadoKg?: number | null; // parte da MP destinada a este alvo
+  instrucao?: string | null;            // instrução de corte (etiqueta [E2])
+};
+
+export type ProducaoSispPlanoStatus = "aguardando_producao" | "produzido" | "cancelado";
+
+export type ProducaoSispPlano = {
+  id: string;
+  restaurantId: string;
+  recebimentoId: string;
+  alvos: ProducaoSispPlanoAlvo[];
+  status: ProducaoSispPlanoStatus;
+  criadoEm: string;
+  criadoPorNome?: string | null;
+  produzidoEm?: string | null;
+};
+
+// ── Localização do estoque + lote de produção (F2) ───────────────────────────
+export type ProducaoSispLocal = "fabrica" | "loja" | "restaurante" | "expedido";
+
+// Nasce ao lançar produção/rendimento (1 lote por corte-alvo). Fica no estoque da
+// fábrica (saldo por lote) até ser despachado por romaneio.
+export type ProducaoSispLoteStatus = "disponivel" | "esgotado";
+
+export type ProducaoSispLote = {
+  id: string;
+  restaurantId: string;
+  planoId: string;
+  recebimentoId: string;
+  especieId: string;
+  corteId: string;
+  codigo: string;                       // lote legível (ex.: "PAM-20261028-01")
+  conservacao: ProducaoSispConservacao;
+  pesoBrutoEntradaKg: number;           // W2: bruto destinado a este lote
+  pesoBeneficiadoKg: number;            // W2: saída beneficiada (pesagem do lote)
+  rendimentoPct?: number | null;        // beneficiado ÷ bruto × 100
+  nPacotes: number;                     // pacotes produzidos
+  custoKgBeneficiado?: number | null;   // custo real/kg (CMV)
+  precoVarejoKg?: number | null;        // preço por lote (ajustável — aging/liquidação)
+  precoAtacadoKg?: number | null;
+  fabricacaoEm: string;                 // ISO
+  validadeEm?: string | null;           // ISO (por corte + conservação)
+  saldoPacotes: number;                 // estoque da fábrica (até serializar/expedir)
+  saldoKg: number;
+  local: ProducaoSispLocal;
+  status: ProducaoSispLoteStatus;
+  criadoEm: string;
+  criadoPorNome?: string | null;
+};
+
+// ── Peça serializada (nasce na ENTRADA DA LOJA — W3/F3; QR = pacote único) ────
+export type ProducaoSispPecaStatus = "em_estoque" | "reservado" | "vendido" | "baixa";
+
+export type ProducaoSispPeca = {
+  id: string;                           // = QR do varejo (pacote único)
+  restaurantId: string;
+  loteId: string;
+  especieId: string;
+  corteId: string;
+  pesoKg: number;
+  precoKg?: number | null;              // snapshot do varejo no abastecimento
+  conservacao: ProducaoSispConservacao;
+  validadeEm?: string | null;
+  local: ProducaoSispLocal;             // "loja"
+  status: ProducaoSispPecaStatus;
+  reservaExpiraEm?: string | null;
+  reservaCanal?: "online" | "balcao" | null;
+  reservaRef?: string | null;
+  vendaCanal?: "online" | "balcao" | null;
+  vendaRef?: string | null;             // comandaId / pedidoId
+  vendidoEm?: string | null;
+  criadoEm: string;
+};
+
+// ── Romaneio / expedição (F3) — tipo derivado do CNPJ do destino ──────────────
+export type ProducaoSispRomaneioTipo = "transferencia" | "venda";
+export type ProducaoSispRomaneioDestino = "loja" | "restaurante" | "clienteAtacado";
+
+export type ProducaoSispRomaneioItem = {
+  loteId: string;
+  corteId: string;
+  pesoKg: number;
+  qtdPacotes: number;
+};
+
+export type ProducaoSispRomaneio = {
+  id: string;
+  restaurantId: string;
+  tipo: ProducaoSispRomaneioTipo;       // transferência (mesmo CNPJ) | venda (outro CNPJ)
+  destinoTipo: ProducaoSispRomaneioDestino;
+  destinoId?: string | null;            // rid do restaurante / id do cliente atacado
+  destinoNome?: string | null;
+  itens: ProducaoSispRomaneioItem[];
+  fiscal?: boolean | null;              // só registro; nota em si sai no sistema fiscal
+  vendaId?: string | null;              // vínculo c/ módulo Vendas (quando tipo=venda)
+  expedidoEm: string;
+  expedidoPorNome?: string | null;
+  criadoEm: string;
+};
+
+// ── Config por restaurante: producaoSispConfig/{rid} ──────────────────────────
+export type ProducaoSispConfig = {
+  rid: string;
+  registroSisp?: string | null;         // nº de registro no SISP (etiqueta oficial)
+  razaoSocial?: string | null;
+  cnpj?: string | null;
+  lotePrefixo?: string | null;          // prefixo do código de lote (ex.: "PAM")
+  atualizadoEm?: string | null;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

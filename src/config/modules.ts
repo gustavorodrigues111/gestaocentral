@@ -48,6 +48,7 @@ export const MODULES: ModuleDef[] = [
   // ── Segurança Sanitária ──────────────────────────────────────────
   { id: "estoqueValidade", area: "ops", subarea: "Segurança Sanitária", label: "Controles de Validades", icon: "calendar-clock", status: "ativo", etapa: "em_desenvolvimento", desc: "Etiquetas de validade (cozinha) + gestão de estoque por lote (locais, entrada por NF, baixa por QR, giro PVPS/PEPS). Multi-loja.", dependsOn: ["pessoas"] },
   { id: "seguranca",   area: "ops", subarea: "Segurança Sanitária",   label: "Checklist Sanitário", icon: "shield-check", status: "ativo", etapa: "em_desenvolvimento", desc: "Avaliação de boas práticas (RDC 216) preenchida pela nutricionista, por área. Não-conformes viram plano de ação para a operação; histórico e gráficos de performance.", dependsOn: ["pessoas", "planoDeAcao"] },
+  { id: "producaoSisp", area: "ops", subarea: "Segurança Sanitária",  label: "Produção SISP", icon: "fish", status: "ativo", etapa: "em_desenvolvimento", desc: "Fábrica de pescado sob inspeção (peixaria): recebimento → plano → rendimento → estoque por lote → expedição/romaneio, com rastreabilidade e etiquetas. Mobile-first.", dependsOn: ["pessoas"] },
 
   // ── Informações Básicas ──────────────────────────────────────────
   { id: "sites",       area: "ops", subarea: "Informações Básicas",   label: "Sites",           icon: "globe", status: "ativo", etapa: "beta", desc: "Site público do restaurante: história, horário, cardápio, forms" },

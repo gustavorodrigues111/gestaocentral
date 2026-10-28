@@ -811,6 +811,18 @@ service cloud.firestore {
     match /comandasFiscalConfig/{id} { allow read, write: if authed(); }
     match /comandaCaixas/{id}    { allow read, write: if authed(); }
 
+    // ── /producaoSisp* ── Produção SISP (peixaria): fábrica, estoque, expedição ──
+    // Operacional, acesso só autenticado (como as demais coleções do PDV/estoque).
+    match /producaoSispEspecies/{id}     { allow read, write: if authed(); }
+    match /producaoSispCortes/{id}       { allow read, write: if authed(); }
+    match /producaoSispFornecedores/{id} { allow read, write: if authed(); }
+    match /producaoSispRecebimentos/{id} { allow read, write: if authed(); }
+    match /producaoSispPlanos/{id}       { allow read, write: if authed(); }
+    match /producaoSispLotes/{id}        { allow read, write: if authed(); }
+    match /producaoSispPecas/{id}        { allow read, write: if authed(); }
+    match /producaoSispRomaneios/{id}    { allow read, write: if authed(); }
+    match /producaoSispConfig/{id}       { allow read, write: if authed(); }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;

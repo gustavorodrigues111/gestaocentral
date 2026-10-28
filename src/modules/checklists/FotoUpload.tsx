@@ -7,9 +7,10 @@ import { storage } from "../../core/firebase/config";
 
 const MAX_MB = 10;
 
-export function FotoUpload({ rid, pathPrefix, url, onChange, disabled, label = "foto" }: {
+export function FotoUpload({ rid, pathPrefix, url, onChange, disabled, label = "foto", bucketPrefix = "checklists" }: {
   rid: string; pathPrefix: string; url?: string | null;
   onChange: (url: string | null) => void; disabled?: boolean; label?: string;
+  bucketPrefix?: string;   // pasta raiz no Storage (default "checklists")
 }) {
   const [uploading, setUploading] = useState(false);
   const [prog, setProg] = useState(0);
@@ -22,7 +23,7 @@ export function FotoUpload({ rid, pathPrefix, url, onChange, disabled, label = "
     if (file.size / (1024 * 1024) > MAX_MB) { setErro(`Máx ${MAX_MB} MB.`); return; }
     setUploading(true); setProg(0);
     const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-    const path = `checklists/${rid}/${pathPrefix}_${Date.now()}.${ext}`;
+    const path = `${bucketPrefix}/${rid}/${pathPrefix}_${Date.now()}.${ext}`;
     const task = uploadBytesResumable(storageRef(storage, path), file, { contentType: file.type });
     task.on("state_changed",
       (s) => setProg(Math.round((s.bytesTransferred / s.totalBytes) * 100)),
