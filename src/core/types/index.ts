@@ -2408,6 +2408,7 @@ export type InvestLancamento = {
   formaPagamento?: string;   // chave fixa (ver INVEST_FORMA_LABEL) ou forma custom
   pagoPor?: string;          // quem desembolsou (nome livre / da lista InvestPagador) — caso 1 pagador
   pagamentos?: { pagador: string; valor: number }[];  // conta rachada: vários pagadores (soma = valor)
+  semComprovante?: boolean;              // gasto sem anexo (bot/texto ou importação)
   parcelado?: boolean; parcelas?: InvestParcela[];
   comprovanteDriveId?: string; comprovanteUrl?: string; comprovanteNome?: string;
   observacao?: string;

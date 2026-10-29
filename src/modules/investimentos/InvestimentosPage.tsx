@@ -291,6 +291,41 @@ export function InvestimentosPage() {
     const nome = (proj.nome || "investimentos").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
     XLSX.writeFile(wb, `${nome}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
+  // Rascunhos aguardando conferência + confirmar (tira o flag rascunho).
+  const rascunhos = useMemo(() => lancAtivos.filter((l) => l.rascunho), [lancAtivos]);
+  async function confirmarRascunho(l: InvestLancamento) {
+    await salvarLancamento({ ...l, rascunho: false, atualizadoEm: new Date().toISOString() });
+    say("Rascunho confirmado.");
+  }
+  // PROVISÓRIO — importar os 7 gastos do extrato (conferência out/2026). Remover depois.
+  const EXTRATO_PARATY: { data: string; estabelecimento: string; valor: number }[] = [
+    { data: "2026-10-08", estabelecimento: "Ideal Material de Construção Paraty", valor: 679 },
+    { data: "2026-10-15", estabelecimento: "Artur Machado da Silva", valor: 1750 },
+    { data: "2026-10-20", estabelecimento: "Fabio Vieira Serralheiro", valor: 7500 },
+    { data: "2026-10-22", estabelecimento: "Artur Machado da Silva", valor: 1300 },
+    { data: "2026-10-28", estabelecimento: "SP Tintas", valor: 507.47 },
+    { data: "2026-10-28", estabelecimento: "Dry Art", valor: 425 },
+    { data: "2026-10-28", estabelecimento: "Artur Machado da Silva", valor: 2250 },
+  ];
+  async function seedExtratoParaty() {
+    if (!proj || !rid) return;
+    let seq = lancamentos.reduce((m, l) => Math.max(m, Number(l.seq) || 0), 0);
+    let criados = 0, pulados = 0;
+    for (const e of EXTRATO_PARATY) {
+      if (lancAtivos.some((l) => l.data === e.data && Math.abs((l.valor || 0) - e.valor) < 0.01)) { pulados++; continue; }
+      seq += 1;
+      await salvarLancamento({
+        id: crypto.randomUUID(), restaurantId: rid, projetoId: proj.id,
+        data: e.data, estabelecimento: e.estabelecimento, categoriaNome: "Obra",
+        valor: e.valor, formaPagamento: "pix", semComprovante: true,
+        observacao: "Conferência de extrato bancário", parcelado: false, parcelas: [],
+        seq, origem: "manual", rascunho: true,
+        criadoEm: new Date().toISOString(), criadoPorNome: me?.nome || "Conferência",
+      } as InvestLancamento);
+      criados++;
+    }
+    say(`Importados ${criados} rascunho(s)${pulados ? `, ${pulados} já existiam` : ""}.`);
+  }
 
   // Cor por categoria (bate com o donut) + lista agrupada por categoria.
   const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
@@ -351,6 +386,7 @@ export function InvestimentosPage() {
             : <span className="text-gray-500 text-sm">Nenhum projeto ainda</span>
         )}
         <div className="flex-1" />
+        {proj && podeLancar && <button onClick={() => void seedExtratoParaty()} className="h-8 px-2.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 text-[11px] font-semibold shrink-0" title="PROVISÓRIO — importa os 7 gastos do extrato como rascunho">Importar extrato (7)</button>}
         {proj && lancAtivos.length > 0 && <button onClick={exportarPlanilha} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Exportar planilha (.xlsx)"><Download size={16} /></button>}
         {proj && (podeGerirProjetos || podeGerirCategorias) && <button onClick={() => setProjModal({ mode: "edit", proj })} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Configurações do projeto (pasta, categorias, formas)"><Settings size={16} /></button>}
       </div>
@@ -442,6 +478,14 @@ export function InvestimentosPage() {
             </div>
           )}
 
+          {/* Aviso de rascunhos aguardando conferência */}
+          {rascunhos.length > 0 && (
+            <div className="mb-3 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-900/20 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200 flex items-center gap-2 flex-wrap">
+              <span className="font-semibold">{rascunhos.length} em rascunho</span>
+              <span className="text-sky-600 dark:text-sky-300">— lançados pelo bot/importação. Abra cada um e toque em <b>Confirmar</b>.</span>
+            </div>
+          )}
+
           {/* Linha tracejada "novo lançamento" */}
           {podeLancar && (
             <button onClick={() => setLancModal("new")} className="w-full mb-3 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20 py-3 text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition-colors"><Plus size={16} /> Novo lançamento</button>
@@ -516,6 +560,7 @@ export function InvestimentosPage() {
                         </div>
                       )}
                       <div className="flex justify-end gap-2 pt-1">
+                        {podeLancar && l.rascunho && <button onClick={() => void confirmarRascunho(l)} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 mr-auto"><Check size={13} /> Confirmar</button>}
                         {podeLancar && <button onClick={() => void moverLixeira(l, true)} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-800 inline-flex items-center gap-1.5 transition-colors"><Trash2 size={13} /> Excluir</button>}
                         {podeLancar && <button onClick={() => setLancModal(l)} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 inline-flex items-center gap-1.5 transition-colors"><Pencil size={13} /> Editar</button>}
                       </div>
