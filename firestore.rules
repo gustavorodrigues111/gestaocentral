@@ -222,6 +222,7 @@ service cloud.firestore {
     match /freelaPagamentos/{id}    { allow read, write: if authed(); }
     match /freelasConfig/{rid}      { allow read, write: if authed(); }   // datas de corte de pagamento (id=rid)
     match /paginasEstado/{id}       { allow read, write: if authed(); }   // estado compartilhado de páginas hospedadas (checklist em tempo real)
+    match /paginasDados/{id}        { allow read, write: if authed(); }   // estado de apps colaborativos hospedados (tarefas/pessoas/config)
     match /freelaMensalistaConfirmado/{id} { allow read, write: if authed(); }
     // FINANCEIRO (F2) — leitura só de quem tem permissão de VER Vendas na empresa
     // do doc (hoje = só master; nenhum perfil não-master tem vendas.ver). Escrita
@@ -248,6 +249,9 @@ service cloud.firestore {
     match /whatsappRespostas/{id}      { allow read, write: if authed(); }
     match /whatsappRoteios/{id}        { allow read, write: if authed(); }
     match /whatsappMonitores/{id}      { allow read, write: if authed(); }
+    match /botComandos/{id}            { allow read, write: if authed(); }   // Bot: comando em aberto por grupo (excluir/quitar/coincidir)
+    match /botPendencias/{id}          { allow read, write: if authed(); }   // Bot: dúvida aguardando resposta no privado
+    match /botAvisosParcela/{id}       { allow read, write: if authed(); }   // Bot: dedup do aviso diário de parcelas
     match /whatsappAgenteSessoes/{id}  { allow read, write: if authed(); }
     match /rotinaNotificacoes/{id}     { allow read, write: if authed(); }
     match /notificacaoConfigs/{id}     { allow read, write: if authed(); }
