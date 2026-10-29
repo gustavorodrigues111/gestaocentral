@@ -551,6 +551,27 @@ async function acharPorSeq(rid: string, projetoId: string | null, seq: number): 
     return todos.find((l) => l.restaurantId === rid && l.projetoId === projetoId && Number(l.seq) === seq && !l.excluido) || null;
   } catch { return null; }
 }
+// Lista lançamentos ativos do projeto, opcionalmente filtrados por termo
+// (fornecedor, categoria ou valor). Mais recentes primeiro, teto de 20.
+async function buscarLancamentos(rid: string, projetoId: string | null, termo: string): Promise<Record<string, unknown>[]> {
+  try {
+    const todos = await firestoreListar("investLancamentos");
+    let arr = todos.filter((l) => l.restaurantId === rid && l.projetoId === projetoId && !l.excluido);
+    const t = (termo || "").trim().toLowerCase();
+    if (t) {
+      const v = parseValor(t);
+      arr = arr.filter((l) =>
+        String(l.estabelecimento || "").toLowerCase().includes(t) ||
+        String(l.categoriaNome || "").toLowerCase().includes(t) ||
+        (v > 0 && Math.abs(Number(l.valor) - v) < 0.01));
+    }
+    return arr.sort((a, b) => String(b.data || "").localeCompare(String(a.data || ""))).slice(0, 20);
+  } catch { return []; }
+}
+function formatLista(arr: Record<string, unknown>[]): string {
+  if (!arr.length) return "— nada encontrado —";
+  return arr.map((l) => `#${l.seq ?? "?"} · ${l.estabelecimento || "—"} — R$ ${fmtV(Number(l.valor))} · ${fmtBR(String(l.data || ""))}${l.rascunho ? " (rascunho)" : ""}`).join("\n");
+}
 async function quitarParcelaN(lancId: string, n: number): Promise<void> {
   const l = await firestoreLer("investLancamentos", lancId).catch(() => null);
   if (!l) return;
@@ -618,14 +639,39 @@ async function tratarComandoGrupo(ctx: BotCtx): Promise<boolean> {
     // outra coisa → deixa a pendência expirar sozinha, segue o fluxo normal
   }
 
-  // 2) Novo comando de EXCLUSÃO
-  const mEx = texto.match(/(?:excluir|apagar|remover|deletar)\s+(?:o\s+)?(?:lan[çc]amento\s*)?#?\s*(\d{1,6})/i);
+  // 2) LISTAR lançamentos ("lista os lançamentos", "quais gastos de tinta")
+  const mL = texto.match(/\b(?:lista(?:r)?|mostra(?:r)?|quais(?:\s+s[aã]o)?|ver)\b[^]*?\b(?:lan[çc]amentos?|gastos?)\b(?:\s+(?:de|da|do|categoria)\s+(.+))?/i);
+  if (mL) {
+    const termo = (mL[1] || "").trim().replace(/[?.!]+$/, "");
+    const arr = await buscarLancamentos(ctx.rid, ctx.projetoId, termo);
+    await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Lançamentos${termo ? ` de "${termo}"` : ""}:\n${formatLista(arr)}\n\nPra excluir: "excluir #N" (ou "excluir ${termo || "fornecedor"}").`, { quotedId: ctx.msg.id });
+    return true;
+  }
+
+  // 3) Novo comando de EXCLUSÃO — por número
+  const mEx = texto.match(/(?:excluir|apagar|remover|deletar)\s+(?:o\s+)?(?:lan[çc]amento\s*)?#?\s*(\d{1,6})\b/i);
   if (mEx) {
     const seq = Number(mEx[1]);
     const alvo = await acharPorSeq(ctx.rid, ctx.projetoId, seq);
     if (!alvo) { await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Não achei o lançamento #${seq} nesse projeto.`, { quotedId: ctx.msg.id }); return true; }
     await firestoreCriar("botComandos", cmdDoc, { numeroId: ctx.numeroId, waId: ctx.waId, tipo: "excluir", lancamentoId: String(alvo.id), seq, status: "aberto", criadoEm: new Date().toISOString() });
     await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Vou excluir #${seq}: ${alvo.estabelecimento || "—"} — R$ ${fmtV(Number(alvo.valor))}. Confirmar? (responda "sim")`, { quotedId: ctx.msg.id });
+    return true;
+  }
+
+  // 4) EXCLUSÃO por DESCRIÇÃO ("excluir o da tinta", "excluir areia 300")
+  const mExTxt = texto.match(/^\s*(?:excluir|apagar|remover|deletar)\s+(.+)/i);
+  if (mExTxt) {
+    const termo = mExTxt[1].replace(/\b(o|a|os|as|lan[çc]amento|lan[çc]amentos|do|da|de)\b/gi, " ").trim();
+    const arr = await buscarLancamentos(ctx.rid, ctx.projetoId, termo);
+    if (arr.length === 0) { await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Não achei lançamento com "${termo}". Tente "lista os lançamentos".`, { quotedId: ctx.msg.id }); return true; }
+    if (arr.length === 1) {
+      const alvo = arr[0]; const seq = Number(alvo.seq) || 0;
+      await firestoreCriar("botComandos", cmdDoc, { numeroId: ctx.numeroId, waId: ctx.waId, tipo: "excluir", lancamentoId: String(alvo.id), seq, status: "aberto", criadoEm: new Date().toISOString() });
+      await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Vou excluir #${seq}: ${alvo.estabelecimento || "—"} — R$ ${fmtV(Number(alvo.valor))}. Confirmar? (responda "sim")`, { quotedId: ctx.msg.id });
+      return true;
+    }
+    await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Achei ${arr.length}. Qual? Responda "excluir #N":\n${formatLista(arr)}`, { quotedId: ctx.msg.id });
     return true;
   }
 
