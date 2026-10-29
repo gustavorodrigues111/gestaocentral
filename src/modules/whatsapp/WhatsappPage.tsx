@@ -3,12 +3,13 @@
 // criar, QR, conectar/reconectar, status, atribuir usuários, regras).
 // O "WhatsApp do sistema" (API oficial, disparos) fica na Central de Avisos.
 import { useState, type ReactNode } from "react";
-import { Smartphone, Tag } from "lucide-react";
+import { Smartphone, Tag, Bot } from "lucide-react";
 import { MessageCircle, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { WhatsappInboxPage, NumerosManager, TagsManager } from "./WhatsappInboxPage";
+import { MonitoresManager } from "./MonitoresManager";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 export function WhatsappPage() {
@@ -52,6 +53,11 @@ export function WhatsappPage() {
             <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Tag size={15} /> Tags de conversa <span className="text-[11px] font-normal text-gray-400">· valem para todos os números</span></h2>
             <p className="text-xs text-gray-500 mb-2">Etiquetas globais pra organizar as conversas no chat (não são por número).</p>
             <TagsManager />
+          </section>
+          <section>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Bot size={15} /> Bot Planejamento.app <span className="text-[11px] font-normal text-gray-400">· grupos monitorados</span></h2>
+            <p className="text-xs text-gray-500 mb-2">Escolha um grupo pra o bot monitorar. Ele lê os comprovantes e lança como rascunho no destino escolhido — sem atrapalhar o atendimento.</p>
+            <MonitoresManager />
           </section>
         </div>
       )}

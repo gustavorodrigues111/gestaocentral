@@ -339,6 +339,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal, deepLi
       setNumeros(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappNumero).filter(n => n.ativo !== false)));
   }, [authPronta]);
 
+  // Grupos monitorados pelo Bot Planejamento.app ficam OCULTOS no inbox humano
+  // (são do bot). Set de `${numeroId}__${waId}` dos monitores ativos.
+  const [monitorIds, setMonitorIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!authPronta) return;
+    return assinarComRetry(collection(db, "whatsappMonitores"), snap =>
+      setMonitorIds(new Set(snap.docs.map(d => d.data() as { numeroId?: string; waId?: string; ativo?: boolean })
+        .filter(x => x.ativo !== false && x.numeroId && x.waId).map(x => `${x.numeroId}__${x.waId}`))));
+  }, [authPronta]);
+
   useEffect(() => {
     if (!authPronta) return;
     const base = collection(db, "pessoas");
@@ -514,8 +524,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal, deepLi
       m.set(k, c);
     }
     for (const msg of msgsDoNumero) if (msg.direcao === "in" && !msg.lido) { const c = m.get(foneKey(msg.waId)); if (c) c.naoLidas++; }
-    return [...m.values()].sort((a, b) => (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || ""));
-  }, [msgsDoNumero]);
+    return [...m.values()]
+      .filter(c => !monitorIds.has(`${numeroSel}__${c.waId}`))   // grupos do bot não aparecem no inbox
+      .sort((a, b) => (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || ""));
+  }, [msgsDoNumero, monitorIds, numeroSel]);
 
   const contatoDe = (waId: string) => contatos[foneKey(waId)];
   const nomeConversa = (waId: string, waNome?: string | null) => {
