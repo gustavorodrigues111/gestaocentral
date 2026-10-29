@@ -31,6 +31,8 @@ export function MonitoresManager() {
   // Form
   const [numeroId, setNumeroId] = useState("");
   const [grupoWaId, setGrupoWaId] = useState("");
+  const [buscaGrupo, setBuscaGrupo] = useState("");   // texto digitado na busca de grupo
+  const [grupoAberto, setGrupoAberto] = useState(false); // dropdown de resultados visível
   const [restaurantId, setRestaurantId] = useState(activeRestaurant?.id || "");
   const [projetoId, setProjetoId] = useState("");
   const [modo, setModo] = useState<WhatsappMonitorModo>("silencioso");
@@ -59,6 +61,18 @@ export function MonitoresManager() {
 
   const nomeNumero = (id: string) => numeros.find((n) => n.id === id)?.nome || id;
   const nomeGrupo = (waId: string) => grupos.find((g) => g.waId === waId)?.nome || waId;
+
+  // Grupos que batem com a busca (por nome). Mostra todos quando o campo está vazio.
+  const gruposFiltrados = useMemo(() => {
+    const q = buscaGrupo.trim().toLowerCase();
+    const base = q ? grupos.filter((g) => g.nome.toLowerCase().includes(q)) : grupos;
+    return base.slice(0, 30);
+  }, [grupos, buscaGrupo]);
+  function escolherGrupo(g: Grupo) {
+    setGrupoWaId(g.waId);
+    setBuscaGrupo(g.nome);
+    setGrupoAberto(false);
+  }
   const nomeRest = (id: string) => restaurants.find((r) => r.id === id)?.nome || id;
   const nomeProj = useMemo(() => {
     const m: Record<string, string> = {};
@@ -83,7 +97,7 @@ export function MonitoresManager() {
     try {
       await setDoc(doc(db, "whatsappMonitores", id), sanitizeForFirestore(mon), { merge: true });
       setOk(true); setTimeout(() => setOk(false), 2500);
-      setGrupoWaId(""); setProjetoId("");
+      setGrupoWaId(""); setBuscaGrupo(""); setProjetoId("");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
     } finally { setSalvando(false); }
@@ -111,10 +125,28 @@ export function MonitoresManager() {
             </select>
           </label>
           <label className="text-xs text-gray-500">Grupo
-            <select className={INPUT} value={grupoWaId} onChange={(e) => setGrupoWaId(e.target.value)}>
-              <option value="">Escolha o grupo…</option>
-              {grupos.map((g) => <option key={g.waId} value={g.waId}>{g.nome}</option>)}
-            </select>
+            <div className="relative">
+              <input
+                className={INPUT}
+                value={buscaGrupo}
+                placeholder="Buscar grupo pelo nome…"
+                onChange={(e) => { setBuscaGrupo(e.target.value); setGrupoWaId(""); setGrupoAberto(true); }}
+                onFocus={() => setGrupoAberto(true)}
+                onBlur={() => setTimeout(() => setGrupoAberto(false), 150)}
+              />
+              {grupoAberto && (
+                <div className="absolute z-20 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+                  {gruposFiltrados.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">Nenhum grupo encontrado.</div>}
+                  {gruposFiltrados.map((g) => (
+                    <button type="button" key={g.waId}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 ${g.waId === grupoWaId ? "bg-emerald-50 dark:bg-emerald-900/20 font-medium" : ""}`}
+                      onMouseDown={(e) => { e.preventDefault(); escolherGrupo(g); }}>
+                      {g.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </label>
         </div>
         {grupos.length === 0 && <div className="text-[11px] text-amber-600">Nenhum grupo visto ainda. Adicione o número ao grupo e mande uma mensagem lá — ele aparece aqui.</div>}
