@@ -2400,7 +2400,32 @@ export type InvestLancamento = {
   parcelado?: boolean; parcelas?: InvestParcela[];
   comprovanteDriveId?: string; comprovanteUrl?: string; comprovanteNome?: string;
   observacao?: string;
+  origem?: "bot" | "manual";             // "bot" = lançado pelo Bot Planejamento.app (WhatsApp)
+  rascunho?: boolean;                    // true = rascunho do bot aguardando conferência
   criadoEm: string; criadoPor?: string; criadoPorNome?: string; atualizadoEm?: string;
+};
+
+// ─── BOT PLANEJAMENTO.APP — monitor de conversa/grupo (WhatsApp via Evolution) ──
+// Doc id = `${numeroId}__${waId}`. Config de "grupo monitorado": amarra uma
+// conversa/grupo de um número a uma ou mais SKILLS + o destino (restaurante/
+// projeto) + o responsável técnico. Inerte até existir (webhook não toca nele).
+export type WhatsappMonitorModo = "silencioso" | "confirma" | "pergunta";
+export type WhatsappMonitor = {
+  id: string;                            // `${numeroId}__${waId}`
+  numeroId: string;                      // instância Evolution
+  waId: string;                          // conversa/grupo (g:<id> p/ grupo)
+  nome?: string;                         // rótulo amigável (nome do grupo)
+  skills: string[];                      // skills ativas (ex.: ["investimentos"])
+  restaurantId: string;
+  projetoId?: string | null;             // destino (skill investimentos)
+  categoriaPadrao?: string | null;
+  pagadorPadrao?: string | null;
+  responsavelPessoaId?: string | null;   // recebe pendências/dúvidas no privado (F2)
+  responsavelWhatsapp?: string | null;
+  modo?: WhatsappMonitorModo;            // silencioso (padrão) | confirma | pergunta
+  exclusivo?: boolean;                   // true = nenhum atendente humano mexe (lado app)
+  ativo: boolean;
+  criadoEm: string; atualizadoEm?: string;
 };
 
 // ─── RESERVAS + CRM ─────────────────────────────────────────────────────────

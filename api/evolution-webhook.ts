@@ -9,6 +9,7 @@
 //  com o evento MESSAGES_UPSERT ligado.
 // ════════════════════════════════════════════════════════════════════════════
 import { firestoreCriar, firestoreLer, firestoreAtualizar, firestoreDisponivel, subirStorage } from "./_firestoreRest.js";
+import { rodarMonitor } from "./_botMonitor.js";
 
 type RotOpcao = { id?: string; rotulo?: string; pessoaId?: string; pessoaNome?: string; atalhos?: string[] };
 type Roteamento = { ativo?: boolean; saudacao?: string; mensagemRoteado?: string; opcoes?: RotOpcao[] };
@@ -323,6 +324,11 @@ async function processar(body: EvoBody): Promise<void> {
     // (a automação só age se a conversa ainda ficar sem responsável).
     if (recente) {
       if (pReabrir) await pReabrir;
+      // Bot Planejamento.app: se esta conversa/grupo é MONITORADA, o bot trata e
+      // a conversa NÃO cai no atendimento humano. Inerte se não houver monitor.
+      const tratadoPorBot = await rodarMonitor(numeroId, waId, jid, id, texto, midia ? { url: midia.url, mime: midia.mime } : null, ehGrupo ? (m.pushName || null) : null)
+        .catch((e) => { console.log("[evo-webhook] monitor:", (e as Error)?.message); return false; });
+      if (tratadoPorBot) continue;
       // Bot de triagem NÃO age em grupo (só reabre acima, se estava finalizado).
       if (!ehGrupo) { try { await automacao(numeroId, waId, texto); } catch (e) { console.log("[evo-webhook] automacao:", (e as Error)?.message); } }
     }
