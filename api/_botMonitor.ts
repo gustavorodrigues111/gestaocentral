@@ -17,7 +17,7 @@
 //  F3: o bot FALA no grupo só quando CHAMADO (menção @ ou reply à msg dele).
 // ════════════════════════════════════════════════════════════════════════════
 import { randomUUID } from "node:crypto";
-import { firestoreLer, firestoreCriar, firestoreListar, firestorePatchCampos, firestoreConsultarUm } from "./_firestoreRest.js";
+import { firestoreLer, firestoreCriar, firestoreListar, firestorePatchCampos, firestoreConsultarUm, firestoreCriarSeAusente } from "./_firestoreRest.js";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-8";
@@ -102,7 +102,7 @@ function parseJSON<T>(txt: string | null): T | null {
 
 // ── IA: extrai os campos de um comprovante (imagem/PDF) ──────────────────────
 type Comprovante = {
-  ehComprovante?: boolean;
+  ehComprovante?: boolean; pagador?: string;
   data?: string; estabelecimento?: string; categoriaExistente?: string; categoriaSugerida?: string;
   valor?: number; formaPagamento?: string; parcelado?: boolean; parcelas?: { data: string; valor: number }[];
 };
@@ -111,10 +111,11 @@ async function extrairComprovante(mime: string, base64: string, categorias: stri
   if (!key) return null;
   const hoje = new Date().toISOString().slice(0, 10);
   const system = `Você analisa uma imagem/PDF recebido num grupo de WhatsApp e decide se é um COMPROVANTE financeiro (nota fiscal, recibo, cupom fiscal, comprovante de pix/cartão/boleto/transferência) de um investimento de restaurante. Devolva SÓ JSON, sem texto fora do JSON, no formato:
-{"ehComprovante":true,"data":"YYYY-MM-DD","estabelecimento":"","categoriaExistente":"","categoriaSugerida":"","valor":0,"formaPagamento":"dinheiro|pix|debito|credito|boleto|transferencia|outro","parcelado":false,"parcelas":[{"data":"YYYY-MM-DD","valor":0}]}
+{"ehComprovante":true,"pagador":"","data":"YYYY-MM-DD","estabelecimento":"","categoriaExistente":"","categoriaSugerida":"","valor":0,"formaPagamento":"dinheiro|pix|debito|credito|boleto|transferencia|outro","parcelado":false,"parcelas":[{"data":"YYYY-MM-DD","valor":0}]}
 Regras:
 - ehComprovante=false se a imagem NÃO for um comprovante financeiro (foto de obra/produto/pessoas, meme, print de conversa, documento qualquer). Nesse caso devolva o resto zerado/vazio.
 - ehComprovante=true se for comprovante, mesmo que ilegível/parcial (aí valor pode ficar 0).
+- pagador = só preencha se o comprovante disser explicitamente o nome de quem pagou; senão "" (o sistema usa quem mandou a mensagem).
 - data = data da compra/pagamento; se não achar, use "${hoje}".
 - estabelecimento = fornecedor/loja (o nome mais reconhecível).
 - valor = total em reais (número, ponto decimal, sem "R$").
@@ -152,7 +153,7 @@ async function urlParaBase64(url: string): Promise<string | null> {
 
 // ── IA: custo em TEXTO livre ("paguei 300 de areia hoje") ────────────────────
 type CustoTexto = {
-  ehCusto?: boolean; valor?: number; descricao?: string; estabelecimento?: string;
+  ehCusto?: boolean; valor?: number; descricao?: string; estabelecimento?: string; pagador?: string;
   categoriaExistente?: string; categoriaSugerida?: string; formaPagamento?: string; data?: string;
 };
 // Gate barato: só chama a IA se o texto cheira a gasto (evita rodar em "bom dia").
@@ -164,12 +165,13 @@ function pareceCusto(texto: string): boolean {
 async function extrairCustoTexto(texto: string, categorias: string[]): Promise<CustoTexto | null> {
   const hoje = new Date().toISOString().slice(0, 10);
   const system = `Você lê uma mensagem de WhatsApp de sócios de um restaurante sobre GASTOS/INVESTIMENTOS de um projeto. Diga se a mensagem relata um gasto e extraia os dados. Devolva SÓ JSON:
-{"ehCusto":true,"valor":0,"descricao":"","estabelecimento":"","categoriaExistente":"","categoriaSugerida":"","formaPagamento":"dinheiro|pix|debito|credito|boleto|transferencia|outro","data":"YYYY-MM-DD"}
+{"ehCusto":true,"valor":0,"descricao":"","estabelecimento":"","pagador":"","categoriaExistente":"","categoriaSugerida":"","formaPagamento":"dinheiro|pix|debito|credito|boleto|transferencia|outro","data":"YYYY-MM-DD"}
 Regras:
 - ehCusto=false se for conversa comum (bom dia, pergunta, combinando algo) e NÃO um gasto concreto.
 - valor = em reais (número, ponto decimal); se a pessoa não disse o valor, use 0.
 - descricao = o que foi comprado/pago, curto (ex.: "areia", "pedreiro diária").
 - estabelecimento = fornecedor/loja se citado; senão "".
+- pagador = só se a mensagem disser explicitamente QUEM pagou (ex.: "o João pagou"); senão "" (o sistema usa quem mandou a mensagem).
 - data = se citar ("ontem", "dia 3"); senão "${hoje}".
 - categoriaExistente = UMA da lista se encaixar; senão "". categoriaSugerida = curta se nenhuma serve; senão "".
 Categorias existentes: ${categorias.length ? categorias.join(", ") : "(nenhuma)"}.`;
@@ -196,17 +198,41 @@ export type BotCtx = {
 };
 export type BotSkill = { id: string; match: (ctx: BotCtx) => boolean; handle: (ctx: BotCtx) => Promise<void> };
 
+// Cadastra o pagador na lista do módulo (idempotente por nome). "Quem pagou"
+// vira opção fixa no select de Novos Investimentos.
+function slug(s: string): string { return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40); }
+async function registrarPagador(rid: string, nome: string): Promise<void> {
+  const n = (nome || "").trim();
+  if (!n) return;
+  const id = `pag_${rid}_${slug(n)}`;
+  await firestoreCriarSeAusente("investPagadores", id, { id, restaurantId: rid, nome: n, criadoEm: new Date().toISOString() }).catch(() => {});
+}
+
+// Resolve a categoria: reusa uma existente (por nome, case-insensitive) ou cria
+// uma nova marcada como sugerida pela IA (criadaPorIa + confirmada:false).
+// `catalogo` = lista já carregada de investCategorias (evita 2ª leitura).
+async function resolverCategoria(rid: string, nome: string, catalogo: Record<string, unknown>[]): Promise<{ id: string; nome: string } | null> {
+  const n = (nome || "").trim();
+  if (!n) return null;
+  const norm = (s: string) => s.toLowerCase().trim();
+  const achada = catalogo.find((c) => c.restaurantId === rid && norm(String(c.nome || "")) === norm(n));
+  if (achada) return { id: String(achada.id), nome: String(achada.nome) };
+  const id = randomUUID();
+  await firestoreCriar("investCategorias", id, { id, restaurantId: rid, nome: n, criadaPorIa: true, confirmada: false, criadoEm: new Date().toISOString() }).catch(() => {});
+  return { id, nome: n };
+}
+
 // Cria um lançamento-rascunho em Novos Investimentos (origem bot). Devolve o id.
 async function criarLancamento(ctx: BotCtx, d: {
-  data?: string; estabelecimento?: string; categoriaNome?: string | null; valor: number;
-  formaPagamento?: string | null; comprovanteUrl?: string | null; descricao?: string;
+  data?: string; estabelecimento?: string; categoriaId?: string | null; categoriaNome?: string | null; valor: number;
+  formaPagamento?: string | null; pagoPor?: string | null; comprovanteUrl?: string | null; descricao?: string;
   parcelado?: boolean; parcelas?: { data: string; valor: number }[]; semComprovante?: boolean;
 }): Promise<string> {
   const id = randomUUID();
   const nowISO = new Date().toISOString();
+  const pagoPor = (d.pagoPor || ctx.msg.autor || "").trim() || null;   // padrão: quem mandou a mensagem
   const obsPartes = [
     "via Bot · WhatsApp",
-    ctx.msg.autor ? ctx.msg.autor : "",
     d.descricao ? d.descricao : "",
     d.semComprovante ? "sem comprovante" : "",
   ].filter(Boolean);
@@ -214,9 +240,10 @@ async function criarLancamento(ctx: BotCtx, d: {
     id, restaurantId: ctx.rid, projetoId: ctx.projetoId,
     data: d.data || nowISO.slice(0, 10),
     estabelecimento: d.estabelecimento || d.descricao || "—",
-    categoriaNome: d.categoriaNome || null,
+    categoriaId: d.categoriaId || null, categoriaNome: d.categoriaNome || null,
     valor: Number(d.valor),
     formaPagamento: d.formaPagamento || null,
+    pagoPor,
     comprovanteUrl: d.comprovanteUrl || null,
     semComprovante: !!d.semComprovante,
     observacao: obsPartes.join(" · "),
@@ -224,13 +251,14 @@ async function criarLancamento(ctx: BotCtx, d: {
     origem: "bot", rascunho: true,
     criadoEm: nowISO, criadoPorNome: "Bot Planejamento.app",
   });
+  if (pagoPor) await registrarPagador(ctx.rid, pagoPor);
   return id;
 }
 
 // Confirmação curta no grupo, só se o modo pedir (silencioso = só a reação).
-async function confirmarNoGrupo(ctx: BotCtx, d: { estabelecimento?: string; valor: number; semComprovante?: boolean }): Promise<void> {
+async function confirmarNoGrupo(ctx: BotCtx, d: { estabelecimento?: string; valor: number; pagoPor?: string; semComprovante?: boolean }): Promise<void> {
   if (ctx.modo === "silencioso") return;
-  const linha = `✅ Lancei: ${d.estabelecimento || "gasto"} — R$ ${d.valor.toFixed(2).replace(".", ",")} (rascunho${d.semComprovante ? ", sem comprovante" : ""}).`;
+  const linha = `✅ Lancei: ${d.estabelecimento || "gasto"} — R$ ${d.valor.toFixed(2).replace(".", ",")}${d.pagoPor ? ` · pago por ${d.pagoPor}` : ""} (rascunho${d.semComprovante ? ", sem comprovante" : ""}).`;
   await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, linha, { quotedId: ctx.msg.id });
 }
 
@@ -314,12 +342,15 @@ export async function responderPendencia(numeroId: string, waId: string, msgId: 
     await firestorePatchCampos("botPendencias", pendId, { dadosParciais: dados }).catch(() => {});
     return true;
   }
+  const catalogo = await firestoreListar("investCategorias").catch(() => [] as Record<string, unknown>[]);
+  const cat = await resolverCategoria(ctxFake.rid, String(dados.categoriaNome || ""), catalogo);
   const lancId = await criarLancamento(ctxFake, {
     data: dados.data as string | undefined,
     estabelecimento: (dados.estabelecimento as string) || (dados.descricao as string) || undefined,
-    categoriaNome: (dados.categoriaNome as string) || null,
+    categoriaId: cat?.id, categoriaNome: cat?.nome,
     valor: Number(dados.valor),
     formaPagamento: (dados.formaPagamento as string) || null,
+    pagoPor: (dados.pagoPor as string) || null,
     comprovanteUrl: (dados.comprovanteUrl as string) || null,
     descricao: dados.descricao as string | undefined,
     semComprovante: !dados.comprovanteUrl,
@@ -367,20 +398,22 @@ const skillInvestimentos: BotSkill = {
           await abrirPendencia(ctx, {
             campo: "valor", tipo: "criar",
             pergunta: `Chegou um comprovante${ext?.estabelecimento ? ` de "${ext.estabelecimento}"` : ""} mas não consegui ler o valor. Qual é o valor em reais?`,
-            dadosParciais: { estabelecimento: ext?.estabelecimento || "", categoriaNome: ext?.categoriaExistente || ext?.categoriaSugerida || "", formaPagamento: ext?.formaPagamento || "", data: ext?.data || "", comprovanteUrl: ctx.msg.midiaUrl },
+            dadosParciais: { estabelecimento: ext?.estabelecimento || "", categoriaNome: ext?.categoriaExistente || ext?.categoriaSugerida || "", formaPagamento: ext?.formaPagamento || "", data: ext?.data || "", comprovanteUrl: ctx.msg.midiaUrl, pagoPor: (ext?.pagador || ctx.msg.autor || "") },
           });
         }
         return;
       }
+      const cat = await resolverCategoria(ctx.rid, ext.categoriaExistente || ext.categoriaSugerida || "", todas);
+      const pagoPor = (ext.pagador || ctx.msg.autor || "").trim() || undefined;
       const id = await criarLancamento(ctx, {
         data: ext.data, estabelecimento: ext.estabelecimento,
-        categoriaNome: ext.categoriaExistente || ext.categoriaSugerida || null,
-        valor: Number(ext.valor), formaPagamento: ext.formaPagamento,
+        categoriaId: cat?.id, categoriaNome: cat?.nome,
+        valor: Number(ext.valor), formaPagamento: ext.formaPagamento, pagoPor,
         comprovanteUrl: ctx.msg.midiaUrl, parcelado: ext.parcelado, parcelas: ext.parcelas,
       });
       await firestorePatchCampos("whatsappMensagens", docKey, { botProcessado: true, botLancamentoId: id }).catch(() => {});
       await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "✅");
-      await confirmarNoGrupo(ctx, { estabelecimento: ext.estabelecimento, valor: Number(ext.valor) });
+      await confirmarNoGrupo(ctx, { estabelecimento: ext.estabelecimento, valor: Number(ext.valor), pagoPor });
       return;
     }
 
@@ -392,22 +425,24 @@ const skillInvestimentos: BotSkill = {
       // Parece gasto mas sem valor → pergunta (privado) ou no grupo se modo=pergunta.
       const pergunta = `Vi "${ct.descricao || "um gasto"}"${ct.estabelecimento ? ` (${ct.estabelecimento})` : ""} no grupo "${ctx.grupoNome}", mas sem o valor. Quanto foi?`;
       if (ctx.responsavelWhatsapp) {
-        await abrirPendencia(ctx, { campo: "valor", tipo: "criar", pergunta, dadosParciais: { descricao: ct.descricao || "", estabelecimento: ct.estabelecimento || "", categoriaNome: ct.categoriaExistente || ct.categoriaSugerida || "", formaPagamento: ct.formaPagamento || "", data: ct.data || "" } });
+        await abrirPendencia(ctx, { campo: "valor", tipo: "criar", pergunta, dadosParciais: { descricao: ct.descricao || "", estabelecimento: ct.estabelecimento || "", categoriaNome: ct.categoriaExistente || ct.categoriaSugerida || "", formaPagamento: ct.formaPagamento || "", data: ct.data || "", pagoPor: (ct.pagador || ctx.msg.autor || "") } });
         await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "👀");
       } else if (ctx.modo === "pergunta") {
         await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Anotei "${ct.descricao || "o gasto"}" — qual foi o valor?`, { quotedId: ctx.msg.id });
       }
       return;
     }
+    const cat = await resolverCategoria(ctx.rid, ct.categoriaExistente || ct.categoriaSugerida || "", todas);
+    const pagoPor = (ct.pagador || ctx.msg.autor || "").trim() || undefined;
     const id = await criarLancamento(ctx, {
       data: ct.data, estabelecimento: ct.estabelecimento || ct.descricao,
-      categoriaNome: ct.categoriaExistente || ct.categoriaSugerida || null,
-      valor: Number(ct.valor), formaPagamento: ct.formaPagamento,
+      categoriaId: cat?.id, categoriaNome: cat?.nome,
+      valor: Number(ct.valor), formaPagamento: ct.formaPagamento, pagoPor,
       descricao: ct.descricao, semComprovante: true,
     });
     await firestorePatchCampos("whatsappMensagens", docKey, { botLancamentoId: id }).catch(() => {});
     await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "✅");
-    await confirmarNoGrupo(ctx, { estabelecimento: ct.estabelecimento || ct.descricao, valor: Number(ct.valor), semComprovante: true });
+    await confirmarNoGrupo(ctx, { estabelecimento: ct.estabelecimento || ct.descricao, valor: Number(ct.valor), pagoPor, semComprovante: true });
   },
 };
 
