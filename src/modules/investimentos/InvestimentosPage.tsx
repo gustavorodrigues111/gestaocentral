@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
-import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown } from "lucide-react";
+import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown, Users, RotateCcw } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { auth } from "../../core/firebase/config";
@@ -179,7 +179,12 @@ export function InvestimentosPage() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [projMenu]);
 
-  const total = useMemo(() => lancamentos.reduce((s, l) => s + (l.valor || 0), 0), [lancamentos]);
+  // Lançamentos ativos (fora da lixeira) — base de todas as somas e listas.
+  const lancAtivos = useMemo(() => lancamentos.filter((l) => !l.excluido), [lancamentos]);
+  const lancLixeira = useMemo(() => lancamentos.filter((l) => l.excluido), [lancamentos]);
+  const [verLixeira, setVerLixeira] = useState(false);
+  const [editSocios, setEditSocios] = useState(false);
+  const total = useMemo(() => lancAtivos.reduce((s, l) => s + (l.valor || 0), 0), [lancAtivos]);
 
   // Parcelas: expandir transação + marcar pago (pra Pix/boleto futuros).
   const hoje = new Date().toISOString().slice(0, 10);
@@ -194,9 +199,9 @@ export function InvestimentosPage() {
   // Parcelas pendentes (não pagas) de todos os lançamentos do projeto, por data.
   const parcelasPendentes = useMemo(() => {
     const arr: { date: string; valor: number }[] = [];
-    for (const l of lancamentos) if (l.parcelado && l.parcelas) for (const p of l.parcelas) if (!p.pago && p.valor > 0) arr.push({ date: p.data, valor: p.valor });
+    for (const l of lancAtivos) if (l.parcelado && l.parcelas) for (const p of l.parcelas) if (!p.pago && p.valor > 0) arr.push({ date: p.data, valor: p.valor });
     return arr.sort((a, b) => a.date.localeCompare(b.date));
-  }, [lancamentos]);
+  }, [lancAtivos]);
   const aPagar = useMemo(() => parcelasPendentes.reduce((s, p) => s + p.valor, 0), [parcelasPendentes]);
   const temAtrasada = useMemo(() => parcelasPendentes.some((p) => p.date < hoje), [parcelasPendentes, hoje]);
   const proxima = parcelasPendentes[0] || null;
@@ -204,30 +209,76 @@ export function InvestimentosPage() {
   // Dashboard: gasto por categoria (donut) e por forma de pagamento.
   const porCategoria = useMemo(() => {
     const m = new Map<string, number>();
-    for (const l of lancamentos) { const k = l.categoriaNome || "Sem categoria"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
+    for (const l of lancAtivos) { const k = l.categoriaNome || "Sem categoria"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
     return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
       .map((d, i) => ({ ...d, color: CAT_COLORS[i % CAT_COLORS.length] }));
-  }, [lancamentos]);
+  }, [lancAtivos]);
   const porForma = useMemo(() => {
     const m = new Map<string, number>();
-    for (const l of lancamentos) { const k = investFormaLabel(l.formaPagamento) || "—"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
+    for (const l of lancAtivos) { const k = investFormaLabel(l.formaPagamento) || "—"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
     return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
-  }, [lancamentos]);
+  }, [lancAtivos]);
+  // Quanto cada um PAGOU — considera conta rachada (pagamentos[]) quando houver.
   const porQuemPagou = useMemo(() => {
     const m = new Map<string, number>();
-    for (const l of lancamentos) { const k = (l.pagoPor || "").trim() || "Não informado"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
+    for (const l of lancAtivos) {
+      if (Array.isArray(l.pagamentos) && l.pagamentos.length) {
+        for (const p of l.pagamentos) { const k = (p.pagador || "").trim() || "Não informado"; m.set(k, (m.get(k) || 0) + (Number(p.valor) || 0)); }
+      } else {
+        const k = (l.pagoPor || "").trim() || "Não informado"; m.set(k, (m.get(k) || 0) + (l.valor || 0));
+      }
+    }
     return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
-  }, [lancamentos]);
+  }, [lancAtivos]);
+  // ── Acerto de contas (ledger): quanto cada sócio pagou × cota × saldo líquido ──
+  // Sócios = os configurados no projeto (com cota), ou derivados de quem pagou (cota igual).
+  const acerto = useMemo(() => {
+    const configurados = proj?.socios?.filter((s) => (s.nome || "").trim()) || [];
+    const nomes = configurados.length ? configurados.map((s) => s.nome.trim())
+      : porQuemPagou.filter((p) => p.label !== "Não informado").map((p) => p.label);
+    if (nomes.length < 2 || total <= 0) return null;
+    const pesos = configurados.length ? configurados.map((s) => (s.cota && s.cota > 0 ? s.cota : 0)) : nomes.map(() => 1);
+    const somaPesos = pesos.reduce((a, b) => a + b, 0) || nomes.length;
+    const pagoDe = (nome: string) => porQuemPagou.find((p) => p.label === nome)?.value || 0;
+    const saldos = nomes.map((nome, i) => {
+      const frac = (pesos[i] || (configurados.length ? 0 : 1)) / (configurados.length ? somaPesos : nomes.length);
+      const devia = total * frac;
+      const pagou = pagoDe(nome);
+      return { nome, pagou, cota: devia, saldo: Math.round((pagou - devia) * 100) / 100 };
+    });
+    // Transferências mínimas: casa maior devedor com maior credor.
+    const cred = saldos.filter((s) => s.saldo > 0.009).map((s) => ({ nome: s.nome, v: s.saldo })).sort((a, b) => b.v - a.v);
+    const dev = saldos.filter((s) => s.saldo < -0.009).map((s) => ({ nome: s.nome, v: -s.saldo })).sort((a, b) => b.v - a.v);
+    const transf: { de: string; para: string; valor: number }[] = [];
+    let i = 0, j = 0;
+    while (i < dev.length && j < cred.length) {
+      const v = Math.min(dev[i].v, cred[j].v);
+      if (v > 0.009) transf.push({ de: dev[i].nome, para: cred[j].nome, valor: Math.round(v * 100) / 100 });
+      dev[i].v -= v; cred[j].v -= v;
+      if (dev[i].v < 0.01) i++;
+      if (cred[j].v < 0.01) j++;
+    }
+    return { saldos, transferencias: transf, configurado: configurados.length > 0 };
+  }, [proj, porQuemPagou, total]);
+  async function salvarSocios(socios: { nome: string; cota?: number }[]) {
+    if (!proj) return;
+    await salvarProjeto({ ...proj, socios, atualizadoEm: new Date().toISOString() });
+  }
+  async function moverLixeira(l: InvestLancamento, excluir: boolean) {
+    await salvarLancamento({ ...l, excluido: excluir, excluidoEm: excluir ? new Date().toISOString() : undefined, atualizadoEm: new Date().toISOString() });
+    say(excluir ? "Movido pra lixeira." : "Restaurado.");
+  }
+
   // Cor por categoria (bate com o donut) + lista agrupada por categoria.
   const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
   const lancPorCategoria = useMemo(() => {
     const m = new Map<string, InvestLancamento[]>();
-    for (const l of lancamentos) { const k = l.categoriaNome || "Sem categoria"; const a = m.get(k) || []; a.push(l); m.set(k, a); }
+    for (const l of lancAtivos) { const k = l.categoriaNome || "Sem categoria"; const a = m.get(k) || []; a.push(l); m.set(k, a); }
     return [...m.entries()].map(([cat, items]) => ({
       cat, total: items.reduce((s, l) => s + (l.valor || 0), 0),
       items: items.slice().sort((a, b) => b.data.localeCompare(a.data)),
     })).sort((a, b) => b.total - a.total);
-  }, [lancamentos]);
+  }, [lancAtivos]);
   // IDs com possível duplicidade (pra marcar na lista).
   const idsDuplicados = useMemo(() => {
     const s = new Set<string>();
@@ -294,7 +345,7 @@ export function InvestimentosPage() {
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
               <div className="grid grid-cols-2 gap-x-6 gap-y-3 flex-1 content-start">
                 <Stat label="Total gasto" value={fmtR(total)} />
-                <Stat label="Lançamentos" value={lancamentos.length} />
+                <Stat label="Lançamentos" value={lancAtivos.length} />
                 <Stat label="A pagar" value={aPagar > 0 ? fmtR(aPagar) : "—"} sub={aPagar > 0 ? `${parcelasPendentes.length} parcela(s)${proxima ? ` · próx. ${fmtBR(proxima.date)}` : ""}` : "nada em aberto"} tone={aPagar > 0 ? (temAtrasada ? "rose" : "amber") : undefined} />
                 <Stat label="Parcelas em aberto" value={parcelasPendentes.length} sub={temAtrasada ? "⚠ há atrasada" : undefined} tone={temAtrasada ? "rose" : undefined} />
               </div>
@@ -337,6 +388,36 @@ export function InvestimentosPage() {
             )}
           </div>
 
+          {/* Acerto de contas: saldo de cada sócio + transferências mínimas pra zerar */}
+          {acerto && (
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 mb-3">
+              <div className="flex items-center gap-2 mb-2.5">
+                <Users size={14} className="text-emerald-500" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Acerto de contas</span>
+                {!acerto.configurado && <span className="text-[10px] text-gray-400">· cota igual (auto)</span>}
+                {podeGerirProjetos && <button onClick={() => setEditSocios((v) => !v)} className="ml-auto text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">{editSocios ? "fechar" : "sócios/cotas"}</button>}
+              </div>
+              {editSocios && <SociosEditor proj={proj} nomesAuto={acerto.saldos.map((s) => s.nome)} onSave={async (s) => { await salvarSocios(s); setEditSocios(false); }} />}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                {acerto.saldos.map((s) => (
+                  <div key={s.nome} className="flex items-baseline gap-2 text-[13px]">
+                    <span className="truncate text-gray-700 dark:text-gray-200 font-medium">{s.nome}</span>
+                    <span className="text-gray-400 text-[10.5px] truncate">pagou {fmtR(s.pagou)} · cota {fmtR(s.cota)}</span>
+                    <span className={`ml-auto font-semibold tabular-nums shrink-0 ${s.saldo > 0.009 ? "text-emerald-600" : s.saldo < -0.009 ? "text-rose-600" : "text-gray-400"}`}>{s.saldo > 0.009 ? "a receber " : s.saldo < -0.009 ? "deve " : ""}{fmtR(Math.abs(s.saldo))}</span>
+                  </div>
+                ))}
+              </div>
+              {acerto.transferencias.length > 0 ? (
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Pra zerar</div>
+                  {acerto.transferencias.map((t, i) => (
+                    <div key={i} className="text-[13px] text-gray-700 dark:text-gray-200"><b>{t.de}</b> → <b>{t.para}</b> <span className="tabular-nums font-semibold ml-1">{fmtR(t.valor)}</span></div>
+                  ))}
+                </div>
+              ) : <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[12px] text-emerald-600">Tudo acertado. ✅</div>}
+            </div>
+          )}
+
           {/* Linha tracejada "novo lançamento" */}
           {podeLancar && (
             <button onClick={() => setLancModal("new")} className="w-full mb-3 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20 py-3 text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition-colors"><Plus size={16} /> Novo lançamento</button>
@@ -344,7 +425,7 @@ export function InvestimentosPage() {
 
           {/* Lista de lançamentos agrupada por categoria (linha clica → expande) */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-            {lancamentos.length === 0 ? (
+            {lancAtivos.length === 0 ? (
               <div className="px-4 py-12 text-center text-gray-400 text-sm">Nenhum lançamento ainda. Use <b className="text-gray-500 dark:text-gray-400">+ Novo lançamento</b> — dá pra arrastar/colar o comprovante que a IA preenche.</div>
             ) : lancPorCategoria.map((g) => (
               <div key={g.cat} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
@@ -367,6 +448,8 @@ export function InvestimentosPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{l.estabelecimento || "—"}</span>
+                        {l.seq != null && <span className="shrink-0 text-[10px] text-gray-400 tabular-nums">#{l.seq}</span>}
+                        {l.rascunho && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200" title="Rascunho do Bot — confira e salve">rascunho</span>}
                         {idsDuplicados.has(l.id) && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" title="Possível duplicidade — mesmo valor, estabelecimento e data próximos">⚠ dup?</span>}
                       </div>
                       <div className="text-[12px] text-gray-400 tabular-nums mt-0.5">{fmtBR(l.data)}</div>
@@ -382,7 +465,7 @@ export function InvestimentosPage() {
                     <div className="px-4 pb-4 pt-1 bg-gray-50/60 dark:bg-gray-900/40 space-y-3">
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
                         <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Forma</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{investFormaLabel(l.formaPagamento)}</div></div>
-                        <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Quem pagou</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{l.pagoPor || "—"}</div></div>
+                        <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Quem pagou</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{l.pagamentos?.length ? l.pagamentos.map((p) => `${p.pagador} (${fmtR(p.valor)})`).join(", ") : (l.pagoPor || "—")}</div></div>
                         <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Categoria</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{l.categoriaNome || "—"}</div></div>
                         <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Comprovante</div><div className="text-[13px]">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 font-medium"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-400">—</span>}</div></div>
                       </div>
@@ -408,7 +491,8 @@ export function InvestimentosPage() {
                           </div>
                         </div>
                       )}
-                      <div className="flex justify-end pt-1">
+                      <div className="flex justify-end gap-2 pt-1">
+                        {podeLancar && <button onClick={() => void moverLixeira(l, true)} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-800 inline-flex items-center gap-1.5 transition-colors"><Trash2 size={13} /> Excluir</button>}
                         {podeLancar && <button onClick={() => setLancModal(l)} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 inline-flex items-center gap-1.5 transition-colors"><Pencil size={13} /> Editar</button>}
                       </div>
                     </div>
@@ -420,6 +504,23 @@ export function InvestimentosPage() {
               </div>
             ))}
           </div>
+
+          {/* Lixeira: lançamentos excluídos (soft-delete) — dá pra restaurar */}
+          {lancLixeira.length > 0 && (
+            <div className="mt-3">
+              <button onClick={() => setVerLixeira((v) => !v)} className="text-[12px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 inline-flex items-center gap-1"><Trash2 size={12} /> Lixeira ({lancLixeira.length}) {verLixeira ? "▲" : "▼"}</button>
+              {verLixeira && (
+                <div className="mt-2 rounded-2xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+                  {lancLixeira.map((l) => (
+                    <div key={l.id} className="flex items-center gap-3 px-4 py-2.5 text-[13px]">
+                      <span className="flex-1 min-w-0 truncate text-gray-500 line-through">{l.seq != null ? `#${l.seq} ` : ""}{l.estabelecimento || "—"} · {fmtR(l.valor)}</span>
+                      {podeLancar && <button onClick={() => void moverLixeira(l, false)} className="shrink-0 text-[12px] text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 hover:underline"><RotateCcw size={12} /> Restaurar</button>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -429,6 +530,36 @@ export function InvestimentosPage() {
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xl z-[210]">{toast}</div>}
     </PageContainer>
+  );
+}
+
+// ── Editor inline de sócios + cotas do projeto (base do acerto) ──────────────
+function SociosEditor({ proj, nomesAuto, onSave }: { proj: InvestProjeto | null; nomesAuto: string[]; onSave: (s: { nome: string; cota?: number }[]) => Promise<void> }) {
+  const inicial = proj?.socios?.length ? proj.socios.map((s) => ({ nome: s.nome, cota: s.cota })) : nomesAuto.map((n) => ({ nome: n, cota: undefined as number | undefined }));
+  const [linhas, setLinhas] = useState<{ nome: string; cota?: number }[]>(inicial.length ? inicial : [{ nome: "", cota: undefined }]);
+  const [salvando, setSalvando] = useState(false);
+  const setNome = (i: number, v: string) => setLinhas((a) => a.map((l, j) => (j === i ? { ...l, nome: v } : l)));
+  const setCota = (i: number, v: string) => setLinhas((a) => a.map((l, j) => (j === i ? { ...l, cota: v ? Number(v.replace(",", ".")) : undefined } : l)));
+  async function salvar() {
+    setSalvando(true);
+    try { await onSave(linhas.filter((l) => l.nome.trim()).map((l) => ({ nome: l.nome.trim(), cota: l.cota && l.cota > 0 ? l.cota : undefined }))); }
+    finally { setSalvando(false); }
+  }
+  return (
+    <div className="mb-3 rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+      <div className="text-[11px] text-gray-500">Quem divide o projeto. Deixe a <b>cota</b> vazia pra divisão igual, ou use pesos (ex.: 50 / 30 / 20).</div>
+      {linhas.map((l, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input className="flex-1 h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm" placeholder="Nome do sócio" value={l.nome} onChange={(e) => setNome(i, e.target.value)} />
+          <input className="w-20 h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-center" placeholder="cota" inputMode="decimal" value={l.cota ?? ""} onChange={(e) => setCota(i, e.target.value)} />
+          <button type="button" onClick={() => setLinhas((a) => a.filter((_, j) => j !== i))} className="text-gray-400 hover:text-rose-600 shrink-0"><X size={15} /></button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => setLinhas((a) => [...a, { nome: "", cota: undefined }])} className="text-[12px] text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1"><Plus size={13} /> sócio</button>
+        <button type="button" onClick={() => void salvar()} disabled={salvando} className="ml-auto h-8 px-3 rounded-lg bg-emerald-600 text-white text-[12px] font-semibold disabled:opacity-50">{salvando ? "Salvando…" : "Salvar sócios"}</button>
+      </div>
+    </div>
   );
 }
 

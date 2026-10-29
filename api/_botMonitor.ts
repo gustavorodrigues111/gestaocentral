@@ -101,8 +101,9 @@ function parseJSON<T>(txt: string | null): T | null {
 }
 
 // ── IA: extrai os campos de um comprovante (imagem/PDF) ──────────────────────
+type Pagamento = { pagador: string; valor: number };
 type Comprovante = {
-  ehComprovante?: boolean; pagador?: string;
+  ehComprovante?: boolean; pagador?: string; rateioIgual?: boolean; pagamentos?: Pagamento[];
   data?: string; estabelecimento?: string; categoriaExistente?: string; categoriaSugerida?: string;
   valor?: number; formaPagamento?: string; parcelado?: boolean; parcelas?: { data: string; valor: number }[];
 };
@@ -154,6 +155,7 @@ async function urlParaBase64(url: string): Promise<string | null> {
 // ── IA: custo em TEXTO livre ("paguei 300 de areia hoje") ────────────────────
 type CustoTexto = {
   ehCusto?: boolean; valor?: number; descricao?: string; estabelecimento?: string; pagador?: string;
+  rateioIgual?: boolean; pagamentos?: Pagamento[];
   categoriaExistente?: string; categoriaSugerida?: string; formaPagamento?: string; data?: string;
 };
 // Gate barato: só chama a IA se o texto cheira a gasto (evita rodar em "bom dia").
@@ -172,6 +174,8 @@ Regras:
 - descricao = o que foi comprado/pago, curto (ex.: "areia", "pedreiro diária").
 - estabelecimento = fornecedor/loja se citado; senão "".
 - pagador = só se a mensagem disser explicitamente QUEM pagou (ex.: "o João pagou"); senão "" (o sistema usa quem mandou a mensagem).
+- rateioIgual = true se disser que foi dividido igualmente entre os sócios ("entre todos", "um terço cada", "metade cada", "rachado"); senão false.
+- pagamentos = só se citar nomes COM valores (ex.: "João 300, Pedro 300"): [{"pagador":"João","valor":300}]; senão [].
 - data = se citar ("ontem", "dia 3"); senão "${hoje}".
 - categoriaExistente = UMA da lista se encaixar; senão "". categoriaSugerida = curta se nenhuma serve; senão "".
 Categorias existentes: ${categorias.length ? categorias.join(", ") : "(nenhuma)"}.`;
@@ -225,12 +229,16 @@ async function resolverCategoria(rid: string, nome: string, catalogo: Record<str
 // Cria um lançamento-rascunho em Novos Investimentos (origem bot). Devolve o id.
 async function criarLancamento(ctx: BotCtx, d: {
   data?: string; estabelecimento?: string; categoriaId?: string | null; categoriaNome?: string | null; valor: number;
-  formaPagamento?: string | null; pagoPor?: string | null; comprovanteUrl?: string | null; descricao?: string;
-  parcelado?: boolean; parcelas?: { data: string; valor: number }[]; semComprovante?: boolean;
-}): Promise<string> {
+  formaPagamento?: string | null; pagoPor?: string | null; pagamentos?: Pagamento[] | null;
+  comprovanteUrl?: string | null; descricao?: string;
+  parcelado?: boolean; parcelas?: { n: number; data: string; valor: number; pago?: boolean }[]; semComprovante?: boolean;
+}): Promise<{ id: string; seq?: number }> {
   const id = randomUUID();
   const nowISO = new Date().toISOString();
-  const pagoPor = (d.pagoPor || ctx.msg.autor || "").trim() || null;   // padrão: quem mandou a mensagem
+  const pagamentos = Array.isArray(d.pagamentos) ? d.pagamentos.filter((p) => p.pagador && Number(p.valor) > 0) : [];
+  const rachado = pagamentos.length >= 2;
+  const pagoPor = rachado ? null : ((d.pagoPor || ctx.msg.autor || "").trim() || null);   // padrão: quem mandou a mensagem
+  const seq = ctx.projetoId ? await proximoSeq(ctx.rid, ctx.projetoId) : undefined;
   const obsPartes = [
     "via Bot · WhatsApp",
     d.descricao ? d.descricao : "",
@@ -244,21 +252,59 @@ async function criarLancamento(ctx: BotCtx, d: {
     valor: Number(d.valor),
     formaPagamento: d.formaPagamento || null,
     pagoPor,
+    ...(rachado ? { pagamentos } : {}),
     comprovanteUrl: d.comprovanteUrl || null,
     semComprovante: !!d.semComprovante,
     observacao: obsPartes.join(" · "),
     parcelado: !!d.parcelado, parcelas: Array.isArray(d.parcelas) ? d.parcelas : [],
+    ...(seq != null ? { seq } : {}),
     origem: "bot", rascunho: true,
     criadoEm: nowISO, criadoPorNome: "Bot Planejamento.app",
   });
-  if (pagoPor) await registrarPagador(ctx.rid, pagoPor);
-  return id;
+  if (rachado) { for (const p of pagamentos) await registrarPagador(ctx.rid, p.pagador); }
+  else if (pagoPor) await registrarPagador(ctx.rid, pagoPor);
+  return { id, seq };
+}
+
+// Próximo número curto por projeto (#NN). Lê o maior seq atual + 1. Volume baixo.
+async function proximoSeq(rid: string, projetoId: string): Promise<number> {
+  try {
+    const todos = await firestoreListar("investLancamentos");
+    const max = todos.filter((l) => l.restaurantId === rid && l.projetoId === projetoId)
+      .reduce((m, l) => Math.max(m, Number(l.seq) || 0), 0);
+    return max + 1;
+  } catch { return 0; }
+}
+
+// Sócios configurados do projeto (nomes). Vazio se não configurado.
+async function sociosDoProjeto(projetoId: string): Promise<string[]> {
+  try {
+    const p = await firestoreLer("investProjetos", projetoId);
+    const socios = Array.isArray(p?.socios) ? p!.socios as Array<{ nome?: string }> : [];
+    return socios.map((s) => String(s?.nome || "").trim()).filter(Boolean);
+  } catch { return []; }
+}
+
+// Monta pagamentos a partir do que a IA extraiu: lista explícita, ou rateio
+// igual entre os sócios do projeto. Devolve null = 1 pagador só.
+function montarPagamentos(ext: { rateioIgual?: boolean; pagamentos?: Pagamento[] }, valorTotal: number, socios: string[]): Pagamento[] | null {
+  const expl = Array.isArray(ext.pagamentos) ? ext.pagamentos.filter((p) => p.pagador && Number(p.valor) > 0) : [];
+  if (expl.length >= 2) return expl;
+  if (ext.rateioIgual && socios.length >= 2 && valorTotal > 0) {
+    const cada = Math.round((valorTotal / socios.length) * 100) / 100;
+    return socios.map((nome, i) => ({ pagador: nome, valor: i === socios.length - 1 ? Math.round((valorTotal - cada * (socios.length - 1)) * 100) / 100 : cada }));
+  }
+  return null;
 }
 
 // Confirmação curta no grupo, só se o modo pedir (silencioso = só a reação).
-async function confirmarNoGrupo(ctx: BotCtx, d: { estabelecimento?: string; valor: number; pagoPor?: string; semComprovante?: boolean }): Promise<void> {
+const fmtV = (n: number) => Number(n).toFixed(2).replace(".", ",");
+async function confirmarNoGrupo(ctx: BotCtx, d: { estabelecimento?: string; valor: number; pagoPor?: string; pagamentos?: Pagamento[] | null; seq?: number; semComprovante?: boolean }): Promise<void> {
   if (ctx.modo === "silencioso") return;
-  const linha = `✅ Lancei: ${d.estabelecimento || "gasto"} — R$ ${d.valor.toFixed(2).replace(".", ",")}${d.pagoPor ? ` · pago por ${d.pagoPor}` : ""} (rascunho${d.semComprovante ? ", sem comprovante" : ""}).`;
+  const quem = d.pagamentos && d.pagamentos.length >= 2
+    ? ` · rachado: ${d.pagamentos.map((p) => `${p.pagador} R$ ${fmtV(p.valor)}`).join(", ")}`
+    : (d.pagoPor ? ` · pago por ${d.pagoPor}` : "");
+  const linha = `✅ Lancei${d.seq != null ? ` #${d.seq}` : ""}: ${d.estabelecimento || "gasto"} — R$ ${fmtV(d.valor)}${quem} (rascunho${d.semComprovante ? ", sem comprovante" : ""}).`;
   await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, linha, { quotedId: ctx.msg.id });
 }
 
@@ -344,7 +390,7 @@ export async function responderPendencia(numeroId: string, waId: string, msgId: 
   }
   const catalogo = await firestoreListar("investCategorias").catch(() => [] as Record<string, unknown>[]);
   const cat = await resolverCategoria(ctxFake.rid, String(dados.categoriaNome || ""), catalogo);
-  const lancId = await criarLancamento(ctxFake, {
+  const { id: lancId } = await criarLancamento(ctxFake, {
     data: dados.data as string | undefined,
     estabelecimento: (dados.estabelecimento as string) || (dados.descricao as string) || undefined,
     categoriaId: cat?.id, categoriaNome: cat?.nome,
@@ -376,6 +422,7 @@ const skillInvestimentos: BotSkill = {
 
     const todas = await firestoreListar("investCategorias").catch(() => [] as Record<string, unknown>[]);
     const cats = todas.filter((c) => c.restaurantId === ctx.rid).map((c) => String(c.nome || "")).filter(Boolean);
+    const socios = await sociosDoProjeto(ctx.projetoId);
 
     const temMidia = !!ctx.msg.midiaUrl && (/^image\//.test(ctx.msg.mime || "") || (ctx.msg.mime || "").includes("pdf"));
 
@@ -404,16 +451,18 @@ const skillInvestimentos: BotSkill = {
         return;
       }
       const cat = await resolverCategoria(ctx.rid, ext.categoriaExistente || ext.categoriaSugerida || "", todas);
-      const pagoPor = (ext.pagador || ctx.msg.autor || "").trim() || undefined;
-      const id = await criarLancamento(ctx, {
+      const pagamentos = montarPagamentos(ext, Number(ext.valor), socios);
+      const pagoPor = pagamentos ? undefined : ((ext.pagador || ctx.msg.autor || "").trim() || undefined);
+      const parcelas = (ext.parcelas || []).map((p, i) => ({ n: i + 1, data: p.data, valor: Number(p.valor), pago: false }));
+      const { id, seq } = await criarLancamento(ctx, {
         data: ext.data, estabelecimento: ext.estabelecimento,
         categoriaId: cat?.id, categoriaNome: cat?.nome,
-        valor: Number(ext.valor), formaPagamento: ext.formaPagamento, pagoPor,
-        comprovanteUrl: ctx.msg.midiaUrl, parcelado: ext.parcelado, parcelas: ext.parcelas,
+        valor: Number(ext.valor), formaPagamento: ext.formaPagamento, pagoPor, pagamentos,
+        comprovanteUrl: ctx.msg.midiaUrl, parcelado: ext.parcelado, parcelas: parcelas.length ? parcelas : undefined,
       });
       await firestorePatchCampos("whatsappMensagens", docKey, { botProcessado: true, botLancamentoId: id }).catch(() => {});
       await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "✅");
-      await confirmarNoGrupo(ctx, { estabelecimento: ext.estabelecimento, valor: Number(ext.valor), pagoPor });
+      await confirmarNoGrupo(ctx, { estabelecimento: ext.estabelecimento, valor: Number(ext.valor), pagoPor, pagamentos, seq });
       return;
     }
 
@@ -433,16 +482,17 @@ const skillInvestimentos: BotSkill = {
       return;
     }
     const cat = await resolverCategoria(ctx.rid, ct.categoriaExistente || ct.categoriaSugerida || "", todas);
-    const pagoPor = (ct.pagador || ctx.msg.autor || "").trim() || undefined;
-    const id = await criarLancamento(ctx, {
+    const pagamentos = montarPagamentos(ct, Number(ct.valor), socios);
+    const pagoPor = pagamentos ? undefined : ((ct.pagador || ctx.msg.autor || "").trim() || undefined);
+    const { id, seq } = await criarLancamento(ctx, {
       data: ct.data, estabelecimento: ct.estabelecimento || ct.descricao,
       categoriaId: cat?.id, categoriaNome: cat?.nome,
-      valor: Number(ct.valor), formaPagamento: ct.formaPagamento, pagoPor,
+      valor: Number(ct.valor), formaPagamento: ct.formaPagamento, pagoPor, pagamentos,
       descricao: ct.descricao, semComprovante: true,
     });
     await firestorePatchCampos("whatsappMensagens", docKey, { botLancamentoId: id }).catch(() => {});
     await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "✅");
-    await confirmarNoGrupo(ctx, { estabelecimento: ct.estabelecimento || ct.descricao, valor: Number(ct.valor), pagoPor, semComprovante: true });
+    await confirmarNoGrupo(ctx, { estabelecimento: ct.estabelecimento || ct.descricao, valor: Number(ct.valor), pagoPor, pagamentos, seq, semComprovante: true });
   },
 };
 

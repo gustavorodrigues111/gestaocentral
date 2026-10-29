@@ -2375,12 +2375,22 @@ export type InvestCategoria = {
   confirmada?: boolean;    // false = pendente de confirmação do usuário
   criadoEm: string;
 };
+export type InvestSocio = { nome: string; cota?: number };   // cota = peso na divisão; vazio = igual
 export type InvestProjeto = {
   id: string; restaurantId: string; nome: string; descricao?: string;
   pastaDriveId?: string; pastaDriveNome?: string;   // pasta dos comprovantes deste projeto
   pastaDriveCentral?: boolean;                       // true = subpasta da conta central (sem popup); false/undefined = pasta do Drive do usuário (navegador)
+  socios?: InvestSocio[];                            // quem divide o projeto (vazio = deriva dos pagadores, cota igual)
   ativo?: boolean; ordem?: number;
   criadoEm: string; criadoPor?: string; atualizadoEm?: string;
+};
+// Snapshot de um acerto de contas fechado (histórico/auditoria).
+export type InvestAcerto = {
+  id: string; restaurantId: string; projetoId: string;
+  fechadoEm: string; fechadoPorNome?: string;
+  totalGasto: number;
+  saldos: { nome: string; pagou: number; cota: number; saldo: number }[];
+  transferencias: { de: string; para: string; valor: number }[];
 };
 // Config do módulo por restaurante (doc id = restaurantId). Guarda a pasta-raiz
 // da conta central onde cada projeto vira uma subpasta — configurada 1 vez.
@@ -2396,10 +2406,13 @@ export type InvestLancamento = {
   categoriaId?: string; categoriaNome?: string;
   valor: number;
   formaPagamento?: string;   // chave fixa (ver INVEST_FORMA_LABEL) ou forma custom
-  pagoPor?: string;          // quem desembolsou (nome livre / da lista InvestPagador)
+  pagoPor?: string;          // quem desembolsou (nome livre / da lista InvestPagador) — caso 1 pagador
+  pagamentos?: { pagador: string; valor: number }[];  // conta rachada: vários pagadores (soma = valor)
   parcelado?: boolean; parcelas?: InvestParcela[];
   comprovanteDriveId?: string; comprovanteUrl?: string; comprovanteNome?: string;
   observacao?: string;
+  seq?: number;                          // número curto por projeto (#NN) — p/ referência/exclusão por chat
+  excluido?: boolean; excluidoEm?: string; excluidoPor?: string;   // soft-delete (lixeira)
   origem?: "bot" | "manual";             // "bot" = lançado pelo Bot Planejamento.app (WhatsApp)
   rascunho?: boolean;                    // true = rascunho do bot aguardando conferência
   criadoEm: string; criadoPor?: string; criadoPorNome?: string; atualizadoEm?: string;
