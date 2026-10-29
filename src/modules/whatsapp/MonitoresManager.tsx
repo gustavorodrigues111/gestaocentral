@@ -3,7 +3,7 @@
 // {numeroId__waId}; o evolution-webhook lê isso e trata a conversa como bot
 // (sem cair no atendimento humano). Inerte até existir.
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Plus, Trash2, Check, Power } from "lucide-react";
+import { Bot, Plus, Trash2, Check, Power, X, Pencil } from "lucide-react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -52,6 +52,8 @@ export function MonitoresManager() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState(false);
+  const [showForm, setShowForm] = useState(false);     // modal de cadastro/edição
+  const [editId, setEditId] = useState<string | null>(null);
   const pessoas = usePessoasAtivasLista();
   const pessoasFiltradas = useMemo(() => {
     const q = respBusca.trim().toLowerCase();
@@ -98,6 +100,24 @@ export function MonitoresManager() {
     return m;
   }, [projetos]);
 
+  function abrirNovo() {
+    setEditId(null); setNumeroId(""); setGrupoWaId(""); setBuscaGrupo("");
+    setSkillsSel(["investimentos"]); setRestaurantId(activeRestaurant?.id || ""); setProjetoId("");
+    setModo("silencioso"); setOcultar(true); setRespPessoaId(""); setRespBusca(""); setRespWhats("");
+    setErro(""); setOk(false); setShowForm(true);
+  }
+  function abrirEdicao(m: WhatsappMonitor) {
+    setEditId(m.id); setNumeroId(m.numeroId);
+    setGrupoWaId(m.waId); setBuscaGrupo(m.nome || nomeGrupo(m.waId));
+    setSkillsSel(Array.isArray(m.skills) && m.skills.length ? m.skills : ["investimentos"]);
+    setRestaurantId(m.restaurantId || ""); setProjetoId(m.projetoId || "");
+    setModo((m.modo as WhatsappMonitorModo) || "silencioso"); setOcultar(m.ocultarDoInbox !== false);
+    setRespPessoaId(m.responsavelPessoaId || "");
+    setRespBusca(m.responsavelPessoaId ? (pessoas.find((p) => p.id === m.responsavelPessoaId)?.nome || "") : "");
+    setRespWhats(m.responsavelWhatsapp || "");
+    setErro(""); setOk(false); setShowForm(true);
+  }
+
   async function salvar() {
     setErro(""); setOk(false);
     if (skillsSel.length === 0) { setErro("Escolha ao menos uma função pro bot."); return; }
@@ -105,8 +125,9 @@ export function MonitoresManager() {
     if (!grupoWaId) { setErro("Escolha o grupo."); return; }
     if (precisaInvest && !restaurantId) { setErro("Escolha o restaurante."); return; }
     if (precisaInvest && !projetoId) { setErro("Escolha o projeto de destino."); return; }
-    const id = `${numeroId}__${grupoWaId}`;
+    const id = editId || `${numeroId}__${grupoWaId}`;
     const iso = new Date().toISOString();
+    const criadoEm = monitores.find((x) => x.id === id)?.criadoEm || iso;   // preserva na edição
     const mon: WhatsappMonitor = {
       id, numeroId, waId: grupoWaId, nome: nomeGrupo(grupoWaId),
       skills: skillsSel,
@@ -115,14 +136,12 @@ export function MonitoresManager() {
       modo, ocultarDoInbox: ocultar,
       responsavelPessoaId: respPessoaId || null,
       responsavelWhatsapp: respWhats.replace(/\D/g, "") || null,
-      exclusivo: true, ativo: true, criadoEm: iso, atualizadoEm: iso,
+      exclusivo: true, ativo: true, criadoEm, atualizadoEm: iso,
     };
     setSalvando(true);
     try {
       await setDoc(doc(db, "whatsappMonitores", id), sanitizeForFirestore(mon), { merge: true });
-      setOk(true); setTimeout(() => setOk(false), 2500);
-      setGrupoWaId(""); setBuscaGrupo(""); setProjetoId("");
-      setRespPessoaId(""); setRespBusca(""); setRespWhats("");
+      setShowForm(false); setEditId(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
     } finally { setSalvando(false); }
@@ -138,9 +157,21 @@ export function MonitoresManager() {
 
   return (
     <div className="space-y-4">
-      {/* Form de novo monitor */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 inline-flex items-center gap-1.5"><Plus size={13} /> Novo grupo monitorado</div>
+      {/* Topo: botão que abre o modal de cadastro */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">Monitoramentos ativos <span className="text-xs font-normal text-gray-400">({monitores.length})</span></div>
+        <button onClick={abrirNovo} className={BTN_P}><Plus size={16} /> Novo monitoramento</button>
+      </div>
+
+      {/* Modal de cadastro / edição */}
+      {showForm && (
+      <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-3 overflow-y-auto" onClick={() => setShowForm(false)}>
+      <div className="w-full max-w-lg my-6" onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3 space-y-3 shadow-xl">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 inline-flex items-center gap-1.5"><Plus size={13} /> {editId ? "Editar monitoramento" : "Novo grupo monitorado"}</div>
+          <button type="button" onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+        </div>
         {erro && <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label className="text-xs text-gray-500">Número (instância)
@@ -258,9 +289,10 @@ export function MonitoresManager() {
           {ok ? <><Check size={16} /> Monitor salvo</> : salvando ? "Salvando…" : <><Bot size={16} /> Monitorar este grupo</>}
         </button>
         <div className="text-[11px] text-gray-400">Comprovantes e gastos mandados no grupo viram <b>rascunho</b> em Novos Investimentos (o bot reage com ✅). Confira os rascunhos no módulo.</div>
-      </div>
+      </div></div></div>
+      )}
 
-      {/* Lista de monitores */}
+      {/* Lista de monitoramentos ativos */}
       <div className="space-y-2">
         {monitores.map((m) => (
           <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
@@ -274,6 +306,7 @@ export function MonitoresManager() {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <button className="p-1.5 text-gray-400 hover:text-indigo-600" title="Editar" onClick={() => abrirEdicao(m)}><Pencil size={15} /></button>
               <button className="p-1.5 text-gray-400 hover:text-emerald-600" title={m.ativo ? "Pausar" : "Ativar"} onClick={() => void toggleAtivo(m)}><Power size={15} /></button>
               <button className="p-1.5 text-gray-400 hover:text-rose-600" title="Remover" onClick={() => void excluir(m)}><Trash2 size={15} /></button>
             </div>
