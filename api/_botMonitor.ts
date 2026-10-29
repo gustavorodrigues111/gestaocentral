@@ -450,6 +450,20 @@ const skillInvestimentos: BotSkill = {
         }
         return;
       }
+      // Coincidir: esse pagamento bate com uma parcela em aberto? Pergunta antes de duplicar.
+      const casar = await acharParcelaParaCasar(ctx.rid, ctx.projetoId, Number(ext.valor));
+      if (casar) {
+        await firestoreCriar("botComandos", `${ctx.numeroId}__${ctx.waId}`, {
+          numeroId: ctx.numeroId, waId: ctx.waId, tipo: "coincidir",
+          lancamentoId: casar.lancId, seq: casar.seq, parcelaN: casar.parcelaN,
+          dadosNovo: { data: ext.data || "", estabelecimento: ext.estabelecimento || "", categoriaNome: ext.categoriaExistente || ext.categoriaSugerida || "", valor: Number(ext.valor), formaPagamento: ext.formaPagamento || "", pagoPor: (ext.pagador || ctx.msg.autor || ""), comprovanteUrl: ctx.msg.midiaUrl || "" },
+          status: "aberto", criadoEm: new Date().toISOString(),
+        }).catch(() => {});
+        await firestorePatchCampos("whatsappMensagens", docKey, { botProcessado: true }).catch(() => {});
+        await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "👀");
+        await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Esse pagamento de R$ ${fmtV(Number(ext.valor))} é da parcela ${casar.parcelaN} do #${casar.seq} (${casar.estab})? Responda "sim" que eu quito, ou "não" que eu lanço como novo.`, { quotedId: ctx.msg.id });
+        return;
+      }
       const cat = await resolverCategoria(ctx.rid, ext.categoriaExistente || ext.categoriaSugerida || "", todas);
       const pagamentos = montarPagamentos(ext, Number(ext.valor), socios);
       const pagoPor = pagamentos ? undefined : ((ext.pagador || ctx.msg.autor || "").trim() || undefined);
@@ -528,6 +542,109 @@ ${resumo}`;
   await firestorePatchCampos("whatsappMensagens", docKey, { botRespondido: true }).catch(() => {});
 }
 
+// ── Comandos no grupo (excluir / quitar parcela / coincidir pagamento) ───────
+const CMD_TTL_MS = 15 * 60 * 1000;
+const cmdExpirado = (iso?: string) => !iso || (Date.now() - new Date(String(iso)).getTime()) > CMD_TTL_MS;
+async function acharPorSeq(rid: string, projetoId: string | null, seq: number): Promise<Record<string, unknown> | null> {
+  try {
+    const todos = await firestoreListar("investLancamentos");
+    return todos.find((l) => l.restaurantId === rid && l.projetoId === projetoId && Number(l.seq) === seq && !l.excluido) || null;
+  } catch { return null; }
+}
+async function quitarParcelaN(lancId: string, n: number): Promise<void> {
+  const l = await firestoreLer("investLancamentos", lancId).catch(() => null);
+  if (!l) return;
+  const parc = Array.isArray(l.parcelas) ? l.parcelas as Array<Record<string, unknown>> : [];
+  const nova = parc.map((p) => Number(p.n) === n ? { ...p, pago: true, pagoEm: new Date().toISOString() } : p);
+  await firestorePatchCampos("investLancamentos", lancId, { parcelas: nova }).catch(() => {});
+}
+// Procura 1 parcela em aberto que case com o valor de um pagamento recém-recebido.
+async function acharParcelaParaCasar(rid: string, projetoId: string | null, valor: number): Promise<{ lancId: string; seq: number; parcelaN: number; estab: string } | null> {
+  if (!(valor > 0)) return null;
+  const hoje = new Date(); const limInf = new Date(hoje); limInf.setDate(limInf.getDate() - 30); const limSup = new Date(hoje); limSup.setDate(limSup.getDate() + 15);
+  const tol = Math.max(1, valor * 0.01);
+  try {
+    const todos = await firestoreListar("investLancamentos");
+    const cand: { lancId: string; seq: number; parcelaN: number; estab: string }[] = [];
+    for (const l of todos) {
+      if (l.restaurantId !== rid || l.projetoId !== projetoId || l.excluido || !l.parcelado) continue;
+      const parc = Array.isArray(l.parcelas) ? l.parcelas as Array<Record<string, unknown>> : [];
+      for (const p of parc) {
+        if (p.pago) continue;
+        const d = new Date(String(p.data) + "T00:00:00");
+        if (Math.abs(Number(p.valor) - valor) <= tol && d >= limInf && d <= limSup) {
+          cand.push({ lancId: String(l.id), seq: Number(l.seq) || 0, parcelaN: Number(p.n) || 0, estab: String(l.estabelecimento || "—") });
+        }
+      }
+    }
+    return cand.length === 1 ? cand[0] : null;   // só casa se não houver ambiguidade
+  } catch { return null; }
+}
+async function limparComando(numeroId: string, waId: string): Promise<void> {
+  await firestorePatchCampos("botComandos", `${numeroId}__${waId}`, { status: "fechado", fechadoEm: new Date().toISOString() }).catch(() => {});
+}
+async function tratarComandoGrupo(ctx: BotCtx): Promise<boolean> {
+  if (!ctx.ehGrupo) return false;
+  const texto = (ctx.msg.texto || "").trim();
+  const cmdDoc = `${ctx.numeroId}__${ctx.waId}`;
+  const afirm = /^\s*(sim|confirmar?|confirmo|ok|isso|pode|manda|claro|aham|quito|é|eh)\b/i.test(texto);
+  const neg = /^\s*(n[aã]o|nao|cancela\w*|deixa|esquece)\b/i.test(texto);
+
+  // 1) Resolver uma confirmação pendente
+  const pend = await firestoreLer("botComandos", cmdDoc).catch(() => null);
+  if (pend && pend.status === "aberto" && !cmdExpirado(String(pend.criadoEm))) {
+    if (afirm) {
+      if (pend.tipo === "excluir" && pend.lancamentoId) {
+        await firestorePatchCampos("investLancamentos", String(pend.lancamentoId), { excluido: true, excluidoEm: new Date().toISOString() }).catch(() => {});
+        await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Excluído #${pend.seq}. ✅`, { quotedId: ctx.msg.id });
+      } else if ((pend.tipo === "quitar" || pend.tipo === "coincidir") && pend.lancamentoId) {
+        await quitarParcelaN(String(pend.lancamentoId), Number(pend.parcelaN));
+        await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Parcela ${pend.parcelaN} do #${pend.seq} quitada. ✅`, { quotedId: ctx.msg.id });
+      }
+      await limparComando(ctx.numeroId, ctx.waId);
+      return true;
+    }
+    if (neg) {
+      if (pend.tipo === "coincidir" && pend.dadosNovo) {
+        const d = pend.dadosNovo as Record<string, unknown>;
+        await criarLancamento(ctx, { data: d.data as string, estabelecimento: d.estabelecimento as string, categoriaNome: (d.categoriaNome as string) || null, valor: Number(d.valor), formaPagamento: (d.formaPagamento as string) || null, pagoPor: (d.pagoPor as string) || null, comprovanteUrl: (d.comprovanteUrl as string) || null });
+        await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, "Ok, lancei como novo. ✅", { quotedId: ctx.msg.id });
+      } else {
+        await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, "Ok, cancelei.", { quotedId: ctx.msg.id });
+      }
+      await limparComando(ctx.numeroId, ctx.waId);
+      return true;
+    }
+    // outra coisa → deixa a pendência expirar sozinha, segue o fluxo normal
+  }
+
+  // 2) Novo comando de EXCLUSÃO
+  const mEx = texto.match(/(?:excluir|apagar|remover|deletar)\s+(?:o\s+)?(?:lan[çc]amento\s*)?#?\s*(\d{1,6})/i);
+  if (mEx) {
+    const seq = Number(mEx[1]);
+    const alvo = await acharPorSeq(ctx.rid, ctx.projetoId, seq);
+    if (!alvo) { await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Não achei o lançamento #${seq} nesse projeto.`, { quotedId: ctx.msg.id }); return true; }
+    await firestoreCriar("botComandos", cmdDoc, { numeroId: ctx.numeroId, waId: ctx.waId, tipo: "excluir", lancamentoId: String(alvo.id), seq, status: "aberto", criadoEm: new Date().toISOString() });
+    await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Vou excluir #${seq}: ${alvo.estabelecimento || "—"} — R$ ${fmtV(Number(alvo.valor))}. Confirmar? (responda "sim")`, { quotedId: ctx.msg.id });
+    return true;
+  }
+
+  // 3) Novo comando de QUITAR PARCELA ("quitar parcela 2 do #42")
+  const mQ = texto.match(/quitar\s+(?:a\s+)?parcela\s*(\d{1,3})\b.*?#?\s*(\d{1,6})/i);
+  if (mQ) {
+    const parcelaN = Number(mQ[1]); const seq = Number(mQ[2]);
+    const alvo = await acharPorSeq(ctx.rid, ctx.projetoId, seq);
+    if (!alvo) { await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Não achei o lançamento #${seq}.`, { quotedId: ctx.msg.id }); return true; }
+    const parc = Array.isArray(alvo.parcelas) ? alvo.parcelas as Array<Record<string, unknown>> : [];
+    const alvoP = parc.find((p) => Number(p.n) === parcelaN);
+    if (!alvoP) { await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `O #${seq} não tem parcela ${parcelaN}.`, { quotedId: ctx.msg.id }); return true; }
+    await firestoreCriar("botComandos", cmdDoc, { numeroId: ctx.numeroId, waId: ctx.waId, tipo: "quitar", lancamentoId: String(alvo.id), seq, parcelaN, status: "aberto", criadoEm: new Date().toISOString() });
+    await enviarTexto(ctx.numeroId, ctx.msg.remoteJid, `Quitar parcela ${parcelaN}/${parc.length} do #${seq} (R$ ${fmtV(Number(alvoP.valor))})? Confirmar? (responda "sim")`, { quotedId: ctx.msg.id });
+    return true;
+  }
+  return false;
+}
+
 // ── Entrada: roda o monitor (se houver) pra uma conversa/grupo ───────────────
 // Retorna true se a conversa é monitorada (o webhook NÃO roda atendimento humano).
 export async function rodarMonitor(opts: {
@@ -569,6 +686,12 @@ export async function rodarMonitor(opts: {
     config,
     msg: { id: msgId, remoteJid, texto, autor, midiaUrl: midia?.url || null, mime: midia?.mime || null },
   };
+
+  // Comandos no grupo (excluir / quitar / confirmar coincidência) têm prioridade.
+  if (ehGrupo) {
+    try { if (await tratarComandoGrupo(ctx)) return true; }
+    catch (e) { console.log("[bot] comando:", (e as Error)?.message); }
+  }
 
   for (const sid of skillsIds) {
     const skill = REGISTRY[sid];
