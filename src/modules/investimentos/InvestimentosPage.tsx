@@ -297,35 +297,6 @@ export function InvestimentosPage() {
     await salvarLancamento({ ...l, rascunho: false, atualizadoEm: new Date().toISOString() });
     say("Rascunho confirmado.");
   }
-  // PROVISÓRIO — importar os 7 gastos do extrato (conferência out/2026). Remover depois.
-  const EXTRATO_PARATY: { data: string; estabelecimento: string; valor: number }[] = [
-    { data: "2026-10-08", estabelecimento: "Ideal Material de Construção Paraty", valor: 679 },
-    { data: "2026-10-15", estabelecimento: "Artur Machado da Silva", valor: 1750 },
-    { data: "2026-10-20", estabelecimento: "Fabio Vieira Serralheiro", valor: 7500 },
-    { data: "2026-10-22", estabelecimento: "Artur Machado da Silva", valor: 1300 },
-    { data: "2026-10-28", estabelecimento: "SP Tintas", valor: 507.47 },
-    { data: "2026-10-28", estabelecimento: "Dry Art", valor: 425 },
-    { data: "2026-10-28", estabelecimento: "Artur Machado da Silva", valor: 2250 },
-  ];
-  async function seedExtratoParaty() {
-    if (!proj || !rid) return;
-    let seq = lancamentos.reduce((m, l) => Math.max(m, Number(l.seq) || 0), 0);
-    let criados = 0, pulados = 0;
-    for (const e of EXTRATO_PARATY) {
-      if (lancAtivos.some((l) => l.data === e.data && Math.abs((l.valor || 0) - e.valor) < 0.01)) { pulados++; continue; }
-      seq += 1;
-      await salvarLancamento({
-        id: crypto.randomUUID(), restaurantId: rid, projetoId: proj.id,
-        data: e.data, estabelecimento: e.estabelecimento, categoriaNome: "Obra",
-        valor: e.valor, formaPagamento: "pix", semComprovante: true,
-        observacao: "Conferência de extrato bancário", parcelado: false, parcelas: [],
-        seq, origem: "manual", rascunho: true,
-        criadoEm: new Date().toISOString(), criadoPorNome: me?.nome || "Conferência",
-      } as InvestLancamento);
-      criados++;
-    }
-    say(`Importados ${criados} rascunho(s)${pulados ? `, ${pulados} já existiam` : ""}.`);
-  }
 
   // Cor por categoria (bate com o donut) + lista agrupada por categoria.
   const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
@@ -386,7 +357,6 @@ export function InvestimentosPage() {
             : <span className="text-gray-500 text-sm">Nenhum projeto ainda</span>
         )}
         <div className="flex-1" />
-        {proj && podeLancar && <button onClick={() => void seedExtratoParaty()} className="h-8 px-2.5 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 text-[11px] font-semibold shrink-0" title="PROVISÓRIO — importa os 7 gastos do extrato como rascunho">Importar extrato (7)</button>}
         {proj && lancAtivos.length > 0 && <button onClick={exportarPlanilha} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Exportar planilha (.xlsx)"><Download size={16} /></button>}
         {proj && (podeGerirProjetos || podeGerirCategorias) && <button onClick={() => setProjModal({ mode: "edit", proj })} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Configurações do projeto (pasta, categorias, formas)"><Settings size={16} /></button>}
       </div>
