@@ -297,6 +297,12 @@ export function InvestimentosPage() {
     await salvarLancamento({ ...l, rascunho: false, atualizadoEm: new Date().toISOString() });
     say("Rascunho confirmado.");
   }
+  async function confirmarTodosRascunhos() {
+    if (!rascunhos.length) return;
+    if (!window.confirm(`Confirmar os ${rascunhos.length} rascunho(s)? Eles viram lançamentos normais.`)) return;
+    for (const l of rascunhos) await salvarLancamento({ ...l, rascunho: false, atualizadoEm: new Date().toISOString() });
+    say(`${rascunhos.length} rascunho(s) confirmado(s).`);
+  }
 
   // Cor por categoria (bate com o donut) + lista agrupada por categoria.
   const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
@@ -452,7 +458,8 @@ export function InvestimentosPage() {
           {rascunhos.length > 0 && (
             <div className="mb-3 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-900/20 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200 flex items-center gap-2 flex-wrap">
               <span className="font-semibold">{rascunhos.length} em rascunho</span>
-              <span className="text-sky-600 dark:text-sky-300">— lançados pelo bot/importação. Abra cada um e toque em <b>Confirmar</b>.</span>
+              <span className="text-sky-600 dark:text-sky-300">— lançados pelo bot/importação. Confira e confirme.</span>
+              {podeLancar && <button onClick={() => void confirmarTodosRascunhos()} className="ml-auto text-[12px] font-semibold px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 shrink-0"><Check size={13} /> Confirmar todos</button>}
             </div>
           )}
 
