@@ -2423,6 +2423,7 @@ export type WhatsappMonitor = {
   responsavelPessoaId?: string | null;   // recebe pendências/dúvidas no privado (F2)
   responsavelWhatsapp?: string | null;
   modo?: WhatsappMonitorModo;            // silencioso (padrão) | confirma | pergunta
+  ocultarDoInbox?: boolean;              // true (padrão) = some do Chat; false = fica visível p/ atendentes do número
   exclusivo?: boolean;                   // true = nenhum atendente humano mexe (lado app)
   ativo: boolean;
   criadoEm: string; atualizadoEm?: string;

@@ -9,7 +9,7 @@
 //  com o evento MESSAGES_UPSERT ligado.
 // ════════════════════════════════════════════════════════════════════════════
 import { firestoreCriar, firestoreLer, firestoreAtualizar, firestoreDisponivel, subirStorage } from "./_firestoreRest.js";
-import { rodarMonitor } from "./_botMonitor.js";
+import { rodarMonitor, responderPendencia } from "./_botMonitor.js";
 
 type RotOpcao = { id?: string; rotulo?: string; pessoaId?: string; pessoaNome?: string; atalhos?: string[] };
 type Roteamento = { ativo?: boolean; saudacao?: string; mensagemRoteado?: string; opcoes?: RotOpcao[] };
@@ -103,7 +103,7 @@ function textoDe(m?: EvoMsg["message"], tipo?: string): string {
 
 // Citação (reply): o contextInfo fica dentro de algum nó da mensagem
 // (extendedText/image/video/document…). Extrai id + trecho + autor citados.
-type CtxInfo = { stanzaId?: string; participant?: string; quotedMessage?: EvoMsg["message"] };
+type CtxInfo = { stanzaId?: string; participant?: string; quotedMessage?: EvoMsg["message"]; mentionedJid?: string[] };
 function quotedDe(msg?: EvoMsg["message"]): { quotedId?: string; quotedTexto?: string; quotedAutor?: string } {
   if (!msg) return {};
   let ctx: CtxInfo | undefined;
@@ -114,6 +114,16 @@ function quotedDe(msg?: EvoMsg["message"]): { quotedId?: string; quotedTexto?: s
   if (!ctx?.stanzaId) return {};
   const texto = ctx.quotedMessage ? textoDe(ctx.quotedMessage, undefined) : "";
   return { quotedId: ctx.stanzaId, quotedTexto: (texto || "").slice(0, 300) || undefined, quotedAutor: soDig((ctx.participant || "").split("@")[0]) || undefined };
+}
+// JIDs mencionados (@) em qualquer nó da mensagem — p/ o bot saber que foi chamado.
+function mencoesDe(msg?: EvoMsg["message"]): string[] {
+  if (!msg) return [];
+  const out = new Set<string>();
+  for (const v of Object.values(msg as Record<string, unknown>)) {
+    const m = (v as { contextInfo?: CtxInfo } | null)?.contextInfo?.mentionedJid;
+    if (Array.isArray(m)) m.forEach((j) => { if (j) out.add(String(j)); });
+  }
+  return [...out];
 }
 
 // Extensão a partir do mime (pro nome do arquivo no Storage).
@@ -326,9 +336,19 @@ async function processar(body: EvoBody): Promise<void> {
       if (pReabrir) await pReabrir;
       // Bot Planejamento.app: se esta conversa/grupo é MONITORADA, o bot trata e
       // a conversa NÃO cai no atendimento humano. Inerte se não houver monitor.
-      const tratadoPorBot = await rodarMonitor(numeroId, waId, jid, id, texto, midia ? { url: midia.url, mime: midia.mime } : null, ehGrupo ? (m.pushName || null) : null)
-        .catch((e) => { console.log("[evo-webhook] monitor:", (e as Error)?.message); return false; });
+      const tratadoPorBot = await rodarMonitor({
+        numeroId, waId, remoteJid: jid, msgId: id, texto,
+        midia: midia ? { url: midia.url, mime: midia.mime } : null,
+        autor: ehGrupo ? (m.pushName || null) : null,
+        fromMe, quotedId: quo.quotedId || null, mentionedJids: mencoesDe(m.message),
+      }).catch((e) => { console.log("[evo-webhook] monitor:", (e as Error)?.message); return false; });
       if (tratadoPorBot) continue;
+      // Privado: resposta do responsável técnico a uma dúvida do bot (F2)?
+      if (!ehGrupo && !fromMe) {
+        const respondeuPend = await responderPendencia(numeroId, waId, id, texto)
+          .catch((e) => { console.log("[evo-webhook] pendencia:", (e as Error)?.message); return false; });
+        if (respondeuPend) continue;
+      }
       // Bot de triagem NÃO age em grupo (só reabre acima, se estava finalizado).
       if (!ehGrupo) { try { await automacao(numeroId, waId, texto); } catch (e) { console.log("[evo-webhook] automacao:", (e as Error)?.message); } }
     }

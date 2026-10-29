@@ -8,6 +8,7 @@ import { collection, onSnapshot, doc, setDoc, deleteDoc, query, where } from "fi
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import type { WhatsappMonitor, WhatsappMonitorModo, InvestProjeto } from "../../core/types";
 
 const INPUT = "w-full h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm";
@@ -36,9 +37,19 @@ export function MonitoresManager() {
   const [restaurantId, setRestaurantId] = useState(activeRestaurant?.id || "");
   const [projetoId, setProjetoId] = useState("");
   const [modo, setModo] = useState<WhatsappMonitorModo>("silencioso");
+  const [ocultar, setOcultar] = useState(true);          // esconder o grupo do Chat (atendimento)
+  const [respPessoaId, setRespPessoaId] = useState("");  // responsável técnico (recebe dúvidas)
+  const [respBusca, setRespBusca] = useState("");
+  const [respAberto, setRespAberto] = useState(false);
+  const [respWhats, setRespWhats] = useState("");        // WhatsApp do responsável (dúvidas no privado)
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState(false);
+  const pessoas = usePessoasAtivasLista();
+  const pessoasFiltradas = useMemo(() => {
+    const q = respBusca.trim().toLowerCase();
+    return (q ? pessoas.filter((p) => p.nome.toLowerCase().includes(q)) : pessoas).slice(0, 20);
+  }, [pessoas, respBusca]);
 
   useEffect(() => {
     const subs = [
@@ -91,13 +102,17 @@ export function MonitoresManager() {
     const mon: WhatsappMonitor = {
       id, numeroId, waId: grupoWaId, nome: nomeGrupo(grupoWaId),
       skills: ["investimentos"], restaurantId, projetoId,
-      modo, exclusivo: true, ativo: true, criadoEm: iso, atualizadoEm: iso,
+      modo, ocultarDoInbox: ocultar,
+      responsavelPessoaId: respPessoaId || null,
+      responsavelWhatsapp: respWhats.replace(/\D/g, "") || null,
+      exclusivo: true, ativo: true, criadoEm: iso, atualizadoEm: iso,
     };
     setSalvando(true);
     try {
       await setDoc(doc(db, "whatsappMonitores", id), sanitizeForFirestore(mon), { merge: true });
       setOk(true); setTimeout(() => setOk(false), 2500);
       setGrupoWaId(""); setBuscaGrupo(""); setProjetoId("");
+      setRespPessoaId(""); setRespBusca(""); setRespWhats("");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
     } finally { setSalvando(false); }
@@ -170,6 +185,38 @@ export function MonitoresManager() {
             {MODOS.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}
           </select>
         </label>
+        {/* Responsável técnico: recebe dúvidas/divergências no privado (F2) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <label className="text-xs text-gray-500">Responsável técnico (dúvidas)
+            <div className="relative">
+              <input className={INPUT} value={respBusca} placeholder="Buscar pessoa…"
+                onChange={(e) => { setRespBusca(e.target.value); setRespPessoaId(""); setRespAberto(true); }}
+                onFocus={() => setRespAberto(true)} onBlur={() => setTimeout(() => setRespAberto(false), 150)} />
+              {respAberto && (
+                <div className="absolute z-20 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-lg">
+                  {pessoasFiltradas.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">Nenhuma pessoa.</div>}
+                  {pessoasFiltradas.map((p) => (
+                    <button type="button" key={p.id}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 ${p.id === respPessoaId ? "bg-emerald-50 dark:bg-emerald-900/20 font-medium" : ""}`}
+                      onMouseDown={(e) => { e.preventDefault(); setRespPessoaId(p.id); setRespBusca(p.nome); setRespAberto(false); }}>
+                      {p.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </label>
+          <label className="text-xs text-gray-500">WhatsApp do responsável
+            <input className={INPUT} value={respWhats} placeholder="(91) 99999-9999"
+              inputMode="tel" onChange={(e) => setRespWhats(e.target.value)} />
+          </label>
+        </div>
+        <p className="text-[11px] text-gray-400 -mt-1">Dúvidas e divergências o bot manda no <b>privado</b> dessa pessoa (e um aviso na Central), sem poluir o grupo.</p>
+        <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+          <input type="checkbox" className="h-4 w-4 accent-emerald-600" checked={ocultar} onChange={(e) => setOcultar(e.target.checked)} />
+          Ocultar este grupo do Chat (atendimento)
+          <span className="text-[11px] text-gray-400">· desmarque se atendentes do número precisam ver o grupo</span>
+        </label>
         <div className="flex items-center gap-2">
           <span className="text-[11px] px-2 py-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">Skill: lançar em Novos Investimentos</span>
         </div>
@@ -189,7 +236,7 @@ export function MonitoresManager() {
                 {!m.ativo && <span className="text-[10px] text-gray-400">(pausado)</span>}
               </div>
               <div className="text-xs text-gray-500 truncate">
-                {nomeNumero(m.numeroId)} · {nomeRest(m.restaurantId)}{m.projetoId ? ` / ${nomeProj[m.projetoId] || m.projetoId}` : ""} · {MODOS.find((x) => x.v === m.modo)?.label.split(" ")[0] || m.modo}
+                {nomeNumero(m.numeroId)} · {nomeRest(m.restaurantId)}{m.projetoId ? ` / ${nomeProj[m.projetoId] || m.projetoId}` : ""} · {MODOS.find((x) => x.v === m.modo)?.label.split(" ")[0] || m.modo}{m.ocultarDoInbox === false ? " · visível no Chat" : ""}
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">

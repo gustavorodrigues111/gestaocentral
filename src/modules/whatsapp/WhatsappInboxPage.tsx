@@ -345,8 +345,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal, deepLi
   useEffect(() => {
     if (!authPronta) return;
     return assinarComRetry(collection(db, "whatsappMonitores"), snap =>
-      setMonitorIds(new Set(snap.docs.map(d => d.data() as { numeroId?: string; waId?: string; ativo?: boolean })
-        .filter(x => x.ativo !== false && x.numeroId && x.waId).map(x => `${x.numeroId}__${x.waId}`))));
+      // Só esconde do Chat os grupos com ocultarDoInbox != false (padrão). Num número
+      // compartilhado com atendentes humanos, desmarcar mantém o grupo visível.
+      setMonitorIds(new Set(snap.docs.map(d => d.data() as { numeroId?: string; waId?: string; ativo?: boolean; ocultarDoInbox?: boolean })
+        .filter(x => x.ativo !== false && x.ocultarDoInbox !== false && x.numeroId && x.waId).map(x => `${x.numeroId}__${x.waId}`))));
   }, [authPronta]);
 
   useEffect(() => {
