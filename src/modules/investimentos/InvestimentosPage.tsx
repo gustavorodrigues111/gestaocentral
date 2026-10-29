@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
-import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown, Users, RotateCcw } from "lucide-react";
+import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown, Users, RotateCcw, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { auth } from "../../core/firebase/config";
@@ -268,6 +269,28 @@ export function InvestimentosPage() {
     await salvarLancamento({ ...l, excluido: excluir, excluidoEm: excluir ? new Date().toISOString() : undefined, atualizadoEm: new Date().toISOString() });
     say(excluir ? "Movido pra lixeira." : "Restaurado.");
   }
+  function exportarPlanilha() {
+    if (!proj) return;
+    const rows = lancAtivos.slice().sort((a, b) => (a.seq || 0) - (b.seq || 0) || a.data.localeCompare(b.data)).map((l) => {
+      const parc = l.parcelado && l.parcelas?.length ? `${l.parcelas.filter((p) => p.pago).length}/${l.parcelas.length}` : "";
+      const quem = l.pagamentos?.length ? l.pagamentos.map((p) => `${p.pagador} (${fmtR(p.valor)})`).join(" / ") : (l.pagoPor || "");
+      return {
+        "Nº": l.seq ?? "", "Data": fmtBR(l.data), "Estabelecimento": l.estabelecimento || "",
+        "Categoria": l.categoriaNome || "", "Valor": Number(l.valor) || 0,
+        "Forma": investFormaLabel(l.formaPagamento) || "", "Quem pagou": quem,
+        "Parcelas pagas": parc, "Observação": l.observacao || "",
+        "Origem": l.origem === "bot" ? "Bot" : "Manual", "Rascunho": l.rascunho ? "Sim" : "",
+      };
+    });
+    // Linha de total no fim.
+    rows.push({ "Nº": "", "Data": "", "Estabelecimento": "TOTAL", "Categoria": "", "Valor": total, "Forma": "", "Quem pagou": "", "Parcelas pagas": "", "Observação": "", "Origem": "", "Rascunho": "" });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = [{ wch: 5 }, { wch: 11 }, { wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 12 }, { wch: 34 }, { wch: 8 }, { wch: 9 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Lançamentos");
+    const nome = (proj.nome || "investimentos").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+    XLSX.writeFile(wb, `${nome}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
 
   // Cor por categoria (bate com o donut) + lista agrupada por categoria.
   const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
@@ -328,6 +351,7 @@ export function InvestimentosPage() {
             : <span className="text-gray-500 text-sm">Nenhum projeto ainda</span>
         )}
         <div className="flex-1" />
+        {proj && lancAtivos.length > 0 && <button onClick={exportarPlanilha} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Exportar planilha (.xlsx)"><Download size={16} /></button>}
         {proj && (podeGerirProjetos || podeGerirCategorias) && <button onClick={() => setProjModal({ mode: "edit", proj })} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Configurações do projeto (pasta, categorias, formas)"><Settings size={16} /></button>}
       </div>
 
