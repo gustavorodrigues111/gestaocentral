@@ -102,6 +102,7 @@ function parseJSON<T>(txt: string | null): T | null {
 
 // ── IA: extrai os campos de um comprovante (imagem/PDF) ──────────────────────
 type Comprovante = {
+  ehComprovante?: boolean;
   data?: string; estabelecimento?: string; categoriaExistente?: string; categoriaSugerida?: string;
   valor?: number; formaPagamento?: string; parcelado?: boolean; parcelas?: { data: string; valor: number }[];
 };
@@ -109,9 +110,11 @@ async function extrairComprovante(mime: string, base64: string, categorias: stri
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
   const hoje = new Date().toISOString().slice(0, 10);
-  const system = `Você extrai dados de um COMPROVANTE (nota fiscal, recibo, cupom, comprovante de pix/cartão/boleto) de um investimento de restaurante. Devolva SÓ JSON, sem texto fora do JSON, no formato:
-{"data":"YYYY-MM-DD","estabelecimento":"","categoriaExistente":"","categoriaSugerida":"","valor":0,"formaPagamento":"dinheiro|pix|debito|credito|boleto|transferencia|outro","parcelado":false,"parcelas":[{"data":"YYYY-MM-DD","valor":0}]}
+  const system = `Você analisa uma imagem/PDF recebido num grupo de WhatsApp e decide se é um COMPROVANTE financeiro (nota fiscal, recibo, cupom fiscal, comprovante de pix/cartão/boleto/transferência) de um investimento de restaurante. Devolva SÓ JSON, sem texto fora do JSON, no formato:
+{"ehComprovante":true,"data":"YYYY-MM-DD","estabelecimento":"","categoriaExistente":"","categoriaSugerida":"","valor":0,"formaPagamento":"dinheiro|pix|debito|credito|boleto|transferencia|outro","parcelado":false,"parcelas":[{"data":"YYYY-MM-DD","valor":0}]}
 Regras:
+- ehComprovante=false se a imagem NÃO for um comprovante financeiro (foto de obra/produto/pessoas, meme, print de conversa, documento qualquer). Nesse caso devolva o resto zerado/vazio.
+- ehComprovante=true se for comprovante, mesmo que ilegível/parcial (aí valor pode ficar 0).
 - data = data da compra/pagamento; se não achar, use "${hoje}".
 - estabelecimento = fornecedor/loja (o nome mais reconhecível).
 - valor = total em reais (número, ponto decimal, sem "R$").
@@ -350,8 +353,14 @@ const skillInvestimentos: BotSkill = {
       const b64 = await urlParaBase64(ctx.msg.midiaUrl!);
       if (!b64) { await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "⚠️"); return; }
       const ext = await extrairComprovante(ctx.msg.mime!, b64, cats);
+      // Imagem/PDF que claramente NÃO é comprovante (foto de obra, meme, print) →
+      // ignora em silêncio, sem reação e sem incomodar o responsável.
+      if (ext && ext.ehComprovante === false) {
+        await firestorePatchCampos("whatsappMensagens", docKey, { botProcessado: true }).catch(() => {});
+        return;
+      }
       if (!ext || !(Number(ext.valor) > 0)) {
-        // Não leu o valor → ⚠️ + pergunta no privado do responsável (se houver).
+        // Parece comprovante mas não leu o valor → ⚠️ + pergunta no privado (se houver).
         await firestorePatchCampos("whatsappMensagens", docKey, { botProcessado: true, botFalhou: true }).catch(() => {});
         await reagir(ctx.numeroId, ctx.msg.remoteJid, ctx.msg.id, "⚠️");
         if (ctx.responsavelWhatsapp) {
