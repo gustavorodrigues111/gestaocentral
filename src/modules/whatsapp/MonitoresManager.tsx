@@ -21,6 +21,11 @@ const MODOS: { v: WhatsappMonitorModo; label: string }[] = [
   { v: "confirma", label: "Confirma no grupo (✅)" },
   { v: "pergunta", label: "Confirma e pergunta no grupo" },
 ];
+// Catálogo de SKILLS que o bot pode exercer num grupo. Novas skills entram aqui;
+// `temConfigInvest` marca as que precisam de restaurante+projeto de investimento.
+const SKILLS: { id: string; label: string; desc: string; temConfigInvest?: boolean }[] = [
+  { id: "investimentos", label: "Lançar em Novos Investimentos", desc: "Lê comprovantes/gastos e lança como rascunho no projeto escolhido.", temConfigInvest: true },
+];
 
 export function MonitoresManager() {
   const { restaurants, activeRestaurant } = useRestaurant();
@@ -30,6 +35,8 @@ export function MonitoresManager() {
   const [projetos, setProjetos] = useState<InvestProjeto[]>([]);
 
   // Form
+  const [skillsSel, setSkillsSel] = useState<string[]>(["investimentos"]);
+  const precisaInvest = skillsSel.some((s) => SKILLS.find((x) => x.id === s)?.temConfigInvest);
   const [numeroId, setNumeroId] = useState("");
   const [grupoWaId, setGrupoWaId] = useState("");
   const [buscaGrupo, setBuscaGrupo] = useState("");   // texto digitado na busca de grupo
@@ -93,15 +100,18 @@ export function MonitoresManager() {
 
   async function salvar() {
     setErro(""); setOk(false);
+    if (skillsSel.length === 0) { setErro("Escolha ao menos uma função pro bot."); return; }
     if (!numeroId) { setErro("Escolha o número."); return; }
     if (!grupoWaId) { setErro("Escolha o grupo."); return; }
-    if (!restaurantId) { setErro("Escolha o restaurante."); return; }
-    if (!projetoId) { setErro("Escolha o projeto de destino."); return; }
+    if (precisaInvest && !restaurantId) { setErro("Escolha o restaurante."); return; }
+    if (precisaInvest && !projetoId) { setErro("Escolha o projeto de destino."); return; }
     const id = `${numeroId}__${grupoWaId}`;
     const iso = new Date().toISOString();
     const mon: WhatsappMonitor = {
       id, numeroId, waId: grupoWaId, nome: nomeGrupo(grupoWaId),
-      skills: ["investimentos"], restaurantId, projetoId,
+      skills: skillsSel,
+      restaurantId: precisaInvest ? restaurantId : (restaurantId || ""),
+      projetoId: precisaInvest ? projetoId : null,
       modo, ocultarDoInbox: ocultar,
       responsavelPessoaId: respPessoaId || null,
       responsavelWhatsapp: respWhats.replace(/\D/g, "") || null,
@@ -165,21 +175,48 @@ export function MonitoresManager() {
           </label>
         </div>
         {grupos.length === 0 && <div className="text-[11px] text-amber-600">Nenhum grupo visto ainda. Adicione o número ao grupo e mande uma mensagem lá — ele aparece aqui.</div>}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="text-xs text-gray-500">Restaurante
-            <select className={INPUT} value={restaurantId} onChange={(e) => { setRestaurantId(e.target.value); setProjetoId(""); }}>
-              <option value="">Escolha…</option>
-              {restaurants.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
-            </select>
-          </label>
-          <label className="text-xs text-gray-500">Projeto (Novos Investimentos)
-            <select className={INPUT} value={projetoId} disabled={!restaurantId} onChange={(e) => setProjetoId(e.target.value)}>
-              <option value="">Escolha…</option>
-              {projetosRest.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-            </select>
-          </label>
+
+        {/* O que o bot FAZ nesse grupo — uma ou mais funções (skills). */}
+        <div>
+          <div className="text-xs text-gray-500 mb-1">O que o bot faz aqui</div>
+          <div className="space-y-1.5">
+            {SKILLS.map((sk) => {
+              const on = skillsSel.includes(sk.id);
+              return (
+                <label key={sk.id} className={`flex items-start gap-2 rounded-lg border p-2 cursor-pointer transition-colors ${on ? "border-emerald-400 bg-emerald-50/50 dark:border-emerald-700 dark:bg-emerald-900/15" : "border-gray-200 dark:border-gray-700"}`}>
+                  <input type="checkbox" className="h-4 w-4 mt-0.5 accent-emerald-600" checked={on}
+                    onChange={(e) => setSkillsSel((prev) => e.target.checked ? [...prev, sk.id] : prev.filter((x) => x !== sk.id))} />
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium text-gray-800 dark:text-gray-100">{sk.label}</div>
+                    <div className="text-[11px] text-gray-500">{sk.desc}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
         </div>
-        {restaurantId && projetosRest.length === 0 && <div className="text-[11px] text-amber-600">Esse restaurante não tem projeto de investimento ativo. Crie um no módulo Novos Investimentos.</div>}
+
+        {/* Config da skill de investimentos (só quando selecionada). */}
+        {precisaInvest && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2.5 space-y-2 bg-gray-50/40 dark:bg-gray-800/20">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Destino · Novos Investimentos</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="text-xs text-gray-500">Restaurante
+                <select className={INPUT} value={restaurantId} onChange={(e) => { setRestaurantId(e.target.value); setProjetoId(""); }}>
+                  <option value="">Escolha…</option>
+                  {restaurants.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+                </select>
+              </label>
+              <label className="text-xs text-gray-500">Projeto
+                <select className={INPUT} value={projetoId} disabled={!restaurantId} onChange={(e) => setProjetoId(e.target.value)}>
+                  <option value="">Escolha…</option>
+                  {projetosRest.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </label>
+            </div>
+            {restaurantId && projetosRest.length === 0 && <div className="text-[11px] text-amber-600">Esse restaurante não tem projeto de investimento ativo. Crie um no módulo Novos Investimentos.</div>}
+          </div>
+        )}
         <label className="text-xs text-gray-500 block">Comportamento no grupo
           <select className={INPUT} value={modo} onChange={(e) => setModo(e.target.value as WhatsappMonitorModo)}>
             {MODOS.map((m) => <option key={m.v} value={m.v}>{m.label}</option>)}
@@ -217,13 +254,10 @@ export function MonitoresManager() {
           Ocultar este grupo do Chat (atendimento)
           <span className="text-[11px] text-gray-400">· desmarque se atendentes do número precisam ver o grupo</span>
         </label>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] px-2 py-1 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">Skill: lançar em Novos Investimentos</span>
-        </div>
         <button className={`${BTN_P} w-full`} disabled={salvando} onClick={() => void salvar()}>
           {ok ? <><Check size={16} /> Monitor salvo</> : salvando ? "Salvando…" : <><Bot size={16} /> Monitorar este grupo</>}
         </button>
-        <div className="text-[11px] text-gray-400">Comprovantes mandados no grupo viram <b>rascunho</b> em Novos Investimentos (o bot reage com ✅). Confira os rascunhos no módulo.</div>
+        <div className="text-[11px] text-gray-400">Comprovantes e gastos mandados no grupo viram <b>rascunho</b> em Novos Investimentos (o bot reage com ✅). Confira os rascunhos no módulo.</div>
       </div>
 
       {/* Lista de monitores */}

@@ -19,16 +19,16 @@ export function WhatsappPage() {
   const { can, loading } = useCanAcao(rid || "");
   const podeVer = isMaster || can("whatsapp", "ver") || can("whatsapp", "responder");
   const podeConfig = isMaster || can("whatsapp", "configurar");
-  const [aba, setAba] = useState<"chat" | "config">("chat");
+  const [aba, setAba] = useState<"chat" | "config" | "monitor">("chat");
   // Cada clique na aba Chat manda o inbox voltar pra lista de conversas.
   const [voltarLista, setVoltarLista] = useState(0);
 
   if (loading) return <div className="max-w-4xl mx-auto p-6 text-sm text-gray-400">Carregando…</div>;
   if (!podeVer && !podeConfig) return <div className="max-w-4xl mx-auto p-8 text-center text-gray-500">Você não tem acesso ao WhatsApp.</div>;
 
-  const abaEfetiva = aba === "config" && !podeConfig ? "chat" : aba;
+  const abaEfetiva = (aba === "config" || aba === "monitor") && !podeConfig ? "chat" : aba;
 
-  const tabBtn = (v: "chat" | "config", label: ReactNode) => (
+  const tabBtn = (v: "chat" | "config" | "monitor", label: ReactNode) => (
     <button type="button" onClick={() => { setAba(v); if (v === "chat") setVoltarLista(n => n + 1); }}
       className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${abaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{label}</button>
   );
@@ -38,6 +38,7 @@ export function WhatsappPage() {
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 px-2 pt-2">
         {podeVer && tabBtn("chat", <><MessageCircle size={15} /> Chat</>)}
         {podeConfig && tabBtn("config", <><Settings size={15} /> Configuração</>)}
+        {podeConfig && tabBtn("monitor", <><Bot size={15} /> Monitor IA</>)}
       </div>
 
       {/* Mantém o inbox montado ao trocar de aba pra não perder a conversa aberta. */}
@@ -54,11 +55,13 @@ export function WhatsappPage() {
             <p className="text-xs text-gray-500 mb-2">Etiquetas globais pra organizar as conversas no chat (não são por número).</p>
             <TagsManager />
           </section>
-          <section>
-            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Bot size={15} /> Bot Planejamento.app <span className="text-[11px] font-normal text-gray-400">· grupos monitorados</span></h2>
-            <p className="text-xs text-gray-500 mb-2">Escolha um grupo pra o bot monitorar. Ele lê os comprovantes e lança como rascunho no destino escolhido — sem atrapalhar o atendimento.</p>
-            <MonitoresManager />
-          </section>
+        </div>
+      )}
+      {podeConfig && abaEfetiva === "monitor" && (
+        <div className="px-4 py-4">
+          <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Bot size={15} /> Bot Planejamento.app <span className="text-[11px] font-normal text-gray-400">· grupos monitorados</span></h2>
+          <p className="text-xs text-gray-500 mb-3">Escolha um grupo, diga <b>o que o bot faz</b> nele (uma ou mais funções) e o destino. Ele lê comprovantes e gastos e lança como rascunho — sem atrapalhar o atendimento.</p>
+          <MonitoresManager />
         </div>
       )}
     </PageContainer>
