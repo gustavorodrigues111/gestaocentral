@@ -7008,6 +7008,10 @@ export type ProducaoSispRomaneioItem = {
   qtdPacotes: number;
 };
 
+// Em trânsito até a conferência de entrada; "recebido" quando a loja/destino
+// confere e (p/ loja) serializa os pacotes em peças (W3).
+export type ProducaoSispRomaneioStatus = "em_transito" | "recebido";
+
 export type ProducaoSispRomaneio = {
   id: string;
   restaurantId: string;
@@ -7016,10 +7020,16 @@ export type ProducaoSispRomaneio = {
   destinoId?: string | null;            // rid do restaurante / id do cliente atacado
   destinoNome?: string | null;
   itens: ProducaoSispRomaneioItem[];
+  status: ProducaoSispRomaneioStatus;
   fiscal?: boolean | null;              // só registro; nota em si sai no sistema fiscal
   vendaId?: string | null;              // vínculo c/ módulo Vendas (quando tipo=venda)
+  obs?: string | null;
   expedidoEm: string;
   expedidoPorNome?: string | null;
+  recebidoEm?: string | null;           // conferência de entrada (CONFERÊNCIA 2)
+  recebidoPorNome?: string | null;
+  pesoRecebidoKg?: number | null;       // Σ pesado na entrada (bate com Σ itens)
+  pacotesRecebidos?: number | null;
   criadoEm: string;
 };
 
