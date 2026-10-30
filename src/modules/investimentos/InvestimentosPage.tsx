@@ -184,6 +184,7 @@ export function InvestimentosPage() {
   const lancAtivos = useMemo(() => lancamentos.filter((l) => !l.excluido), [lancamentos]);
   const lancLixeira = useMemo(() => lancamentos.filter((l) => l.excluido), [lancamentos]);
   const [verLixeira, setVerLixeira] = useState(false);
+  const [verRascunhos, setVerRascunhos] = useState(false);
   const [editSocios, setEditSocios] = useState(false);
   const total = useMemo(() => lancAtivos.reduce((s, l) => s + (l.valor || 0), 0), [lancAtivos]);
 
@@ -454,12 +455,29 @@ export function InvestimentosPage() {
             </div>
           )}
 
-          {/* Aviso de rascunhos aguardando conferência */}
+          {/* Rascunhos aguardando conferência — clique pra expandir e confirmar */}
           {rascunhos.length > 0 && (
-            <div className="mb-3 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-900/20 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200 flex items-center gap-2 flex-wrap">
-              <span className="font-semibold">{rascunhos.length} em rascunho</span>
-              <span className="text-sky-600 dark:text-sky-300">— lançados pelo bot/importação. Confira e confirme.</span>
-              {podeLancar && <button onClick={() => void confirmarTodosRascunhos()} className="ml-auto text-[12px] font-semibold px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 shrink-0"><Check size={13} /> Confirmar todos</button>}
+            <div className="mb-3 rounded-xl border border-sky-200 dark:border-sky-900/60 bg-sky-50 dark:bg-sky-900/20 overflow-hidden">
+              <div onClick={() => setVerRascunhos((v) => !v)} className="flex items-center gap-2 px-3 py-2 text-[13px] text-sky-800 dark:text-sky-200 cursor-pointer select-none">
+                <ChevronDown size={15} className={"shrink-0 transition-transform " + (verRascunhos ? "rotate-180" : "")} />
+                <span className="font-semibold">{rascunhos.length} em rascunho</span>
+                <span className="text-sky-600 dark:text-sky-300 hidden sm:inline">— confira e confirme</span>
+                {podeLancar && <button onClick={(e) => { e.stopPropagation(); void confirmarTodosRascunhos(); }} className="ml-auto text-[12px] font-semibold px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1.5 shrink-0"><Check size={13} /> Confirmar todos</button>}
+              </div>
+              {verRascunhos && (
+                <div className="border-t border-sky-200 dark:border-sky-900/60 divide-y divide-sky-100 dark:divide-sky-900/40">
+                  {rascunhos.map((l) => (
+                    <div key={l.id} className="flex items-center gap-2 px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-gray-800 dark:text-gray-100 truncate">{l.seq != null ? `#${l.seq} ` : ""}{l.estabelecimento || "—"}</div>
+                        <div className="text-[11px] text-gray-500 tabular-nums">{fmtBR(l.data)} · {fmtR(l.valor)}{l.categoriaNome ? ` · ${l.categoriaNome}` : ""}</div>
+                      </div>
+                      {podeLancar && <button onClick={() => setLancModal(l)} className="shrink-0 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600">Abrir</button>}
+                      {podeLancar && <button onClick={() => void confirmarRascunho(l)} className="shrink-0 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-1"><Check size={12} /> Confirmar</button>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
