@@ -221,16 +221,21 @@ export function InvestimentosPage() {
     return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
   }, [lancAtivos]);
   // Quanto cada um PAGOU — considera conta rachada (pagamentos[]) quando houver.
+  // Agrupa ignorando caixa (Antonio == ANTONIO) e mostra o rótulo mais legível.
   const porQuemPagou = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, { label: string; value: number }>();
+    const add = (nomeRaw: string, v: number) => {
+      const nome = (nomeRaw || "").trim() || "Não informado";
+      const k = nome.toLowerCase();
+      const cur = m.get(k);
+      if (!cur) m.set(k, { label: nome, value: v });
+      else { cur.value += v; if (cur.label === cur.label.toUpperCase() && nome !== nome.toUpperCase()) cur.label = nome; }
+    };
     for (const l of lancAtivos) {
-      if (Array.isArray(l.pagamentos) && l.pagamentos.length) {
-        for (const p of l.pagamentos) { const k = (p.pagador || "").trim() || "Não informado"; m.set(k, (m.get(k) || 0) + (Number(p.valor) || 0)); }
-      } else {
-        const k = (l.pagoPor || "").trim() || "Não informado"; m.set(k, (m.get(k) || 0) + (l.valor || 0));
-      }
+      if (Array.isArray(l.pagamentos) && l.pagamentos.length) for (const p of l.pagamentos) add(p.pagador, Number(p.valor) || 0);
+      else add(l.pagoPor || "", l.valor || 0);
     }
-    return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+    return [...m.values()].sort((a, b) => b.value - a.value);
   }, [lancAtivos]);
   // ── Acerto de contas (ledger): quanto cada sócio pagou × cota × saldo líquido ──
   // Sócios = os configurados no projeto (com cota), ou derivados de quem pagou (cota igual).
@@ -833,10 +838,18 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
     const extra = formas.filter((fc) => !FORMAS_FIXAS.some((x) => x.value === fc.nome || x.label.toLowerCase() === fc.nome.toLowerCase())).map((fc) => ({ value: fc.nome, label: fc.nome }));
     return [...FORMAS_FIXAS, ...extra];
   }, [formas]);
-  const pagadorOptions = useMemo(() => [
-    { value: "", label: "— quem pagou —" },
-    ...pagadores.map((p) => ({ value: p.nome, label: p.nome })),
-  ], [pagadores]);
+  // Dedup por nome ignorando caixa (evita "Antonio" + "ANTONIO"); prefere a
+  // versão que não é toda maiúscula (mais legível).
+  const pagadorOptions = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const p of pagadores) {
+      const nome = (p.nome || "").trim(); const k = nome.toLowerCase();
+      if (!k) continue;
+      const cur = byKey.get(k);
+      if (!cur || (cur === cur.toUpperCase() && nome !== nome.toUpperCase())) byKey.set(k, nome);
+    }
+    return [{ value: "", label: "— quem pagou —" }, ...[...byKey.values()].sort((a, b) => a.localeCompare(b)).map((n) => ({ value: n, label: n }))];
+  }, [pagadores]);
 
   async function addCategoria(nome: string) {
     if (categorias.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) return;
