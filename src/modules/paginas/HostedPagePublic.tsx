@@ -52,6 +52,19 @@ export function HostedPagePublic({ slug }: { slug: string }) {
     else void buscar();
   }, [slug, buscar]);
 
+  // Memória de identidade: o iframe (origin-null, sem localStorage) avisa quem é a
+  // pessoa; a página-mãe (origem real) guarda por slug e injeta de volta no load.
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      const d = e.data as { type?: string; actor?: unknown } | null;
+      if (d && d.type === "hp-actor" && typeof d.actor === "string" && d.actor.length > 0 && d.actor.length < 100) {
+        try { localStorage.setItem("hp-actor:" + slug, d.actor); } catch { /* opaco/privado */ }
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [slug]);
+
   async function tentarSenha(e: React.FormEvent) {
     e.preventDefault();
     await buscar({ senha });
@@ -71,10 +84,14 @@ export function HostedPagePublic({ slug }: { slug: string }) {
   if (estado === "carregando") return <div style={wrap}><span style={{ color: "#999", fontSize: 13 }}>Carregando…</span></div>;
 
   if (estado === "ok") {
+    // Injeta a identidade lembrada (se houver) antes do HTML da página.
+    let atorSalvo = "";
+    try { atorSalvo = localStorage.getItem("hp-actor:" + slug) || ""; } catch { /* opaco/privado */ }
+    const srcDocComAtor = `<script>window.__ACTOR=${JSON.stringify(atorSalvo)}<\/script>` + html;
     return (
       <iframe
         title={titulo || slug}
-        srcDoc={html}
+        srcDoc={srcDocComAtor}
         sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals"
         style={{ border: "none", width: "100vw", height: "100vh", display: "block" }}
       />
