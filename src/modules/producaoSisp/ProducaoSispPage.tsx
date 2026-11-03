@@ -5,7 +5,7 @@
 // peso e temperatura digitados. Leitores (balança/termômetro) plugam depois.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Fish, Plus, X, ChevronLeft, Trash2, Check, AlertTriangle, Package, ClipboardList, ArrowRight, Boxes, Scale, Truck, Printer, Store, QrCode } from "lucide-react";
+import { Fish, Plus, X, ChevronLeft, Trash2, Check, AlertTriangle, ArrowRight, Scale, Truck, Printer, QrCode } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -30,6 +30,15 @@ const CONSERV: { v: ProducaoSispConservacao; label: string }[] = [
 const fmtKg = (n: number) => `${(Number(n) || 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} kg`;
 const hojeISO = () => new Date().toISOString();
 const dataBR = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+const desde = (iso?: string | null) => {
+  if (!iso) return "";
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
+};
 
 // Classe base dos inputs (altura única h-9, mobile-friendly).
 const INPUT = "w-full h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm";
@@ -49,7 +58,7 @@ export function ProducaoSispPage() {
   const [recebimentos, setRecebimentos] = useState<ProducaoSispRecebimento[]>([]);
   const [planos, setPlanos] = useState<ProducaoSispPlano[]>([]);
   const [lotes, setLotes] = useState<ProducaoSispLote[]>([]);
-  const [pecas, setPecas] = useState<ProducaoSispPeca[]>([]);
+  const [, setPecas] = useState<ProducaoSispPeca[]>([]);
   const [romaneios, setRomaneios] = useState<ProducaoSispRomaneio[]>([]);
   const [config, setConfig] = useState<ProducaoSispConfig | null>(null);
 
@@ -87,7 +96,6 @@ export function ProducaoSispPage() {
   const aguardandoProducao = useMemo(() => planos.filter((p) => p.status === "aguardando_producao"), [planos]);
   const lotesDisponiveis = useMemo(() => lotes.filter((l) => l.local === "fabrica" && l.status === "disponivel" && l.saldoPacotes > 0), [lotes]);
   const emTransitoLoja = useMemo(() => romaneios.filter((r) => r.destinoTipo === "loja" && r.status === "em_transito"), [romaneios]);
-  const estoqueLoja = useMemo(() => pecas.filter((p) => p.local === "loja" && p.status === "em_estoque"), [pecas]);
 
   if (!podeVer) {
     return (
@@ -122,97 +130,62 @@ export function ProducaoSispPage() {
       )}
 
       {tab === "operacao" && (
-        <div className="space-y-5">
+        <div className="space-y-3">
+          <div className="text-xs text-gray-500">
+            {activeRestaurant?.nome || "Peixaria"} · <b className="text-sky-600">{aguardandoPlano.length + aguardandoProducao.length + lotesDisponiveis.length}</b> em andamento na esteira
+          </div>
+
           {podeReceber && (
-            <button className={`${BTN_PRIMARY} w-full`} onClick={() => setNovoReceb(true)}>
-              <Plus size={18} /> Novo recebimento
+            <button className="w-full h-14 rounded-2xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white text-lg font-bold flex items-center justify-center gap-2 shadow-sm" onClick={() => setNovoReceb(true)}>
+              <Plus size={22} /> NOVO RECEBIMENTO
             </button>
           )}
 
-          <Fila titulo="Aguardando plano" icone={<Package size={15} />} vazio="Nenhum recebimento aguardando plano.">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 pt-1 px-0.5">Esteira de produção</div>
+
+          <QItem cor="amber" vazio={aguardandoPlano.length === 0 ? "Nenhum recebimento aguardando plano." : null} titulo="Aguardando plano" count={aguardandoPlano.length}>
             {aguardandoPlano.map((r) => {
               const peso = repo.pesoBrutoRecebimento(r);
               const semForn = !r.fornecedorId;
               return (
-                <Card key={r.id}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">{r.fornecedorNome || "Sem fornecedor"}</div>
-                      <div className="text-xs text-gray-500">{dataBR(r.recebidoEm)} · {r.itens.length} leva(s) · {fmtKg(peso)}</div>
-                      <div className="text-xs text-gray-500 truncate">{r.itens.map((it) => nomeEspecie(it.especieId)).join(", ")}</div>
-                      {semForn && <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-amber-600"><AlertTriangle size={12} /> sem fornecedor</div>}
-                    </div>
-                    {podePlanejar && (
-                      <button className={BTN_GHOST} onClick={() => setPlanoDe(r)}>Gerar plano <ArrowRight size={14} /></button>
-                    )}
-                  </div>
-                </Card>
+                <QRow key={r.id} cor="amber" age={desde(r.recebidoEm)}
+                  titulo={r.fornecedorNome || "Sem fornecedor"}
+                  sub={`${r.itens.map((it) => nomeEspecie(it.especieId)).join(", ")} · ${fmtKg(peso)}`}
+                  alerta={semForn ? "sem fornecedor" : null}
+                  acao={podePlanejar ? { label: "Gerar plano", on: () => setPlanoDe(r) } : null} />
               );
             })}
-          </Fila>
+          </QItem>
 
-          <Fila titulo="Aguardando produção" icone={<ClipboardList size={15} />} vazio="Nenhum plano aguardando produção.">
+          <QItem cor="sky" vazio={aguardandoProducao.length === 0 ? "Nenhum plano aguardando produção." : null} titulo="Aguardando produção" count={aguardandoProducao.length}>
             {aguardandoProducao.map((p) => {
               const r = recebimentos.find((x) => x.id === p.recebimentoId);
               return (
-                <Card key={p.id}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm">{r?.fornecedorNome || "Recebimento"} · {p.alvos.length} produto(s)</div>
-                      <div className="text-xs text-gray-500 truncate">{p.alvos.map((a) => nomeEspecie(a.especieId) + " — " + nomeCorte(a.corteId)).join(" · ")}</div>
-                    </div>
-                    {podeProduzir && (
-                      <button className={BTN_GHOST} onClick={() => setProduzirPlano(p)}>Lançar produção <ArrowRight size={14} /></button>
-                    )}
-                  </div>
-                </Card>
+                <QRow key={p.id} cor="sky" age={desde(p.criadoEm)}
+                  titulo={`${r?.fornecedorNome || "Recebimento"} · ${p.alvos.length} produto(s)`}
+                  sub={p.alvos.map((a) => nomeEspecie(a.especieId) + " — " + nomeCorte(a.corteId)).join(" · ")}
+                  acao={podeProduzir ? { label: "Lançar produção", on: () => setProduzirPlano(p) } : null} />
               );
             })}
-          </Fila>
+          </QItem>
 
-          <Fila titulo="Disponível para saída" icone={<Boxes size={15} />} vazio="Nenhum lote em estoque na fábrica.">
+          <QItem cor="emerald" vazio={lotesDisponiveis.length === 0 ? "Nenhum lote em estoque na fábrica." : null} titulo="Disponível para saída" count={lotesDisponiveis.length}>
             {lotesDisponiveis.map((l) => (
-              <Card key={l.id}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-medium text-sm truncate">{nomeEspecie(l.especieId)} — {nomeCorte(l.corteId)}</div>
-                    <div className="text-xs text-gray-500">Lote {l.codigo} · {l.saldoPacotes} pac · {fmtKg(l.saldoKg)}</div>
-                    <div className="text-[11px] text-gray-400">
-                      {l.rendimentoPct != null ? `Rend. ${l.rendimentoPct}% · ` : ""}{CONSERV.find((c) => c.v === l.conservacao)?.label} · val. {dataBR(l.validadeEm)}
-                    </div>
-                  </div>
-                  <button className="shrink-0 text-gray-400 hover:text-sky-600" title="Etiqueta SISP" onClick={() => setPrintLote(l)}><Printer size={16} /></button>
-                </div>
-              </Card>
+              <QRow key={l.id} cor="emerald" age={desde(l.fabricacaoEm)}
+                titulo={`${nomeEspecie(l.especieId)} — ${nomeCorte(l.corteId)}`}
+                sub={`Lote ${l.codigo} · ${l.saldoPacotes} pac · ${fmtKg(l.saldoKg)}${l.rendimentoPct != null ? ` · rend. ${l.rendimentoPct}%` : ""}`}
+                icone={<button className="w-9 h-9 grid place-items-center rounded-lg text-gray-400 hover:text-sky-600" title="Etiqueta SISP" onClick={() => setPrintLote(l)}><Printer size={18} /></button>} />
             ))}
-          </Fila>
+          </QItem>
 
           {podeExpedir && lotesDisponiveis.length > 0 && (
-            <button className={`${BTN_GHOST} w-full`} onClick={() => setExpedirLotes(true)}><Truck size={16} /> Expedir / romaneio</button>
+            <button className="w-full h-12 rounded-2xl border-2 border-gray-200 dark:border-gray-700 text-base font-semibold flex items-center justify-center gap-2" onClick={() => setExpedirLotes(true)}><Truck size={16} /> Expedir / romaneio</button>
           )}
 
-          <Fila titulo="Em trânsito p/ loja" icone={<Truck size={15} />} vazio="Nada a conferir na loja.">
-            {emTransitoLoja.map((r) => {
-              const tot = r.itens.reduce((s, it) => s + it.qtdPacotes, 0);
-              const pk = r.itens.reduce((s, it) => s + it.pesoKg, 0);
-              return (
-                <Card key={r.id}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">→ {r.destinoNome || "Loja"}</div>
-                      <div className="text-xs text-gray-500">{dataBR(r.expedidoEm)} · {tot} pac · {fmtKg(pk)}</div>
-                    </div>
-                    {podeExpedir && <button className={BTN_GHOST} onClick={() => setEntradaDe(r)}><Scale size={14} /> Conferir entrada</button>}
-                  </div>
-                </Card>
-              );
-            })}
-          </Fila>
-
-          {estoqueLoja.length > 0 && (
-            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-3 py-2 text-xs">
-              <Store size={14} /> Estoque da loja: <b>{estoqueLoja.length}</b> peças · {fmtKg(estoqueLoja.reduce((s, p) => s + p.pesoKg, 0))}
-            </div>
+          {emTransitoLoja.length > 0 && podeExpedir && (
+            <button className="w-full mt-1 text-[12px] text-gray-400 hover:text-sky-600 inline-flex items-center justify-center gap-1" onClick={() => setEntradaDe(emTransitoLoja[0])}>
+              <Scale size={13} /> Conferir entrada na loja ({emTransitoLoja.length}) · provisório até o módulo Loja
+            </button>
           )}
         </div>
       )}
@@ -468,18 +441,41 @@ function PainelTab({ recebimentos, lotes, especies }: {
 }
 
 // ── Esteira: coluna de fila ────────────────────────────────────────────────────
-function Fila({ titulo, icone, vazio, children }: { titulo: string; icone: React.ReactNode; vazio: string; children: React.ReactNode }) {
-  const arr = Array.isArray(children) ? children.filter(Boolean) : children;
-  const isEmpty = !arr || (Array.isArray(arr) && arr.length === 0);
+// ── Fila da esteira (lista de itens, estilo mockup) ──────────────────────────────
+const PS_COR: Record<string, { bar: string; dot: string }> = {
+  amber: { bar: "border-l-amber-400", dot: "text-amber-500" },
+  sky: { bar: "border-l-sky-500", dot: "text-sky-500" },
+  emerald: { bar: "border-l-emerald-500", dot: "text-emerald-500" },
+};
+function QItem({ cor, titulo, count, vazio, children }: { cor: string; titulo: string; count: number; vazio: string | null; children: React.ReactNode }) {
   return (
-    <section>
-      <div className="flex items-center gap-1.5 mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{icone} {titulo}</div>
-      {isEmpty ? <div className="text-xs text-gray-400 italic px-1">{vazio}</div> : <div className="space-y-2">{children}</div>}
+    <section className="space-y-2">
+      <div className="flex items-center gap-2 px-0.5">
+        <span className={`text-lg font-extrabold tabular-nums ${PS_COR[cor].dot}`}>{count}</span>
+        <span className="text-sm font-semibold">{titulo}</span>
+      </div>
+      {vazio ? <div className="text-xs text-gray-400 italic px-1 pb-1">{vazio}</div> : <div className="space-y-2">{children}</div>}
     </section>
   );
 }
-function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-3">{children}</div>;
+function QRow({ cor, titulo, sub, age, alerta, acao, icone }: {
+  cor: string; titulo: string; sub: string; age?: string; alerta?: string | null;
+  acao?: { label: string; on: () => void } | null; icone?: React.ReactNode;
+}) {
+  return (
+    <div className={`rounded-2xl border border-gray-200 dark:border-gray-700 border-l-[5px] ${PS_COR[cor].bar} bg-white dark:bg-gray-800/40 px-3.5 py-3 flex items-center gap-3`}>
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-sm truncate">{titulo}</div>
+        <div className="text-xs text-gray-500 truncate">{sub}</div>
+        {alerta && <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-amber-600"><AlertTriangle size={12} /> {alerta}</div>}
+      </div>
+      <div className="shrink-0 text-right">
+        {age && <div className="text-[10px] text-gray-400 mb-1">{age}</div>}
+        {acao && <button className="text-[13px] font-semibold text-sky-600 inline-flex items-center gap-1" onClick={acao.on}>{acao.label} <ArrowRight size={14} /></button>}
+        {icone}
+      </div>
+    </div>
+  );
 }
 
 // ── Overlay full-screen (mobile) ────────────────────────────────────────────────
@@ -524,6 +520,15 @@ function psTemp(val: string, k: string): string {
   if (k === ",") return val.indexOf(",") >= 0 ? val : (val === "" ? "0," : val + ",");
   const dot = val.indexOf(","); if (dot >= 0 && val.length - dot - 1 >= 2) return val;
   return (val + k).replace(/^0(?=\d)/, "");
+}
+function PSNumero({ v, prefix }: { v: string; prefix?: string }) {
+  const i = v.indexOf(",");
+  return (
+    <span className="text-5xl font-extrabold tabular-nums leading-none">
+      {prefix}{i < 0 ? v : v.slice(0, i)}
+      {i >= 0 && <span className="text-3xl text-gray-400">{v.slice(i)}</span>}
+    </span>
+  );
 }
 function PSKeypad({ onKey }: { onKey: (k: string) => void }) {
   return (
@@ -689,7 +694,7 @@ function RecebimentoWizard({ rid, meNome, meId, especies, fornecedores, config, 
           <div>
             <Q>Peso total das caixas</Q><Sub>{nomeEsp(p.especieId)} · {p.qtd} caixa(s) na balança (com a caixa)</Sub>
             <div className="mb-3"><FotoUpload rid={rid} bucketPrefix="producaoSisp" pathPrefix="receb" url={p.fotoUrl || ""} onChange={(u) => upd({ fotoUrl: u })} label="foto na balança" /></div>
-            <div className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 p-5 text-center mb-2"><span className="text-5xl font-extrabold tabular-nums">{p.brutoStr === "" ? "0,00" : p.brutoStr}</span><span className="text-base text-gray-400 font-semibold ml-1">kg bruto</span></div>
+            <div className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 p-5 text-center mb-2"><PSNumero v={p.brutoStr === "" ? "0,00" : p.brutoStr} /><span className="text-base text-gray-400 font-semibold ml-1">kg bruto</span></div>
             <div className="text-center text-sm text-gray-500 mb-3">− tara {p.qtd} × {psBR(tara)} = {psBR(p.qtd * tara)} kg · líquido <b>{psBR(liqKg)} kg</b></div>
             <PSKeypad onKey={(k) => upd({ brutoStr: psRtl(p.brutoStr, k) })} />
             <button className={`${bigBrand} mt-3`} onClick={() => setStep("temp")}>Continuar</button>
@@ -707,7 +712,7 @@ function RecebimentoWizard({ rid, meNome, meId, especies, fornecedores, config, 
               <button className={`h-11 rounded-xl border-2 font-bold text-sm ${p.tempNeg ? "border-sky-400 bg-sky-50 dark:bg-sky-900/20 text-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-500"}`} onClick={() => upd({ tempNeg: true })}>− Temp. negativa</button>
               <button className={`h-11 rounded-xl border-2 font-bold text-sm ${!p.tempNeg ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-600" : "border-gray-200 dark:border-gray-700 text-gray-500"}`} onClick={() => upd({ tempNeg: false })}>+ Temp. positiva</button>
             </div>
-            <div className={`rounded-2xl border-2 p-5 text-center mb-1 ${tempWarn ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20" : p.tempNeg ? "border-sky-300 bg-sky-50/60 dark:bg-sky-900/15" : "border-amber-300 bg-amber-50/60 dark:bg-amber-900/15"}`}><span className="text-5xl font-extrabold tabular-nums">{p.tempNeg ? "−" : "+"}{p.tempStr === "" ? "0,0" : p.tempStr}</span><span className="text-base text-gray-400 font-semibold ml-1">°C</span></div>
+            <div className={`rounded-2xl border-2 p-5 text-center mb-1 ${tempWarn ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20" : p.tempNeg ? "border-sky-300 bg-sky-50/60 dark:bg-sky-900/15" : "border-amber-300 bg-amber-50/60 dark:bg-amber-900/15"}`}><PSNumero v={p.tempStr === "" ? "0,0" : p.tempStr} prefix={p.tempNeg ? "−" : "+"} /><span className="text-base text-gray-400 font-semibold ml-1">°C</span></div>
             <div className="text-center text-xs mb-3 min-h-[16px]">{p.tempStr === "" ? "" : tempWarn ? <span className="text-rose-600 font-semibold">⚠️ Acima da tolerância (≤ {tolAtual}°C p/ {consLabel(p.conservacao).toLowerCase()})</span> : <span className="text-gray-500">Dentro da tolerância ✓</span>}</div>
             <PSKeypad onKey={(k) => upd({ tempStr: psTemp(p.tempStr, k) })} />
             <button className={`${bigBrand} mt-3`} onClick={() => setStep("conf")}>Continuar</button>
