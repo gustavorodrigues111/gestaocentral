@@ -4,7 +4,7 @@
 //  NUNCA no front: o cliente fala só com /api/spotify-control.
 //  Device alvo = AudioCast M5 (Spotify Connect). Requer Spotify Premium.
 // ════════════════════════════════════════════════════════════════════════════
-import { firestoreLer, firestoreCriar, firestorePatchCampos } from "./_firestoreRest.js";
+import { firestoreLer, firestoreCriar, firestorePatchCampos, firestoreListar } from "./_firestoreRest.js";
 
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || "";
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || "";
@@ -90,6 +90,27 @@ export async function toggleFavPlaylist(rid: string, pl: FavPlaylist): Promise<F
   const next = existe ? list.filter((x) => x.id !== pl.id) : [...list, { id: pl.id, uri: pl.uri, name: pl.name, image: pl.image || null }];
   await firestorePatchCampos("spotifyContas", rid, { playlistsPreferidas: next });
   return next;
+}
+
+// ── Agenda (v2): slots por dia/horário → playlist ────────────────────────────
+export type AgendaSlot = {
+  id: string; nome?: string | null; dias: number[]; // 0=Dom..6=Sáb
+  horaInicio: string; horaFim: string;              // "HH:MM"
+  playlistUri: string; playlistNome?: string | null;
+  volume?: number | null; pararNoFim?: boolean; ativo: boolean;
+};
+export async function getAgenda(rid: string): Promise<AgendaSlot[]> {
+  const d = await firestoreLer("spotifyContas", rid);
+  return Array.isArray(d?.agenda) ? (d!.agenda as AgendaSlot[]) : [];
+}
+export async function salvarAgenda(rid: string, agenda: AgendaSlot[]): Promise<void> {
+  await firestorePatchCampos("spotifyContas", rid, { agenda });
+}
+export async function listarContas(): Promise<Record<string, unknown>[]> {
+  return firestoreListar("spotifyContas");
+}
+export async function patchConta(rid: string, campos: Record<string, unknown>): Promise<void> {
+  await firestorePatchCampos("spotifyContas", rid, campos);
 }
 
 export async function desconectar(rid: string): Promise<void> {

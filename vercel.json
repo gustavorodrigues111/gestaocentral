@@ -88,6 +88,10 @@
     {
       "path": "/api/bot-parcelas-vencendo",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/spotify-agenda-cron",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

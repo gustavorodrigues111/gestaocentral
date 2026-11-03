@@ -3,7 +3,7 @@
 // Ações: status, devices, state, transfer, play, pause, next, previous, volume,
 //        playlists, search, disconnect.
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getConta, spotifyFetch, desconectar, spotifyConfigurado, getPrefs, setDevicePreferido, toggleFavPlaylist, type FavPlaylist } from "./_spotify.js";
+import { getConta, spotifyFetch, desconectar, spotifyConfigurado, getPrefs, setDevicePreferido, toggleFavPlaylist, getAgenda, salvarAgenda, type FavPlaylist, type AgendaSlot } from "./_spotify.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") { res.status(405).json({ ok: false, erro: "method" }); return; }
@@ -17,12 +17,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const conta = await getConta(rid);
     if (action === "status") {
       const prefs = conta ? await getPrefs(rid) : { devicePreferidoId: null, devicePreferidoNome: null, playlistsPreferidas: [] };
-      res.status(200).json({ ok: true, conectado: !!conta, displayName: conta?.displayName || null, ...prefs });
+      const agenda = conta ? await getAgenda(rid) : [];
+      res.status(200).json({ ok: true, conectado: !!conta, displayName: conta?.displayName || null, ...prefs, agenda });
       return;
     }
     if (!conta) { res.status(200).json({ ok: false, erro: "sem_conta" }); return; }
 
     if (action === "disconnect") { await desconectar(rid); res.status(200).json({ ok: true }); return; }
+    if (action === "saveAgenda") { await salvarAgenda(rid, (body.agenda as AgendaSlot[]) || []); res.status(200).json({ ok: true }); return; }
     if (action === "setPrefDevice") { await setDevicePreferido(rid, String(body.deviceId || ""), String(body.deviceNome || "")); res.status(200).json({ ok: true }); return; }
     if (action === "toggleFav") { const lista = await toggleFavPlaylist(rid, body.playlist as FavPlaylist); res.status(200).json({ ok: true, playlistsPreferidas: lista }); return; }
     if (action === "queue") { const r = await spotifyFetch(rid, "/me/player/queue"); res.status(200).json({ ok: r.status < 300, status: r.status, ...(r.status === 200 ? (r.data as object) : {}) }); return; }

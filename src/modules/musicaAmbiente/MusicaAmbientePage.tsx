@@ -4,7 +4,7 @@
 // e músicas, play/pause/pular/volume. Agenda por horário = v2.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, Speaker, RefreshCw, Search, LogOut, Loader2, ListMusic, Star, Pin, ChevronDown, Plus, Minus } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, Speaker, RefreshCw, Search, LogOut, Loader2, ListMusic, Star, Pin, ChevronDown, Plus, Minus, Clock, Trash2 } from "lucide-react";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -13,6 +13,9 @@ type Device = { id: string; name: string; type: string; is_active: boolean; volu
 type Playlist = { id: string; uri: string; name: string; images?: { url: string }[]; tracks?: { total?: number } };
 type Track = { uri: string; name: string; artists?: { name: string }[]; album?: { images?: { url: string }[] } };
 type FavItem = { id: string; uri: string; name: string; image?: string | null };
+type AgendaSlot = { id: string; dias: number[]; horaInicio: string; horaFim: string; playlistUri: string; playlistNome?: string | null; volume?: number | null; pararNoFim?: boolean; ativo: boolean };
+const DIA_LABEL = ["D", "S", "T", "Q", "Q", "S", "S"];
+const DIA_NOME = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
 function PlaylistCard({ img, name, total, fav, onPlay, onFav }: { img?: string | null; name: string; total?: number; fav: boolean; onPlay: () => void; onFav: () => void }) {
   return (
@@ -34,6 +37,7 @@ async function ctrl(rid: string, action: string, extra: Record<string, unknown> 
 }
 
 const BTN = "inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold";
+const INPUT = "w-full h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm";
 const fmtTime = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
 export function MusicaAmbientePage() {
@@ -63,6 +67,8 @@ export function MusicaAmbientePage() {
   const [favs, setFavs] = useState<FavItem[]>([]);
   const [vol, setVol] = useState(50);
   const [progressMs, setProgressMs] = useState(0);
+  const [agenda, setAgenda] = useState<AgendaSlot[]>([]);
+  const [agendaSalvando, setAgendaSalvando] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const volRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seekRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,6 +97,7 @@ export function MusicaAmbientePage() {
     setConectado(!!s?.conectado); setDisplayName(s?.displayName || null);
     setDevPrefId(s?.devicePreferidoId || null);
     setFavs(Array.isArray(s?.playlistsPreferidas) ? (s.playlistsPreferidas as FavItem[]) : []);
+    setAgenda(Array.isArray(s?.agenda) ? (s.agenda as AgendaSlot[]) : []);
     if (s?.conectado) {
       await carregarEstado();
       const pl = await ctrl(rid, "playlists");
@@ -107,6 +114,24 @@ export function MusicaAmbientePage() {
   async function definirPreferido(d: Device) {
     await ctrl(rid, "setPrefDevice", { deviceId: d.id, deviceNome: d.name });
     setDevPrefId(d.id);
+  }
+  const uid = () => { try { return crypto.randomUUID(); } catch { return "s" + Date.now() + Math.random().toString(36).slice(2); } };
+  const todasPlaylists = useMemo(() => {
+    const m = new Map<string, { uri: string; name: string }>();
+    favs.forEach((f) => m.set(f.uri, { uri: f.uri, name: f.name }));
+    playlists.forEach((p) => m.set(p.uri, { uri: p.uri, name: p.name }));
+    return [...m.values()];
+  }, [favs, playlists]);
+  function addSlot() { setAgenda((a) => [...a, { id: uid(), dias: [1, 2, 3, 4, 5], horaInicio: "11:00", horaFim: "15:00", playlistUri: todasPlaylists[0]?.uri || "", playlistNome: todasPlaylists[0]?.name || "", volume: null, pararNoFim: false, ativo: true }]); }
+  function updSlot(i: number, patch: Partial<AgendaSlot>) { setAgenda((a) => a.map((s, j) => j === i ? { ...s, ...patch } : s)); }
+  function rmSlot(i: number) { setAgenda((a) => a.filter((_, j) => j !== i)); }
+  function toggleDia(i: number, d: number) { setAgenda((a) => a.map((s, j) => j === i ? { ...s, dias: s.dias.includes(d) ? s.dias.filter((x) => x !== d) : [...s.dias, d].sort() } : s)); }
+  async function salvarAgenda() {
+    setAgendaSalvando(true);
+    const limpa = agenda.filter((s) => s.playlistUri && s.dias.length && s.horaInicio && s.horaFim);
+    const r = await ctrl(rid, "saveAgenda", { agenda: limpa });
+    setAgendaSalvando(false);
+    setMsg(r?.ok ? "Agenda salva." : "Erro ao salvar a agenda.");
   }
   function ajustarVol(delta: number) {
     setVol((v) => {
@@ -320,6 +345,42 @@ export function MusicaAmbientePage() {
               {playlists.map((p) => <PlaylistCard key={p.id} img={p.images?.[0]?.url} name={p.name} total={p.tracks?.total} fav={isFav(p.id)} onPlay={() => void tocarContexto(p.uri)} onFav={() => void toggleFav(p)} />)}
             </div>
             {playlists.length === 0 && <div className="text-xs text-gray-400">Nenhuma playlist na conta.</div>}
+          </div>
+
+          {/* Agenda — toca sozinho por dia/horário */}
+          <div>
+            <div className="flex items-center justify-between mb-2 px-0.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5"><Clock size={13} /> Agenda</span>
+              <button onClick={addSlot} className="text-emerald-600 text-xs font-semibold inline-flex items-center gap-1"><Plus size={13} /> Horário</button>
+            </div>
+            {agenda.length === 0 && <div className="text-xs text-gray-400 mb-2">Nenhum horário programado. Toque em <b>+ Horário</b> pra a música começar sozinha.</div>}
+            <div className="space-y-2">
+              {agenda.map((s, i) => (
+                <div key={s.id} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2.5">
+                  <div className="flex items-center gap-1.5">
+                    {DIA_LABEL.map((d, di) => (
+                      <button key={di} title={DIA_NOME[di]} onClick={() => toggleDia(i, di)} className={`w-8 h-8 rounded-lg text-xs font-bold ${s.dias.includes(di) ? "bg-emerald-600 text-white" : "border border-gray-200 dark:border-gray-700 text-gray-500"}`}>{d}</button>
+                    ))}
+                    <button onClick={() => rmSlot(i)} className="ml-auto text-gray-400 hover:text-rose-600"><Trash2 size={15} /></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[11px] text-gray-500">Início<input type="time" value={s.horaInicio} onChange={(e) => updSlot(i, { horaInicio: e.target.value })} className={INPUT} /></label>
+                    <label className="text-[11px] text-gray-500">Fim<input type="time" value={s.horaFim} onChange={(e) => updSlot(i, { horaFim: e.target.value })} className={INPUT} /></label>
+                  </div>
+                  <select value={s.playlistUri} onChange={(e) => { const p = todasPlaylists.find((x) => x.uri === e.target.value); updSlot(i, { playlistUri: e.target.value, playlistNome: p?.name || "" }); }} className={INPUT}>
+                    <option value="">— escolha a playlist —</option>
+                    {todasPlaylists.map((p) => <option key={p.uri} value={p.uri}>{p.name}</option>)}
+                  </select>
+                  <div className="flex items-center gap-3 flex-wrap text-xs">
+                    <label className="flex items-center gap-1 text-gray-500">Volume <input type="number" min={0} max={100} placeholder="atual" value={s.volume ?? ""} onChange={(e) => updSlot(i, { volume: e.target.value === "" ? null : Math.max(0, Math.min(100, Number(e.target.value))) })} className="w-16 h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" />%</label>
+                    <label className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300"><input type="checkbox" checked={!!s.pararNoFim} onChange={(e) => updSlot(i, { pararNoFim: e.target.checked })} /> Parar no fim</label>
+                    <label className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300"><input type="checkbox" checked={s.ativo} onChange={(e) => updSlot(i, { ativo: e.target.checked })} /> Ativo</label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {agenda.length > 0 && <button onClick={() => void salvarAgenda()} disabled={agendaSalvando} className={`${BTN} bg-emerald-600 hover:bg-emerald-700 text-white w-full mt-2`}>{agendaSalvando ? "Salvando…" : "Salvar agenda"}</button>}
+            <p className="text-[11px] text-gray-400 mt-1.5">A música começa sozinha no <b>dispositivo preferencial</b> no horário (precisão de ~5 min). Deixe o AudioCast M5 ligado. Se o horário virar a meia-noite, crie dois horários.</p>
           </div>
 
           {podeConta && (
