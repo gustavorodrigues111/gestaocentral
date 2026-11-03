@@ -34,6 +34,7 @@ async function ctrl(rid: string, action: string, extra: Record<string, unknown> 
 }
 
 const BTN = "inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-sm font-semibold";
+const fmtTime = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
 export function MusicaAmbientePage() {
   const { rid = "" } = useParams();
@@ -61,8 +62,10 @@ export function MusicaAmbientePage() {
   const [devPrefId, setDevPrefId] = useState<string | null>(null);
   const [favs, setFavs] = useState<FavItem[]>([]);
   const [vol, setVol] = useState(50);
+  const [progressMs, setProgressMs] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const volRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const deviceAtivo = useMemo(() => devices.find((d) => d.is_active) || null, [devices]);
   const tocando = !!player?.is_playing;
@@ -74,6 +77,7 @@ export function MusicaAmbientePage() {
     const devs = Array.isArray(dv?.devices) ? (dv.devices as Device[]) : [];
     setDevices(devs);
     setPlayer(st?.player || null);
+    setProgressMs(Number(st?.player?.progress_ms) || 0);
     setQueue(((qu?.queue || []) as (Track | null)[]).filter((x): x is Track => !!x));
     const ativo = devs.find((d) => d.is_active);
     if (ativo && typeof ativo.volume_percent === "number") setVol(ativo.volume_percent);
@@ -119,6 +123,14 @@ export function MusicaAmbientePage() {
     pollRef.current = setInterval(() => { void carregarEstado(); }, 6000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [conectado, carregarEstado]);
+
+  // Progresso "ao vivo" entre os polls (avança 1s enquanto toca).
+  useEffect(() => {
+    if (!tocando) return;
+    const dur = Number(faixa?.duration_ms) || 0;
+    const id = setInterval(() => setProgressMs((p) => (dur && p + 1000 > dur ? dur : p + 1000)), 1000);
+    return () => clearInterval(id);
+  }, [tocando, faixa?.duration_ms]);
 
   async function acao(action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
@@ -202,15 +214,15 @@ export function MusicaAmbientePage() {
             )}
           </div>
 
-          {/* Player — 2 colunas: capa | (info + controles + volume + fila) */}
+          {/* Player — capa | (info + controles + progresso + fila) | volume vertical */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3">
-            <div className="grid grid-cols-2 gap-3">
-              {/* capa do que está tocando — preenche a altura da coluna */}
-              <div className="rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400 min-h-[140px]">
-                {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-full h-full object-cover" /> : <Music size={40} />}
+            <div className="flex gap-3">
+              {/* capa do que está tocando */}
+              <div className="w-24 sm:w-28 shrink-0 self-start aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400">
+                {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-full h-full object-cover" /> : <Music size={34} />}
               </div>
-              {/* info + controles + volume + próximas */}
-              <div className="flex flex-col gap-2 min-w-0">
+              {/* info + controles + progresso + próximas */}
+              <div className="flex-1 min-w-0 flex flex-col gap-2">
                 <div className="min-w-0">
                   <div className="font-semibold text-sm truncate">{faixa?.name || "Nada tocando"}</div>
                   <div className="text-xs text-gray-500 truncate">{(faixa?.artists || []).map((a: any) => a.name).join(", ") || (deviceAtivo ? deviceAtivo.name : "escolha um dispositivo")}</div>
@@ -220,10 +232,11 @@ export function MusicaAmbientePage() {
                   <button disabled={busy} className="w-11 h-11 grid place-items-center rounded-full bg-emerald-600 text-white shrink-0" onClick={() => void acao(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvoDevice() })}>{tocando ? <Pause size={20} /> : <Play size={20} />}</button>
                   <button disabled={busy} className="w-8 h-8 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700 shrink-0" onClick={() => void acao("next")}><SkipForward size={15} /></button>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Volume2 size={15} className="text-gray-400 shrink-0" />
-                  <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="flex-1 min-w-0 h-2 accent-emerald-600" />
-                  <span className="text-[10px] font-semibold tabular-nums w-7 text-right text-gray-500 shrink-0">{vol}%</span>
+                {/* Progresso da música */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] tabular-nums text-gray-400 w-8 text-right shrink-0">{fmtTime(progressMs)}</span>
+                  <input type="range" min={0} max={Number(faixa?.duration_ms) || 1} value={Math.min(progressMs, Number(faixa?.duration_ms) || 1)} disabled={!faixa} onChange={(e) => { const v = Number(e.target.value); setProgressMs(v); if (seekRef.current) clearTimeout(seekRef.current); seekRef.current = setTimeout(() => void ctrl(rid, "seek", { positionMs: v, deviceId: alvoDevice() }), 300); }} className="flex-1 min-w-0 h-1.5 accent-emerald-600" />
+                  <span className="text-[10px] tabular-nums text-gray-400 w-8 shrink-0">{fmtTime(Number(faixa?.duration_ms) || 0)}</span>
                 </div>
                 {queue.length > 0 && (
                   <div className="pt-1.5 mt-0.5 border-t border-gray-100 dark:border-gray-800">
@@ -240,6 +253,12 @@ export function MusicaAmbientePage() {
                     )}
                   </div>
                 )}
+              </div>
+              {/* Volume vertical (mais grosso) */}
+              <div className="shrink-0 flex flex-col items-center gap-1 pl-1">
+                <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="accent-emerald-600" style={{ WebkitAppearance: "slider-vertical", appearance: "slider-vertical", width: "16px", height: "96px" } as unknown as React.CSSProperties} />
+                <span className="text-[10px] font-semibold tabular-nums text-gray-500">{vol}%</span>
+                <Volume2 size={15} className="text-gray-400" />
               </div>
             </div>
           </div>

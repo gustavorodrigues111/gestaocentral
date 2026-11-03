@@ -77,6 +77,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({ ok: r.status < 300, status: r.status });
       return;
     }
+    if (action === "seek") {
+      const pos = Math.max(0, Math.round(Number(body.positionMs) || 0));
+      const deviceId = String(body.deviceId || "");
+      const qs = deviceId ? `&device_id=${deviceId}` : "";
+      const r = await spotifyFetch(rid, `/me/player/seek?position_ms=${pos}${qs}`, { method: "PUT" });
+      res.status(200).json({ ok: r.status < 300, status: r.status });
+      return;
+    }
     if (action === "volume") {
       const vol = Math.max(0, Math.min(100, Math.round(Number(body.volume) || 0)));
       const deviceId = String(body.deviceId || "");
