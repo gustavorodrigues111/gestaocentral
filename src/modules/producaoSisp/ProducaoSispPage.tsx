@@ -1001,6 +1001,7 @@ function ProducaoEditor({ rid, meNome, plano, recebimento, especies, cortes, lot
     });
     return init;
   });
+  const [subs, setSubs] = useState<{ id: string; nome: string; kg: string }[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -1008,6 +1009,9 @@ function ProducaoEditor({ rid, meNome, plano, recebimento, especies, cortes, lot
     setForm((prev) => ({ ...prev, [alvoId]: { ...prev[alvoId], [campo]: v } }));
   const nomeEsp = (id: string) => especies.find((e) => e.id === id)?.nome || "—";
   const nomeCorte = (id: string) => cortes.find((c) => c.id === id)?.nome || "—";
+  const addSub = (nome: string) => setSubs((prev) => [...prev, { id: uid(), nome, kg: "" }]);
+  const setSubKg = (id: string, kg: string) => setSubs((prev) => prev.map((s) => s.id === id ? { ...s, kg } : s));
+  const rmSub = (id: string) => setSubs((prev) => prev.filter((s) => s.id !== id));
 
   async function salvar() {
     setErro("");
@@ -1052,7 +1056,8 @@ function ProducaoEditor({ rid, meNome, plano, recebimento, especies, cortes, lot
     if (novos.length === 0) { setErro("Lance o peso beneficiado e os pacotes de ao menos um produto."); return; }
     setSalvando(true);
     try {
-      await repo.salvarProducao(novos, { ...plano, status: "produzido", produzidoEm: hojeISO() });
+      const subprodutos = subs.map((s) => ({ nome: s.nome, pesoKg: Number((s.kg || "0").replace(",", ".")) || 0 })).filter((s) => s.pesoKg > 0);
+      await repo.salvarProducao(novos, { ...plano, status: "produzido", produzidoEm: hojeISO(), subprodutos: subprodutos.length ? subprodutos : null });
       onDone();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar."); setSalvando(false);
@@ -1071,8 +1076,9 @@ function ProducaoEditor({ rid, meNome, plano, recebimento, especies, cortes, lot
         const rend = repo.rendimentoPct(bruto, benef);
         const esperado = cortes.find((c) => c.id === a.corteId)?.rendimentoEsperadoPct ?? null;
         const destoa = rend != null && esperado != null && Math.abs(rend - esperado) > 10;
+        const feito = benef > 0;
         return (
-          <div key={a.id} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+          <div key={a.id} className={`rounded-xl border p-3 space-y-2 ${feito ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/15" : "border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/15"}`}>
             <div className="font-medium text-sm">{nomeEsp(a.especieId)} — {nomeCorte(a.corteId)}
               <span className="text-xs font-normal text-gray-400"> · {CONSERV.find((c) => c.v === a.conservacao)?.label}</span>
             </div>
@@ -1108,6 +1114,21 @@ function ProducaoEditor({ rid, meNome, plano, recebimento, especies, cortes, lot
           </div>
         );
       })}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">Subprodutos <span className="font-normal normal-case">(aparas, espinhas, cabeça…)</span></div>
+        {subs.map((s) => (
+          <div key={s.id} className="flex items-center gap-2">
+            <span className="text-sm flex-1">{s.nome}</span>
+            <input className={`${INPUT} w-24`} type="number" inputMode="decimal" placeholder="kg" value={s.kg} onChange={(e) => setSubKg(s.id, e.target.value)} />
+            <button className="text-gray-400 hover:text-rose-600 shrink-0" onClick={() => rmSub(s.id)}><Trash2 size={15} /></button>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-1.5">
+          {["Aparas", "Espinha", "Cabeça", "Pele", "Vísceras", "Outro"].map((n) => (
+            <button key={n} className={BTN_GHOST} onClick={() => addSub(n)}><Plus size={13} /> {n}</button>
+          ))}
+        </div>
+      </div>
       <div className="text-[11px] text-gray-400">Cada produto vira um lote no estoque da fábrica. Imprima a etiqueta SISP pelo botão na esteira.</div>
     </Overlay>
   );
@@ -1371,21 +1392,81 @@ function ConfigCat({ rid, config }: { rid: string; config: ProducaoSispConfig | 
   const [registro, setRegistro] = useState(config?.registroSisp || "");
   const [razao, setRazao] = useState(config?.razaoSocial || "");
   const [cnpj, setCnpj] = useState(config?.cnpj || "");
+  const [endereco, setEndereco] = useState(config?.endereco || "");
+  const [sac, setSac] = useState(config?.sac || "");
   const [prefixo, setPrefixo] = useState(config?.lotePrefixo || "");
+  const [tolRef, setTolRef] = useState(String(config?.tolTempRefrigC ?? 4));
+  const [tolCong, setTolCong] = useState(String(config?.tolTempCongeladoC ?? -12));
+  const [taras, setTaras] = useState<{ id: string; nome: string; taraKg: string }[]>(
+    (config?.taraTipos && config.taraTipos.length ? config.taraTipos : [{ id: uid(), nome: "Caixa padrão", taraKg: 0.8 }]).map((t) => ({ id: t.id, nome: t.nome, taraKg: String(t.taraKg) }))
+  );
+  const [rotulos, setRotulos] = useState<{ codigo: string; produto: string }[]>(config?.rotulos ? config.rotulos.map((r) => ({ ...r })) : []);
   const [salvo, setSalvo] = useState(false);
+
+  const n = (s: string) => Number((s || "").replace(",", ".")) || 0;
   async function salvar() {
-    await repo.salvarConfig(rid, { rid, registroSisp: registro.trim() || null, razaoSocial: razao.trim() || null, cnpj: cnpj.trim() || null, lotePrefixo: prefixo.trim().toUpperCase() || null });
+    await repo.salvarConfig(rid, {
+      rid, registroSisp: registro.trim() || null, razaoSocial: razao.trim() || null, cnpj: cnpj.trim() || null,
+      endereco: endereco.trim() || null, sac: sac.trim() || null, lotePrefixo: prefixo.trim().toUpperCase() || null,
+      tolTempRefrigC: n(tolRef), tolTempCongeladoC: n(tolCong),
+      taraTipos: taras.filter((t) => t.nome.trim()).map((t) => ({ id: t.id, nome: t.nome.trim(), taraKg: n(t.taraKg) })),
+      rotulos: rotulos.filter((r) => r.codigo.trim()).map((r) => ({ codigo: r.codigo.trim(), produto: r.produto.trim() })),
+    });
     setSalvo(true); setTimeout(() => setSalvo(false), 2000);
   }
-  return (
+  const Secao = ({ titulo, children }: { titulo: string; children: React.ReactNode }) => (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
-      <div className="text-xs text-gray-500">Dados que entram na etiqueta SISP oficial.</div>
-      <input className={INPUT} placeholder="Nº de registro no SISP" value={registro} onChange={(e) => setRegistro(e.target.value)} />
-      <input className={INPUT} placeholder="Razão social" value={razao} onChange={(e) => setRazao(e.target.value)} />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <input className={INPUT} placeholder="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">{titulo}</div>
+      {children}
+    </div>
+  );
+  return (
+    <div className="space-y-3">
+      <Secao titulo="Registro SISP & rótulo da etiqueta">
+        <input className={INPUT} placeholder="Nº de registro no SISP (ex.: 2209)" value={registro} onChange={(e) => setRegistro(e.target.value)} />
+        <input className={INPUT} placeholder="Razão social (ex.: SOROROCA RESTAURANTE LTDA)" value={razao} onChange={(e) => setRazao(e.target.value)} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input className={INPUT} placeholder="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+          <input className={INPUT} placeholder="SAC (telefone)" value={sac} onChange={(e) => setSac(e.target.value)} />
+        </div>
+        <input className={INPUT} placeholder="Endereço do estabelecimento" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
         <input className={INPUT} placeholder="Prefixo do lote (ex.: PAM)" value={prefixo} onChange={(e) => setPrefixo(e.target.value)} />
-      </div>
+      </Secao>
+
+      <Secao titulo="Rótulos aprovados no registro">
+        {rotulos.map((r, i) => (
+          <div key={i} className="flex gap-2">
+            <input className={`${INPUT} w-28`} placeholder="2209/001" value={r.codigo} onChange={(e) => setRotulos((p) => p.map((x, j) => j === i ? { ...x, codigo: e.target.value } : x))} />
+            <input className={INPUT} placeholder="peixe congelado" value={r.produto} onChange={(e) => setRotulos((p) => p.map((x, j) => j === i ? { ...x, produto: e.target.value } : x))} />
+            <button className="text-gray-400 hover:text-rose-600 shrink-0" onClick={() => setRotulos((p) => p.filter((_, j) => j !== i))}><Trash2 size={15} /></button>
+          </div>
+        ))}
+        <button className={BTN_GHOST} onClick={() => setRotulos((p) => [...p, { codigo: "", produto: "" }])}><Plus size={13} /> Rótulo</button>
+      </Secao>
+
+      <Secao titulo="Tipos de caixa & tara">
+        <div className="text-[11px] text-gray-500">A tara é descontada do peso bruto no recebimento.</div>
+        {taras.map((t, i) => (
+          <div key={t.id} className="flex gap-2 items-center">
+            <input className={INPUT} placeholder="Nome (ex.: Caixa padrão)" value={t.nome} onChange={(e) => setTaras((p) => p.map((x, j) => j === i ? { ...x, nome: e.target.value } : x))} />
+            <input className={`${INPUT} w-24`} type="number" inputMode="decimal" placeholder="kg" value={t.taraKg} onChange={(e) => setTaras((p) => p.map((x, j) => j === i ? { ...x, taraKg: e.target.value } : x))} />
+            {taras.length > 1 && <button className="text-gray-400 hover:text-rose-600 shrink-0" onClick={() => setTaras((p) => p.filter((_, j) => j !== i))}><Trash2 size={15} /></button>}
+          </div>
+        ))}
+        <button className={BTN_GHOST} onClick={() => setTaras((p) => [...p, { id: uid(), nome: "", taraKg: "" }])}><Plus size={13} /> Tipo de caixa</button>
+      </Secao>
+
+      <Secao titulo="Limites de conferência (temperatura)">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-xs text-gray-500">Refrigerado ≤ (°C)
+            <input className={INPUT} type="number" inputMode="decimal" value={tolRef} onChange={(e) => setTolRef(e.target.value)} />
+          </label>
+          <label className="text-xs text-gray-500">Congelado ≤ (°C)
+            <input className={INPUT} type="number" inputMode="decimal" value={tolCong} onChange={(e) => setTolCong(e.target.value)} />
+          </label>
+        </div>
+      </Secao>
+
       <button className={`${BTN_PRIMARY} w-full`} onClick={() => void salvar()}>{salvo ? <><Check size={16} /> Salvo</> : "Salvar configuração"}</button>
     </div>
   );

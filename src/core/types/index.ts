@@ -6974,12 +6974,15 @@ export type ProducaoSispPlanoAlvo = {
 
 export type ProducaoSispPlanoStatus = "aguardando_producao" | "produzido" | "cancelado";
 
+export type ProducaoSispSubproduto = { nome: string; pesoKg: number; nPacotes?: number | null };
+
 export type ProducaoSispPlano = {
   id: string;
   restaurantId: string;
   recebimentoId: string;
   alvos: ProducaoSispPlanoAlvo[];
   status: ProducaoSispPlanoStatus;
+  subprodutos?: ProducaoSispSubproduto[] | null; // aparas, espinha, cabeça… (lançados na produção)
   criadoEm: string;
   criadoPorNome?: string | null;
   produzidoEm?: string | null;
