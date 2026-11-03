@@ -202,51 +202,46 @@ export function MusicaAmbientePage() {
             )}
           </div>
 
-          {/* Player — 2 colunas: capa | info+controles+volume */}
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4">
-            <div className="grid grid-cols-2 gap-4 items-center">
-              {/* capa do que está tocando */}
-              <div className="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400">
+          {/* Player — 2 colunas: capa | (info + controles + volume + fila) */}
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3">
+            <div className="grid grid-cols-2 gap-3">
+              {/* capa do que está tocando — preenche a altura da coluna */}
+              <div className="rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400 min-h-[140px]">
                 {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-full h-full object-cover" /> : <Music size={40} />}
               </div>
-              {/* info + controles + volume */}
-              <div className="flex flex-col gap-3 min-w-0">
+              {/* info + controles + volume + próximas */}
+              <div className="flex flex-col gap-2 min-w-0">
                 <div className="min-w-0">
                   <div className="font-semibold text-sm truncate">{faixa?.name || "Nada tocando"}</div>
                   <div className="text-xs text-gray-500 truncate">{(faixa?.artists || []).map((a: any) => a.name).join(", ") || (deviceAtivo ? deviceAtivo.name : "escolha um dispositivo")}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button disabled={busy} className="w-9 h-9 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700 shrink-0" onClick={() => void acao("previous")}><SkipBack size={16} /></button>
-                  <button disabled={busy} className="w-12 h-12 grid place-items-center rounded-full bg-emerald-600 text-white shrink-0" onClick={() => void acao(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvoDevice() })}>{tocando ? <Pause size={22} /> : <Play size={22} />}</button>
-                  <button disabled={busy} className="w-9 h-9 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700 shrink-0" onClick={() => void acao("next")}><SkipForward size={16} /></button>
+                  <button disabled={busy} className="w-8 h-8 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700 shrink-0" onClick={() => void acao("previous")}><SkipBack size={15} /></button>
+                  <button disabled={busy} className="w-11 h-11 grid place-items-center rounded-full bg-emerald-600 text-white shrink-0" onClick={() => void acao(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvoDevice() })}>{tocando ? <Pause size={20} /> : <Play size={20} />}</button>
+                  <button disabled={busy} className="w-8 h-8 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700 shrink-0" onClick={() => void acao("next")}><SkipForward size={15} /></button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Volume2 size={16} className="text-gray-400 shrink-0" />
+                <div className="flex items-center gap-1.5">
+                  <Volume2 size={15} className="text-gray-400 shrink-0" />
                   <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="flex-1 min-w-0 h-2 accent-emerald-600" />
-                  <span className="text-[11px] font-semibold tabular-nums w-8 text-right text-gray-500 shrink-0">{vol}%</span>
+                  <span className="text-[10px] font-semibold tabular-nums w-7 text-right text-gray-500 shrink-0">{vol}%</span>
                 </div>
-              </div>
-            </div>
-
-            {/* Fila: próximas músicas */}
-            {queue.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">A seguir</div>
-                <div className="space-y-1">
-                  {(verFila ? queue : queue.slice(0, 5)).map((t, i) => (
-                    <div key={t.uri + i} className="flex items-center gap-2 text-sm">
-                      {t.album?.images?.[0]?.url ? <img src={t.album.images[0].url} alt="" className="w-7 h-7 rounded object-cover shrink-0" /> : <div className="w-7 h-7 rounded bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400 shrink-0"><Music size={13} /></div>}
-                      <span className="truncate flex-1">{t.name} <span className="text-gray-400">· {(t.artists || []).map((a) => a.name).join(", ")}</span></span>
+                {queue.length > 0 && (
+                  <div className="pt-1.5 mt-0.5 border-t border-gray-100 dark:border-gray-800">
+                    <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">A seguir</div>
+                    <div className="space-y-0.5">
+                      {(verFila ? queue : queue.slice(0, 3)).map((t, i) => (
+                        <div key={t.uri + i} className="text-[11px] text-gray-600 dark:text-gray-300 truncate">{t.name} <span className="text-gray-400">· {(t.artists || []).map((a) => a.name).join(", ")}</span></div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                {queue.length > 5 && (
-                  <button onClick={() => setVerFila((v) => !v)} className="mt-2 text-xs font-semibold text-emerald-600 inline-flex items-center gap-1">
-                    {verFila ? "Ver menos" : `Ver todas (${queue.length})`} <ChevronDown size={13} className={verFila ? "rotate-180" : ""} />
-                  </button>
+                    {queue.length > 3 && (
+                      <button onClick={() => setVerFila((v) => !v)} className="mt-1 text-[11px] font-semibold text-emerald-600 inline-flex items-center gap-1">
+                        {verFila ? "Ver menos" : `Ver todas (${queue.length})`} <ChevronDown size={12} className={verFila ? "rotate-180" : ""} />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Busca */}
