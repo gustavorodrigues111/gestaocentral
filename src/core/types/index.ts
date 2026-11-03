@@ -130,7 +130,7 @@ export type ModuleId =
   | "documentos"
   // Governança de IA — diretrizes do que a IA pode responder, log jurídico das
   // interações e alertas de uso fora do escopo (LGPD) às lideranças.
-  | "iaGovernanca"
+  | "iaGovernanca" | "appsDownload"
   // WhatsApp — atendimento pelos números CONECTADOS (device-link/Evolution):
   // inbox das conversas + configuração dos números. O WhatsApp da API oficial
   // (disparos do sistema) fica na Central de Avisos ("WhatsApp do sistema").
@@ -7082,6 +7082,14 @@ export type ProducaoSispRomaneio = {
 };
 
 // ── Config por restaurante: producaoSispConfig/{rid} ──────────────────────────
+// ── Download de Apps (módulo master): catálogo de apps desktop p/ baixar ──────
+export type DownloadAppArquivo = { plataforma: "windows" | "mac" | "outro"; label?: string | null; url: string };
+export type DownloadApp = {
+  id: string; nome: string; descricao?: string | null; icone?: string | null;
+  versao?: string | null; autoUpdate?: boolean; ativo: boolean; ordem?: number;
+  arquivos: DownloadAppArquivo[]; criadoEm: string;
+};
+
 export type ProducaoSispTaraTipo = { id: string; nome: string; taraKg: number };
 export type ProducaoSispRotulo = { codigo: string; produto: string }; // rótulo aprovado (ex.: 2209/001 · peixe congelado)
 

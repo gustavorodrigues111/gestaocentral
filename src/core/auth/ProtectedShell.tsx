@@ -66,6 +66,7 @@ import { VendasPage } from "../../modules/vendas/VendasPage";
 import { ComandasPage } from "../../modules/comandas/ComandasPage";
 import { ProducaoSispPage } from "../../modules/producaoSisp/ProducaoSispPage";
 import { MusicaAmbientePage } from "../../modules/musicaAmbiente/MusicaAmbientePage";
+import { AppsDownloadPage } from "../../modules/appsDownload/AppsDownloadPage";
 import { RelatoriosVendasPage } from "../../modules/relatoriosVendas/RelatoriosVendasPage";
 import { FaturasPage } from "../../modules/faturas/FaturasPage";
 import { FolhasPage } from "../../modules/folhas/FolhasPage";
@@ -156,6 +157,7 @@ function ModuleRouter() {
     case "comandas":      return <ComandasPage key={k} />;
     case "producaoSisp":  return <ProducaoSispPage key={k} />;
     case "musicaAmbiente": return <MusicaAmbientePage key={k} />;
+    case "appsDownload": return <AppsDownloadPage key={k} />;
     case "relatoriosVendas": return <RelatoriosVendasPage key={k} />;
     case "faturas":       return <FaturasPage key={k} />;
     case "folhas":        return <FolhasPage key={k} />;

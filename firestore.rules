@@ -257,6 +257,7 @@ service cloud.firestore {
     // pra consistência com as demais coleções de serviço; dá pra travar em
     // isServico()+isMaster() quando tivermos o e-mail do usuário de serviço.
     match /spotifyContas/{id}          { allow read, write: if authed(); }
+    match /downloadApps/{id}           { allow read: if authed(); allow write: if isMaster(); }  // catálogo de apps desktop (master edita)
     match /whatsappAgenteSessoes/{id}  { allow read, write: if authed(); }
     match /rotinaNotificacoes/{id}     { allow read, write: if authed(); }
     match /notificacaoConfigs/{id}     { allow read, write: if authed(); }
