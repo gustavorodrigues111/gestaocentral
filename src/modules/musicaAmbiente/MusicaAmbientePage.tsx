@@ -36,6 +36,8 @@ export function MusicaAmbientePage() {
   const [q, setQ] = useState("");
   const [buscaPl, setBuscaPl] = useState<Playlist[]>([]);
   const [buscaTr, setBuscaTr] = useState<Track[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [buscouVazio, setBuscouVazio] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [diag, setDiag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -92,10 +94,18 @@ export function MusicaAmbientePage() {
   async function tocarFaixa(uri: string) { await acao("play", { uris: [uri], deviceId: alvoDevice() }); }
 
   async function buscar() {
-    if (!q.trim()) { setBuscaPl([]); setBuscaTr([]); return; }
-    const r = await ctrl(rid, "search", { q: q.trim() });
-    setBuscaPl((r?.playlists?.items || []) as Playlist[]);
-    setBuscaTr((r?.tracks?.items || []) as Track[]);
+    const termo = q.trim();
+    if (!termo) { setBuscaPl([]); setBuscaTr([]); setBuscouVazio(false); return; }
+    setBuscando(true); setBuscouVazio(false);
+    try {
+      const r = await ctrl(rid, "search", { q: termo });
+      // A busca do Spotify pode trazer itens nulos na lista — filtra pra não quebrar.
+      const pls = ((r?.playlists?.items || []) as (Playlist | null)[]).filter((x): x is Playlist => !!x);
+      const trs = ((r?.tracks?.items || []) as (Track | null)[]).filter((x): x is Track => !!x);
+      setBuscaPl(pls); setBuscaTr(trs);
+      setBuscouVazio(pls.length === 0 && trs.length === 0);
+      if (r && r.ok === false && r.erro) setMsg(`Busca: ${r.erro}`);
+    } finally { setBuscando(false); }
   }
 
   if (!podeVer) return <PageContainer><div className="py-16 text-center text-sm text-gray-500">Você não tem acesso à Música Ambiente.</div></PageContainer>;
@@ -170,8 +180,9 @@ export function MusicaAmbientePage() {
                 <Search size={15} className="text-gray-400" />
                 <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void buscar(); }} placeholder="Buscar playlist ou música…" className="flex-1 bg-transparent text-sm outline-none" />
               </div>
-              <button className={`${BTN} border border-gray-200 dark:border-gray-700`} onClick={() => void buscar()}>Buscar</button>
+              <button disabled={buscando} className={`${BTN} border border-gray-200 dark:border-gray-700`} onClick={() => void buscar()}>{buscando ? <Loader2 size={15} className="animate-spin" /> : "Buscar"}</button>
             </div>
+            {buscouVazio && !buscando && <div className="mt-3 text-xs text-gray-400">Nenhum resultado para "{q}".</div>}
             {(buscaPl.length > 0 || buscaTr.length > 0) && (
               <div className="mt-3 space-y-1.5 max-h-72 overflow-auto">
                 {buscaPl.map((p) => (
