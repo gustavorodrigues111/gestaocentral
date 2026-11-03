@@ -74,8 +74,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const prev = ultimoRun.get(tid);
       if (!prev || String(r.data || "") > prev) ultimoRun.set(tid, String(r.data || ""));
     }
+    const areasChk = Array.isArray(est.checklistAreas) ? (est.checklistAreas as string[]) : [];
     const checklists = tmpls.filter((t) => {
       if (t.ativo === false) return false;
+      if (areasChk.length && !(typeof t.area === "string" && areasChk.includes(t.area))) return false; // estação pode fixar áreas
       const f = t.frequencia;
       const diasSemana = t.diasSemana as number[] | undefined;
       if (f === "diaria") return !diasSemana || diasSemana.length === 0 || diasSemana.includes(dow);

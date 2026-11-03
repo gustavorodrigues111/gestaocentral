@@ -94,6 +94,7 @@ export function PainelEstacaoPage() {
       onFreelaAbrir={(pessoaId, shiftId) => painelAcao({ acao: "freela-abrir", pessoaId, shiftId })}
       onChecklistAbrir={(templateId) => painelAcao({ acao: "checklist-abrir", templateId })}
       onChecklistItem={(pessoaId, templateId, itemId, feito, observacao) => painelAcao({ acao: "checklist-item", pessoaId, templateId, itemId, feito, observacao })}
+      onReservaCriar={(pessoaId, r) => painelAcao({ acao: "reserva-criar", pessoaId, ...r })}
     />
   );
 }

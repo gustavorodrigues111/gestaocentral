@@ -174,6 +174,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    if (acao === "reserva-criar") {
+      if (!acoes.reserva) { res.status(403).json({ ok: false, erro: "acao_desabilitada" }); return; }
+      const pessoa = validaPessoa(String(body.pessoaId || ""));
+      if (!pessoa) { res.status(403).json({ ok: false, erro: "pessoa_nao_autorizada" }); return; }
+      const data = String(body.data || "");
+      const horario = String(body.horario || "");
+      const pessoas = Number(body.pessoas) || 0;
+      const clienteNome = String(body.clienteNome || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || !/^\d{1,2}:\d{2}$/.test(horario) || pessoas <= 0) { res.status(400).json({ ok: false, erro: "bad_request" }); return; }
+      const now = new Date().toISOString();
+      const id = "res_" + uidRun();
+      await firestoreCriar("reservas", id, { restaurantId: rid, data, horario, pessoas, status: "confirmada", origem: "interno", confirmadaEm: now, registradoEm: now, registradoPor: pessoa.id, registradoPorNome: pessoa.nome, atualizadoEm: now });
+      if (clienteNome) await firestoreCriar("reservasPII", id, { restaurantId: rid, data, clienteNomeSnapshot: clienteNome, registradoEm: now });
+      res.status(200).json({ ok: true, id });
+      return;
+    }
+
     res.status(400).json({ ok: false, erro: "acao_desconhecida" });
   } catch (e) {
     res.status(200).json({ ok: false, erro: "falha", detalhe: String((e as Error)?.message || e).slice(0, 200) });

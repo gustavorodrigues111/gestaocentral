@@ -11,7 +11,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import * as repo from "./estacoesRepo";
-import { type EstacaoToken, ACOES_PADRAO } from "./estacoesRepo";
+import { type EstacaoToken, ACOES_PADRAO, AREAS_CHECKLIST } from "./estacoesRepo";
 
 const INPUT = "w-full h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm";
 
@@ -110,6 +110,7 @@ function Editor({ est, restaurants, numeros, pessoas, onCancel, onSaved }: { est
   function addUser(p: any) { set({ usuariosIds: [...usuariosSel, p.id], usuariosNomes: [...(f.usuariosNomes || []), { id: p.id, nome: p.nome }] }); setBusca(""); }
   function rmUser(id: string) { set({ usuariosIds: usuariosSel.filter((x) => x !== id), usuariosNomes: (f.usuariosNomes || []).filter((u) => u.id !== id) }); }
   function toggleNumero(id: string) { const cur = f.whatsappNumeroIds || []; set({ whatsappNumeroIds: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] }); }
+  function toggleArea(a: string) { const cur = f.checklistAreas || []; set({ checklistAreas: cur.includes(a) ? cur.filter((x) => x !== a) : [...cur, a] }); }
   function setAcao(k: keyof NonNullable<EstacaoToken["acoes"]>, v: boolean) { set({ acoes: { ...(f.acoes || ACOES_PADRAO), [k]: v } }); }
 
   const podeSalvar = f.nome.trim().length > 0 && !!f.restaurantId;
@@ -145,6 +146,17 @@ function Editor({ est, restaurants, numeros, pessoas, onCancel, onSaved }: { est
             )}
           </div>
 
+          {/* Áreas de checklist exibidas */}
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Áreas de checklist na estação <span className="normal-case text-gray-400">(nenhuma = todas)</span></div>
+            <div className="flex flex-wrap gap-1.5">
+              {AREAS_CHECKLIST.map((a) => {
+                const on = (f.checklistAreas || []).includes(a);
+                return <button key={a} onClick={() => toggleArea(a)} className="text-xs font-semibold px-2.5 py-1 rounded-full border" style={{ borderColor: on ? "#d97706" : "", background: on ? "#d9770622" : "", color: on ? "#d97706" : "" }}>{a}</button>;
+              })}
+            </div>
+          </div>
+
           {/* Usuários com acesso (typeahead + chips) */}
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Usuários com acesso (podem agir pela estação)</div>
@@ -175,6 +187,7 @@ function Editor({ est, restaurants, numeros, pessoas, onCancel, onSaved }: { est
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!f.acoes?.whatsapp} onChange={(e) => setAcao("whatsapp", e.target.checked)} /> Responder WhatsApp</label>
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!f.acoes?.checklist} onChange={(e) => setAcao("checklist", e.target.checked)} /> Preencher checklist</label>
               <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!f.acoes?.freela} onChange={(e) => setAcao("freela", e.target.checked)} /> Lançar/abrir freela</label>
+              <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!f.acoes?.reserva} onChange={(e) => setAcao("reserva", e.target.checked)} /> Adicionar reserva</label>
             </div>
             <div className="text-[11px] text-gray-400 mt-1">As ações pedem "quem está agindo?" na parede (escolhe um dos usuários acima) e ficam registradas no nome da pessoa.</div>
           </div>

@@ -47,7 +47,7 @@ function labelData(d: string, hoje: string): string {
 const RESERVA_COR: Record<string, string> = { confirmada: "#1db954", pendente: "#e3a63c", chegou: "#4b9bf0" };
 const TURNO_LABEL: Record<string, string> = { abertura: "Abertura", meio: "Meio", fechamento: "Fechamento" };
 
-export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir, onChecklistAbrir, onChecklistItem }: {
+export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir, onChecklistAbrir, onChecklistItem, onReservaCriar }: {
   rid: string;
   data: PainelData;
   atualizadoEm?: Date;
@@ -57,13 +57,14 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
   waNumeroSel?: string;                  // "" = todos; <id> = um número
   onWaNumero?: (id: string) => void;
   // Modo ESTAÇÃO com ações (parede). Ausente = só visualização (navegador usa o portão).
-  estacaoAcoes?: { whatsapp: boolean; checklist: boolean; freela: boolean };
+  estacaoAcoes?: { whatsapp: boolean; checklist: boolean; freela: boolean; reserva: boolean };
   estacaoUsuarios?: PWaNumero[];         // allow-list "quem está agindo" (id+nome)
   onWaThread?: (numeroId: string, waId: string) => Promise<{ ok: boolean; mensagens?: any[]; erro?: string }>;
   onWaResponder?: (pessoaId: string, numeroId: string, waId: string, texto: string) => Promise<{ ok: boolean; erro?: string }>;
   onFreelaAbrir?: (pessoaId: string, shiftId: string) => Promise<{ ok: boolean; erro?: string }>;
   onChecklistAbrir?: (templateId: string) => Promise<{ ok: boolean; nome?: string; itens?: any[]; erro?: string }>;
   onChecklistItem?: (pessoaId: string, templateId: string, itemId: string, feito: boolean, observacao?: string) => Promise<{ ok: boolean; erro?: string }>;
+  onReservaCriar?: (pessoaId: string, r: { data: string; horario: string; pessoas: number; clienteNome: string }) => Promise<{ ok: boolean; erro?: string }>;
 }) {
   const [agora, setAgora] = useState(new Date());
   const [gate, setGate] = useState(false);
@@ -126,6 +127,19 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
     setChkItens((prev) => prev.map((x) => x.id === it.id ? { ...x, feito, observacao: observacao ?? x.observacao, feitoPorNome: feito ? agindoComo!.nome : null } : x));
     const r = await onChecklistItem!(agindoComo.id, chkAberto.templateId, it.id, feito, observacao);
     if (!r?.ok) { setChkItens((prev) => prev.map((x) => x.id === it.id ? { ...x, feito: !feito } : x)); alert("Não marcou: " + (r?.erro || "erro")); }
+  }
+  const reservaAtiva = !!(estacaoAcoes?.reserva && onReservaCriar);
+  const [resvForm, setResvForm] = useState<null | { data: string; horario: string; pessoas: string; nome: string }>(null);
+  const [salvandoResv, setSalvandoResv] = useState(false);
+  function novaReserva() { pedirIdentidade(() => setResvForm({ data: dataSel, horario: "20:00", pessoas: "2", nome: "" })); }
+  async function salvarReserva() {
+    if (!resvForm || !agindoComo || !onReservaCriar) return;
+    const pessoas = parseInt(resvForm.pessoas, 10) || 0;
+    if (!resvForm.horario || pessoas <= 0) { alert("Preencha horário e nº de pessoas."); return; }
+    setSalvandoResv(true);
+    const r = await onReservaCriar(agindoComo.id, { data: resvForm.data, horario: resvForm.horario, pessoas, clienteNome: resvForm.nome.trim() });
+    setSalvandoResv(false);
+    if (r?.ok) setResvForm(null); else alert("Não salvou: " + (r?.erro || "erro"));
   }
   useEffect(() => { const t = setInterval(() => setAgora(new Date()), 15000); return () => clearInterval(t); }, []);
   const hoje = todayYmd();
@@ -326,7 +340,8 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                   </div>
                 </div>
               ) : <Vazio txt={isHoje ? "Sem reservas pro restante do turno" : "Sem reservas nesse dia"} />
-            ) : (
+            ) : null}
+            {reservasView.length > 0 && (
               <div className={listCls}>
                 {reservasView.map((r) => {
                   const rel = relReserva(r);
@@ -345,6 +360,7 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                 })}
               </div>
             )}
+            {reservaAtiva && <button onClick={novaReserva} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2.5 text-[13px] font-bold shrink-0 flex items-center justify-center gap-1.5"><Plus size={15} /> Nova reserva</button>}
           </div>
 
           {/* FREELAS & TURNOS */}
@@ -514,6 +530,30 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                       </span>
                     </button>
                   ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nova reserva (estação) */}
+      {resvForm && (
+        <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-6" onClick={() => setResvForm(null)}>
+          <div className="bg-[#1b1e25] border border-[#2a2f39] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1"><Utensils size={18} className="text-[#e3a63c]" /><div className="font-extrabold text-lg">Nova reserva</div></div>
+            <p className="text-[12px] text-[#9aa3b2] mb-3">registrando como {agindoComo?.nome}</p>
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] text-[#9aa3b2] -mb-1">Dia</label>
+              <input type="date" value={resvForm.data} onChange={(e) => setResvForm({ ...resvForm, data: e.target.value })} className="h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" />
+              <div className="grid grid-cols-2 gap-2">
+                <div><label className="text-[11px] text-[#9aa3b2]">Horário</label><input type="time" value={resvForm.horario} onChange={(e) => setResvForm({ ...resvForm, horario: e.target.value })} className="w-full h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" /></div>
+                <div><label className="text-[11px] text-[#9aa3b2]">Pessoas</label><input type="number" min={1} value={resvForm.pessoas} onChange={(e) => setResvForm({ ...resvForm, pessoas: e.target.value })} className="w-full h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" /></div>
+              </div>
+              <label className="text-[11px] text-[#9aa3b2] -mb-1">Nome do cliente</label>
+              <input value={resvForm.nome} onChange={(e) => setResvForm({ ...resvForm, nome: e.target.value })} placeholder="quem reservou" className="h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setResvForm(null)} className="flex-1 rounded-xl border border-[#2a2f39] py-2.5 text-sm font-bold">Cancelar</button>
+              <button onClick={() => void salvarReserva()} disabled={salvandoResv} className="flex-1 rounded-xl py-2.5 text-sm font-extrabold text-[#1a1205] disabled:opacity-50" style={{ background: "#e3a63c" }}>{salvandoResv ? "salvando…" : "Salvar"}</button>
             </div>
           </div>
         </div>

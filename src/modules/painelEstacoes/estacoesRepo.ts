@@ -7,13 +7,14 @@ import { collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc, type Unsubsc
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 
-export type EstacaoAcoes = { whatsapp: boolean; checklist: boolean; freela: boolean };
+export type EstacaoAcoes = { whatsapp: boolean; checklist: boolean; freela: boolean; reserva: boolean };
 export type EstacaoToken = {
   id: string;            // = token (doc id)
   nome: string;          // rótulo da estação (ex.: "Parede do salão")
   restaurantId: string;
   restaurantNome: string;
   whatsappNumeroIds?: string[];                 // números que a estação mostra (vazio = todos do rest)
+  checklistAreas?: string[];                     // áreas de checklist exibidas (vazio = todas)
   usuariosIds?: string[];                        // pessoas que podem AGIR pela estação (allow-list)
   usuariosNomes?: { id: string; nome: string }[]; // snapshot p/ exibir sem lookup
   acoes?: EstacaoAcoes;                          // ações permitidas (default: todas)
@@ -22,7 +23,8 @@ export type EstacaoToken = {
   criadoPor?: string | null;
 };
 
-export const ACOES_PADRAO: EstacaoAcoes = { whatsapp: true, checklist: true, freela: true };
+export const ACOES_PADRAO: EstacaoAcoes = { whatsapp: true, checklist: true, freela: true, reserva: true };
+export const AREAS_CHECKLIST = ["Bar", "Cozinha", "Salão", "Limpeza"];
 
 // token aleatório: "est_" + 32 hex (criptograficamente forte quando disponível).
 export function gerarToken(): string {
