@@ -26,7 +26,7 @@ import {
   // Categorias / subáreas
   ChefHat, Briefcase, Settings, House, Crown,
   // Módulos ocultos / legados
-  Thermometer, Bus, Utensils, Lock, Fish,
+  Thermometer, Bus, Utensils, Lock, Fish, Music,
   type LucideIcon,
 } from "lucide-react";
 
@@ -66,7 +66,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   "house": House, "crown": Crown,
   // Módulos ocultos / legados
   "thermometer": Thermometer, "bus": Bus, "utensils": Utensils, "lock": Lock,
-  "fish": Fish,
+  "fish": Fish, "music": Music,
 };
 
 /** true se `name` é um nome lucide registrado (não um emoji legado). */
