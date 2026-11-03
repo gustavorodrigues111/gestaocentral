@@ -93,6 +93,7 @@ export function PainelEstacaoPage() {
       onWaThread={(numeroId, waId) => painelAcao({ acao: "wa-thread", numeroId, waId })}
       onWaResponder={(pessoaId, numeroId, waId, texto) => painelAcao({ acao: "wa-responder", pessoaId, numeroId, waId, texto })}
       onFreelaAbrir={(pessoaId, shiftId) => painelAcao({ acao: "freela-abrir", pessoaId, shiftId })}
+      onFreelaNovo={(pessoaId, f) => painelAcao({ acao: "freela-novo", pessoaId, ...f })}
       onChecklistAbrir={(templateId) => painelAcao({ acao: "checklist-abrir", templateId })}
       onChecklistItem={(pessoaId, templateId, itemId, feito, observacao) => painelAcao({ acao: "checklist-item", pessoaId, templateId, itemId, feito, observacao })}
       onReservaCriar={(pessoaId, r) => painelAcao({ acao: "reserva-criar", pessoaId, ...r })}

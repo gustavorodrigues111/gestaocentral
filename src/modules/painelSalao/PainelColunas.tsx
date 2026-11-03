@@ -47,7 +47,7 @@ function labelData(d: string, hoje: string): string {
 const RESERVA_COR: Record<string, string> = { confirmada: "#1db954", pendente: "#e3a63c", chegou: "#4b9bf0" };
 const TURNO_LABEL: Record<string, string> = { abertura: "Abertura", meio: "Meio", fechamento: "Fechamento" };
 
-export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir, onChecklistAbrir, onChecklistItem, onReservaCriar }: {
+export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir, onFreelaNovo, onChecklistAbrir, onChecklistItem, onReservaCriar }: {
   rid: string;
   data: PainelData;
   atualizadoEm?: Date;
@@ -63,6 +63,7 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
   onWaThread?: (numeroId: string, waId: string) => Promise<{ ok: boolean; mensagens?: any[]; erro?: string }>;
   onWaResponder?: (pessoaId: string, numeroId: string, waId: string, texto: string) => Promise<{ ok: boolean; erro?: string }>;
   onFreelaAbrir?: (pessoaId: string, shiftId: string) => Promise<{ ok: boolean; erro?: string }>;
+  onFreelaNovo?: (pessoaId: string, f: { nome: string; area: string }) => Promise<{ ok: boolean; erro?: string }>;
   onChecklistAbrir?: (templateId: string) => Promise<{ ok: boolean; nome?: string; itens?: any[]; erro?: string }>;
   onChecklistItem?: (pessoaId: string, templateId: string, itemId: string, feito: boolean, observacao?: string) => Promise<{ ok: boolean; erro?: string }>;
   onReservaCriar?: (pessoaId: string, r: { data: string; horario: string; pessoas: number; clienteNome: string }) => Promise<{ ok: boolean; erro?: string }>;
@@ -90,6 +91,21 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
       if (r?.ok) setThread(r.mensagens || []);
     });
   }
+  const [novaConv, setNovaConv] = useState<null | { numeroId: string; fone: string; texto: string }>(null);
+  const [enviandoNova, setEnviandoNova] = useState(false);
+  function iniciarNovaConversa() { pedirIdentidade(() => setNovaConv({ numeroId: waNumeroSel || waNumeros?.[0]?.id || "", fone: "", texto: "" })); }
+  async function enviarNovaConversa() {
+    if (!novaConv || !agindoComo || !onWaResponder) return;
+    const fone = novaConv.fone.replace(/\D/g, "");
+    if (!novaConv.numeroId) { alert("Escolha o número de saída."); return; }
+    if (fone.length < 10) { alert("Telefone inválido (com DDD)."); return; }
+    if (!novaConv.texto.trim()) { alert("Escreva a 1ª mensagem."); return; }
+    setEnviandoNova(true);
+    const r = await onWaResponder(agindoComo.id, novaConv.numeroId, fone, novaConv.texto.trim());
+    setEnviandoNova(false);
+    if (r?.ok) { setConv({ numeroId: novaConv.numeroId, waId: fone, nome: fone }); setThread([]); setNovaConv(null); }
+    else alert("Não enviou: " + (r?.erro || "erro"));
+  }
   // Conversa aberta atualiza sozinha (quase tempo real) enquanto está aberta.
   useEffect(() => {
     if (!conv || !onWaThread) return;
@@ -113,6 +129,17 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
       setAbrindoId(null);
       if (!r?.ok) alert("Não abriu o turno: " + (r?.erro || "erro"));
     });
+  }
+  const [novoTurno, setNovoTurno] = useState<null | { nome: string; area: string }>(null);
+  const [salvandoTurno, setSalvandoTurno] = useState(false);
+  function abrirNovoTurno() { pedirIdentidade(() => setNovoTurno({ nome: "", area: "" })); }
+  async function salvarNovoTurno() {
+    if (!novoTurno || !agindoComo || !onFreelaNovo) return;
+    if (!novoTurno.nome.trim()) { alert("Informe o nome do freela."); return; }
+    setSalvandoTurno(true);
+    const r = await onFreelaNovo(agindoComo.id, { nome: novoTurno.nome.trim(), area: novoTurno.area });
+    setSalvandoTurno(false);
+    if (r?.ok) setNovoTurno(null); else alert("Não abriu: " + (r?.erro || "erro"));
   }
   const chkAtivo = !!(estacaoAcoes?.checklist && onChecklistAbrir && onChecklistItem);
   const [chkAberto, setChkAberto] = useState<null | { templateId: string; nome: string }>(null);
@@ -404,6 +431,7 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
                 ))}
               </div>
             )}
+            {freelaAtivo && onFreelaNovo && <button onClick={abrirNovoTurno} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] py-2.5 text-[13px] font-bold shrink-0 flex items-center justify-center gap-1.5"><Plus size={15} /> Abrir novo turno</button>}
           </div>
 
           {/* CHECKLISTS */}
@@ -472,7 +500,9 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
                 })}
               </div>
             )}
-            {!waAtivo && <button onClick={() => setGate(true)} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] py-2.5 text-[13px] font-bold shrink-0">Abrir inbox</button>}
+            {waAtivo
+              ? <button onClick={iniciarNovaConversa} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] py-2.5 text-[13px] font-bold shrink-0 flex items-center justify-center gap-1.5"><Plus size={15} /> Nova conversa</button>
+              : <button onClick={() => setGate(true)} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] py-2.5 text-[13px] font-bold shrink-0">Abrir inbox</button>}
           </div>
         </div>
       </div>
@@ -542,6 +572,56 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
                       </span>
                     </button>
                   ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Novo turno de freela (estação) */}
+      {novoTurno && (
+        <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-6" onClick={() => setNovoTurno(null)}>
+          <div className="bg-[var(--pnl-box)] border border-[var(--pnl-border)] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1"><ChefHat size={18} className="text-[#4b9bf0]" /><div className="font-extrabold text-lg">Abrir novo turno</div></div>
+            <p className="text-[12px] text-[var(--pnl-sub)] mb-3">registrando como {agindoComo?.nome} · entrada = agora</p>
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] text-[var(--pnl-sub)] -mb-1">Nome do freela</label>
+              <input value={novoTurno.nome} onChange={(e) => setNovoTurno({ ...novoTurno, nome: e.target.value })} placeholder="quem vai trabalhar" className="h-10 rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 text-sm outline-none" />
+              <label className="text-[11px] text-[var(--pnl-sub)] -mb-1">Área (opcional)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {AREAS.map((a) => { const on = novoTurno.area === a; return <button key={a} onClick={() => setNovoTurno({ ...novoTurno, area: on ? "" : a })} className="text-xs font-semibold px-2.5 py-1 rounded-full border" style={{ borderColor: on ? "#4b9bf0" : "var(--pnl-border)", background: on ? "#4b9bf022" : "transparent", color: on ? "#4b9bf0" : "var(--pnl-sub)" }}>{a}</button>; })}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setNovoTurno(null)} className="flex-1 rounded-xl border border-[var(--pnl-border)] py-2.5 text-sm font-bold">Cancelar</button>
+              <button onClick={() => void salvarNovoTurno()} disabled={salvandoTurno} className="flex-1 rounded-xl py-2.5 text-sm font-extrabold text-[#04101f] disabled:opacity-50" style={{ background: "#4b9bf0" }}>{salvandoTurno ? "abrindo…" : "Abrir turno"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nova conversa WhatsApp (estação) */}
+      {novaConv && (
+        <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-6" onClick={() => setNovaConv(null)}>
+          <div className="bg-[var(--pnl-box)] border border-[var(--pnl-border)] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1"><MessageSquare size={18} className="text-[#25d366]" /><div className="font-extrabold text-lg">Nova conversa</div></div>
+            <p className="text-[12px] text-[var(--pnl-sub)] mb-3">enviando como {agindoComo?.nome}</p>
+            <div className="flex flex-col gap-2">
+              {waNumeros && waNumeros.length > 1 && (
+                <>
+                  <label className="text-[11px] text-[var(--pnl-sub)] -mb-1">Número de saída</label>
+                  <select value={novaConv.numeroId} onChange={(e) => setNovaConv({ ...novaConv, numeroId: e.target.value })} className="h-10 rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 text-sm outline-none">
+                    {waNumeros.map((n) => <option key={n.id} value={n.id}>{n.nome}</option>)}
+                  </select>
+                </>
+              )}
+              <label className="text-[11px] text-[var(--pnl-sub)] -mb-1">Telefone (com DDD)</label>
+              <input value={novaConv.fone} onChange={(e) => setNovaConv({ ...novaConv, fone: e.target.value })} inputMode="tel" placeholder="ex.: 11 99999-9999" className="h-10 rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 text-sm outline-none" />
+              <label className="text-[11px] text-[var(--pnl-sub)] -mb-1">1ª mensagem</label>
+              <textarea value={novaConv.texto} onChange={(e) => setNovaConv({ ...novaConv, texto: e.target.value })} rows={2} placeholder="escreva a mensagem…" className="rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 py-2 text-sm outline-none resize-none" />
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setNovaConv(null)} className="flex-1 rounded-xl border border-[var(--pnl-border)] py-2.5 text-sm font-bold">Cancelar</button>
+              <button onClick={() => void enviarNovaConversa()} disabled={enviandoNova} className="flex-1 rounded-xl py-2.5 text-sm font-extrabold text-[#04170c] disabled:opacity-50" style={{ background: "#25d366" }}>{enviandoNova ? "enviando…" : "Enviar"}</button>
             </div>
           </div>
         </div>

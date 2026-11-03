@@ -174,6 +174,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    if (acao === "freela-novo") {
+      if (!acoes.freela) { res.status(403).json({ ok: false, erro: "acao_desabilitada" }); return; }
+      const pessoa = validaPessoa(String(body.pessoaId || ""));
+      if (!pessoa) { res.status(403).json({ ok: false, erro: "pessoa_nao_autorizada" }); return; }
+      const nome = String(body.nome || "").trim();
+      const area = String(body.area || "").trim();
+      if (!nome) { res.status(400).json({ ok: false, erro: "bad_request" }); return; }
+      const now = new Date().toISOString();
+      const hoje = hojeSP();
+      const id = "fsh_" + uidRun();
+      await firestoreCriar("freelaShifts", id, {
+        restaurantId: rid, date: hoje, scheduledDate: hoje, status: "aberto", entrada: hhmmAgoraSP(),
+        nomeSnapshot: nome, area: area || undefined, lancadoPorNome: pessoa.nome, lancadoEm: now,
+        aberturaEstacaoPor: pessoa.nome, aberturaEstacaoEm: now, updatedAt: now,
+      });
+      res.status(200).json({ ok: true, id });
+      return;
+    }
+
     if (acao === "reserva-criar") {
       if (!acoes.reserva) { res.status(403).json({ ok: false, erro: "acao_desabilitada" }); return; }
       const pessoa = validaPessoa(String(body.pessoaId || ""));
