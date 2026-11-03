@@ -89,7 +89,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }).sort((a, b) => String(a.hora || "99:99").localeCompare(String(b.hora || "99:99")));
 
     // ── WhatsApp (resumo de não respondidas, por número selecionado) ──
-    const numerosRest = (await firestoreListar("whatsappNumeros")).filter((n) => Array.isArray(n.restaurantIds) && (n.restaurantIds as string[]).includes(rid) && n.ativo !== false);
+    const numEstacao = Array.isArray(est.whatsappNumeroIds) ? (est.whatsappNumeroIds as string[]) : [];
+    const numerosRest = (await firestoreListar("whatsappNumeros"))
+      .filter((n) => Array.isArray(n.restaurantIds) && (n.restaurantIds as string[]).includes(rid) && n.ativo !== false)
+      .filter((n) => numEstacao.length === 0 || numEstacao.includes(String(n.id))); // estação pode fixar quais números mostra
     const waNumeros = numerosRest.map((n) => ({ id: String(n.id), nome: nomeNumero(n) }));
     const numeroParam = String(req.query.numero || "");
     let waNumeroSel = "";
@@ -120,6 +123,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       reservas, proximaReserva, freelasAbertos, freelasProgramados, checklists,
       waNumeros, waNumeroSel,
       wa: { list: waList.map((c) => ({ key: c.key, nome: c.nome, naoLidas: c.naoLidas, preview: c.preview })), total: waTotal },
+      acoes: est.acoes || { whatsapp: true, checklist: true, freela: true }, // F5b: ações permitidas na estação
+      usuarios: Array.isArray(est.usuariosNomes) ? est.usuariosNomes : [],   // F5b: allow-list "quem está agindo"
     });
   } catch (e) {
     res.status(200).json({ ok: false, erro: "falha", detalhe: String((e as Error)?.message || e).slice(0, 200) });

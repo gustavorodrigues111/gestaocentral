@@ -1,19 +1,28 @@
 // Estações do Painel do Salão (coleção estacoesTokens). O doc id É o token
 // aleatório — a estação de parede guarda esse código e lê o /api/painel-feed.
 // list/escrita só master (regras); a estação nunca grava. Revogar = ativo:false.
+// Config por estação: números de WhatsApp, usuários com acesso (allow-list p/
+// agir) e quais ações são permitidas.
 import { collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 
+export type EstacaoAcoes = { whatsapp: boolean; checklist: boolean; freela: boolean };
 export type EstacaoToken = {
   id: string;            // = token (doc id)
   nome: string;          // rótulo da estação (ex.: "Parede do salão")
   restaurantId: string;
   restaurantNome: string;
+  whatsappNumeroIds?: string[];                 // números que a estação mostra (vazio = todos do rest)
+  usuariosIds?: string[];                        // pessoas que podem AGIR pela estação (allow-list)
+  usuariosNomes?: { id: string; nome: string }[]; // snapshot p/ exibir sem lookup
+  acoes?: EstacaoAcoes;                          // ações permitidas (default: todas)
   ativo: boolean;
   criadoEm: string;
   criadoPor?: string | null;
 };
+
+export const ACOES_PADRAO: EstacaoAcoes = { whatsapp: true, checklist: true, freela: true };
 
 // token aleatório: "est_" + 32 hex (criptograficamente forte quando disponível).
 export function gerarToken(): string {
@@ -35,6 +44,9 @@ export function ouvirEstacoes(cb: (l: EstacaoToken[]) => void): Unsubscribe {
 }
 export async function criarEstacao(e: EstacaoToken): Promise<void> {
   await setDoc(doc(db, "estacoesTokens", e.id), sanitizeForFirestore(e));
+}
+export async function atualizarEstacao(id: string, patch: Partial<EstacaoToken>): Promise<void> {
+  await updateDoc(doc(db, "estacoesTokens", id), sanitizeForFirestore(patch) as Record<string, unknown>);
 }
 export async function toggleEstacao(id: string, ativo: boolean): Promise<void> {
   await updateDoc(doc(db, "estacoesTokens", id), { ativo });

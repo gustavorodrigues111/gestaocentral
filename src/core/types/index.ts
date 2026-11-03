@@ -130,7 +130,7 @@ export type ModuleId =
   | "documentos"
   // Governança de IA — diretrizes do que a IA pode responder, log jurídico das
   // interações e alertas de uso fora do escopo (LGPD) às lideranças.
-  | "iaGovernanca" | "appsDownload"
+  | "iaGovernanca" | "appsDownload" | "painelEstacoes"
   // WhatsApp — atendimento pelos números CONECTADOS (device-link/Evolution):
   // inbox das conversas + configuração dos números. O WhatsApp da API oficial
   // (disparos do sistema) fica na Central de Avisos ("WhatsApp do sistema").

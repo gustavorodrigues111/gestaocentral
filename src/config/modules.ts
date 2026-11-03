@@ -141,6 +141,7 @@ export const MODULES: ModuleDef[] = [
   { id: "iaGovernanca", area: "master", subarea: "Master",            label: "Governança de IA", icon: "shield-alert", status: "ativo", etapa: "beta", desc: "Diretrizes do que a IA pode responder, registro jurídico das interações e alertas de uso fora do escopo (LGPD). Só master." },
   { id: "paginas",      area: "master", subarea: "Master",            label: "Páginas", icon: "globe", status: "ativo", etapa: "beta", desc: "Hospedagem de HTMLs avulsos com slug próprio (pages.planejamento.app/…): público ou privado (allowlist de e-mail e/ou senha da página). Sobe, lista, ativa/desativa e apaga. Só master." },
   { id: "appsDownload", area: "master", subarea: "Master",            label: "Download de Apps", icon: "download", status: "ativo", etapa: "beta", desc: "Catálogo dos apps desktop do grupo (Comandas, Painel do Salão e futuros) pra baixar e instalar. Auto-update embutido. Só master." },
+  { id: "painelEstacoes", area: "master", subarea: "Master",          label: "Estações do Painel", icon: "monitor-play", status: "ativo", etapa: "beta", desc: "Cadastro e configuração das estações do Painel do Salão (tela de parede): código read-only por restaurante, números de WhatsApp, usuários com acesso e ações permitidas. Só master." },
 ];
 
 export const AREA_INFO = {
