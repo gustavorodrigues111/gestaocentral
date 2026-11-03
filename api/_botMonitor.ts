@@ -212,6 +212,38 @@ async function registrarPagador(rid: string, nome: string): Promise<void> {
   await firestoreCriarSeAusente("investPagadores", id, { id, restaurantId: rid, nome: n, criadoEm: new Date().toISOString() }).catch(() => {});
 }
 
+// Casa o nome do pagador com um já existente — sócio do projeto (preferência) ou
+// pagador cadastrado — por sobreposição de tokens: se um conjunto de nomes é
+// subconjunto do outro (ex.: {gustavo} ⊆ {gustavo,rodrigues,da,silva}), reusa o
+// nome canônico que já existe. Evita o WhatsApp mandar "GUSTAVO RODRIGUES DA SILVA"
+// e virar um pagador diferente de "Gustavo". Sem match, devolve o nome original.
+const _normNome = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+const _tokensNome = (s: string) => new Set(_normNome(s).split(/\s+/).filter((t) => t.length > 1));
+async function resolverNomePagador(rid: string, projetoId: string | null | undefined, nome: string): Promise<string> {
+  const n = (nome || "").trim();
+  if (!n) return n;
+  const alvo = _tokensNome(n);
+  if (!alvo.size) return n;
+  // Candidatos canônicos: sócios do projeto primeiro, depois pagadores cadastrados.
+  const canon: string[] = [];
+  if (projetoId) { try { canon.push(...await sociosDoProjeto(projetoId)); } catch { /* ignora */ } }
+  try {
+    const pags = await firestoreListar("investPagadores");
+    for (const p of pags) if (p.restaurantId === rid) { const nm = String(p.nome || "").trim(); if (nm) canon.push(nm); }
+  } catch { /* ignora */ }
+  for (const c of canon) {
+    if (_normNome(c) === _normNome(n)) return c;
+    const ct = _tokensNome(c);
+    if (!ct.size) continue;
+    const menor = ct.size <= alvo.size ? ct : alvo;
+    const maior = ct.size <= alvo.size ? alvo : ct;
+    let subset = true;
+    for (const t of menor) if (!maior.has(t)) { subset = false; break; }
+    if (subset) return c; // reusa o canônico existente (ex.: "Gustavo")
+  }
+  return n;
+}
+
 // Resolve a categoria: reusa uma existente (por nome, case-insensitive) ou cria
 // uma nova marcada como sugerida pela IA (criadaPorIa + confirmada:false).
 // `catalogo` = lista já carregada de investCategorias (evita 2ª leitura).
@@ -235,9 +267,13 @@ async function criarLancamento(ctx: BotCtx, d: {
 }): Promise<{ id: string; seq?: number }> {
   const id = randomUUID();
   const nowISO = new Date().toISOString();
-  const pagamentos = Array.isArray(d.pagamentos) ? d.pagamentos.filter((p) => p.pagador && Number(p.valor) > 0) : [];
+  const pagamentosBruto = Array.isArray(d.pagamentos) ? d.pagamentos.filter((p) => p.pagador && Number(p.valor) > 0) : [];
+  // Casa cada pagador com um nome já existente (sócio/pagador) antes de gravar.
+  const pagamentos: Pagamento[] = [];
+  for (const p of pagamentosBruto) pagamentos.push({ ...p, pagador: await resolverNomePagador(ctx.rid, ctx.projetoId, p.pagador) });
   const rachado = pagamentos.length >= 2;
-  const pagoPor = rachado ? null : ((d.pagoPor || ctx.msg.autor || "").trim() || null);   // padrão: quem mandou a mensagem
+  const pagoPorBruto = rachado ? null : ((d.pagoPor || ctx.msg.autor || "").trim() || null);   // padrão: quem mandou a mensagem
+  const pagoPor = pagoPorBruto ? await resolverNomePagador(ctx.rid, ctx.projetoId, pagoPorBruto) : null;
   const seq = ctx.projetoId ? await proximoSeq(ctx.rid, ctx.projetoId) : undefined;
   const obsPartes = [
     "via Bot · WhatsApp",
