@@ -780,8 +780,8 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Controla o som do restaurante pelo Spotify (AudioCast M5): conectar conta, escolher dispositivo, tocar playlists e músicas",
     area: "operacao",
     acoes: [
-      { id: "ver",    label: "Abrir o módulo e controlar a música (play/pause/volume)" },
-      { id: "config", label: "Conectar/desconectar a conta Spotify e escolher o dispositivo" },
+      { id: "ver",           label: "Abrir o módulo e controlar a música (dispositivo, play/pause/volume, playlists, busca)" },
+      { id: "conectarConta", label: "Conectar / desconectar a conta Spotify", sensivel: true },
     ],
   },
   {

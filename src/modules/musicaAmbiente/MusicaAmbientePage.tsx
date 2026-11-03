@@ -41,7 +41,7 @@ export function MusicaAmbientePage() {
   const { can } = useCanAcao(rid);
   const { activeRestaurant } = useRestaurant();
   const podeVer = can("musicaAmbiente", "ver");
-  const podeConfig = can("musicaAmbiente", "config");
+  const podeConta = can("musicaAmbiente", "conectarConta");
 
   const [carregando, setCarregando] = useState(true);
   const [conectado, setConectado] = useState(false);
@@ -187,9 +187,9 @@ export function MusicaAmbientePage() {
           <Music size={36} className="mx-auto text-emerald-500 mb-3" />
           <div className="font-semibold">Conecte a conta Spotify</div>
           <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">Precisa de Spotify Premium. O AudioCast M5 deve estar ligado e logado no Spotify pelo app AudioCast pra aparecer como dispositivo.</p>
-          {podeConfig ? (
+          {podeConta ? (
             <a href={`/api/spotify-auth?rid=${encodeURIComponent(rid)}`} className={`${BTN} bg-emerald-600 hover:bg-emerald-700 text-white mt-4`}>Conectar conta Spotify</a>
-          ) : <div className="text-xs text-amber-600 mt-3">Só quem tem a permissão de configurar pode conectar a conta.</div>}
+          ) : <div className="text-xs text-amber-600 mt-3">Só quem tem a permissão de conectar conta pode vincular o Spotify.</div>}
         </div>
       ) : (
         <div className="space-y-4">
@@ -308,7 +308,7 @@ export function MusicaAmbientePage() {
             {playlists.length === 0 && <div className="text-xs text-gray-400">Nenhuma playlist na conta.</div>}
           </div>
 
-          {podeConfig && (
+          {podeConta && (
             <button className={`${BTN} border border-gray-200 dark:border-gray-700 text-gray-500 w-full`} onClick={async () => { if (window.confirm("Desconectar a conta Spotify deste restaurante?")) { await acao("disconnect"); void carregar(); } }}><LogOut size={15} /> Desconectar conta Spotify</button>
           )}
         </div>
