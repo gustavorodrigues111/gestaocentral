@@ -1,0 +1,48 @@
+{
+  "name": "planejamento-painel-desktop",
+  "productName": "Painel do Salao",
+  "version": "1.0.0",
+  "description": "Painel do Salao do planejamento.app — tela de parede (kiosk) read-only com musica, reservas, freelas, checklists e WhatsApp do restaurante.",
+  "main": "main.js",
+  "author": "planejamento.app",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win --x64",
+    "dist:mac": "electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "app.planejamento.painel",
+    "productName": "Painel do Salao",
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.business"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://admin.planejamento.app/painel-update",
+        "channel": "latest"
+      }
+    ]
+  }
+}
