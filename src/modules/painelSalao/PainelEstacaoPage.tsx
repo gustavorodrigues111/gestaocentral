@@ -82,6 +82,7 @@ export function PainelEstacaoPage() {
       rid={feed.rid}
       data={data}
       atualizadoEm={ts}
+      tema={feed.tema === "claro" ? "claro" : "escuro"}
       dataSel={dataSel}
       onDataSel={setDataSel}
       waNumeros={feed.waNumeros || []}

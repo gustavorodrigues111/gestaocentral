@@ -47,10 +47,11 @@ function labelData(d: string, hoje: string): string {
 const RESERVA_COR: Record<string, string> = { confirmada: "#1db954", pendente: "#e3a63c", chegou: "#4b9bf0" };
 const TURNO_LABEL: Record<string, string> = { abertura: "Abertura", meio: "Meio", fechamento: "Fechamento" };
 
-export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir, onChecklistAbrir, onChecklistItem, onReservaCriar }: {
+export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir, onChecklistAbrir, onChecklistItem, onReservaCriar }: {
   rid: string;
   data: PainelData;
   atualizadoEm?: Date;
+  tema?: "escuro" | "claro";             // tema da parede (default escuro)
   dataSel: string;                       // YYYY-MM-DD do dia em exibição
   onDataSel: (d: string) => void;        // troca o dia (hoje → amanhã → …)
   waNumeros?: PWaNumero[];               // números de WhatsApp do restaurante
@@ -216,19 +217,19 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
 
   const hora = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
   function relReserva(r: { status?: string; _delta: number }): { t: string; c: string } {
-    if (!isHoje) return { t: "", c: "#9aa3b2" };
+    if (!isHoje) return { t: "", c: "var(--pnl-sub)" };
     if (r.status === "chegou") return { t: "chegou", c: "#4b9bf0" };
     const d = r._delta;
     if (d <= 0) return { t: "agora", c: "#e3a63c" };
-    if (d < 60) return { t: `em ${d}min`, c: "#9aa3b2" };
+    if (d < 60) return { t: `em ${d}min`, c: "var(--pnl-sub)" };
     const h = Math.floor(d / 60), m = d % 60;
-    return { t: `em ${h}h${m ? " " + m + "min" : ""}`, c: "#9aa3b2" };
+    return { t: `em ${h}h${m ? " " + m + "min" : ""}`, c: "var(--pnl-sub)" };
   }
 
   const Kpi = ({ ic, cor, v, l }: { ic: React.ReactNode; cor: string; v: string; l: string }) => (
-    <div className="flex items-center gap-2.5 rounded-2xl border border-[#2a2f39] bg-[#1b1e25] px-3 py-2">
+    <div className="flex items-center gap-2.5 rounded-2xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] px-3 py-2">
       <div className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: cor + "22", color: cor }}>{ic}</div>
-      <div><div className="font-extrabold text-lg leading-none tabular-nums">{v}</div><div className="text-[10px] uppercase tracking-wide text-[#9aa3b2] font-semibold mt-0.5">{l}</div></div>
+      <div><div className="font-extrabold text-lg leading-none tabular-nums">{v}</div><div className="text-[10px] uppercase tracking-wide text-[var(--pnl-sub)] font-semibold mt-0.5">{l}</div></div>
     </div>
   );
   const ColHead = ({ ic, cor, title, tag }: { ic: React.ReactNode; cor: string; title: string; tag?: string }) => (
@@ -238,24 +239,29 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       {tag && <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full" style={{ background: cor + "22", color: cor }}>{tag}</span>}
     </div>
   );
-  const Vazio = ({ txt }: { txt: string }) => <div className="flex-1 grid place-items-center text-center text-sm px-3" style={{ color: "#5c6373" }}>{txt}</div>;
-  const col = "bg-[#15171c] border border-[#222730] rounded-2xl p-3.5 flex flex-col gap-3 min-w-0 overflow-hidden";
+  const Vazio = ({ txt }: { txt: string }) => <div className="flex-1 grid place-items-center text-center text-sm px-3" style={{ color: "var(--pnl-faint)" }}>{txt}</div>;
+  const col = "bg-[var(--pnl-col)] border border-[var(--pnl-border)] rounded-2xl p-3.5 flex flex-col gap-3 min-w-0 overflow-hidden";
   const listCls = "flex-1 flex flex-col gap-2 overflow-auto -mr-1 pr-1";
 
+  const pal = tema === "claro"
+    ? { bg: "#eceef1", col: "#ffffff", box: "#f5f6f8", box2: "#eef0f3", track: "#e2e5ea", border: "#dde1e7", text: "#1a1d23", sub: "#5b6470", faint: "#8a92a0" }
+    : { bg: "#121317", col: "#15171c", box: "#1b1e25", box2: "#20242c", track: "#2b3038", border: "#2a2f39", text: "#eef1f5", sub: "#9aa3b2", faint: "#6f7889" };
+  const palVars = { ["--pnl-bg" as string]: pal.bg, ["--pnl-col" as string]: pal.col, ["--pnl-box" as string]: pal.box, ["--pnl-box2" as string]: pal.box2, ["--pnl-track" as string]: pal.track, ["--pnl-border" as string]: pal.border, ["--pnl-text" as string]: pal.text, ["--pnl-sub" as string]: pal.sub, ["--pnl-faint" as string]: pal.faint } as React.CSSProperties;
+
   return (
-    <div className="fixed inset-0 z-50 bg-[#121317] text-[#eef1f5] overflow-auto" style={{ fontFamily: "system-ui, sans-serif" }}>
+    <div className="fixed inset-0 z-50 overflow-auto" style={{ fontFamily: "system-ui, sans-serif", background: "var(--pnl-bg)", color: "var(--pnl-text)", ...palVars }}>
       <div className="min-h-full flex flex-col gap-3 p-4">
         {/* Status */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl grid place-items-center font-extrabold text-[#1a1205]" style={{ background: "linear-gradient(135deg,#e3a63c,#b9792a)" }}>{(data.nome || "R")[0]}</div>
-            <div><div className="font-extrabold text-lg leading-none">{data.nome || "Restaurante"} · Salão</div><div className="text-[11px] text-[#9aa3b2]">Painel operacional{atualizadoEm ? ` · atualizado ${String(atualizadoEm.getHours()).padStart(2, "0")}:${String(atualizadoEm.getMinutes()).padStart(2, "0")}` : ""}</div></div>
+            <div><div className="font-extrabold text-lg leading-none">{data.nome || "Restaurante"} · Salão</div><div className="text-[11px] text-[var(--pnl-sub)]">Painel operacional{atualizadoEm ? ` · atualizado ${String(atualizadoEm.getHours()).padStart(2, "0")}:${String(atualizadoEm.getMinutes()).padStart(2, "0")}` : ""}</div></div>
           </div>
 
           {/* Navegação de dia */}
-          <div className="flex items-center gap-1 rounded-2xl border border-[#2a2f39] bg-[#1b1e25] px-1.5 py-1">
+          <div className="flex items-center gap-1 rounded-2xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] px-1.5 py-1">
             <button onClick={() => onDataSel(ymdAdd(dataSel, -1))} disabled={isHoje} className="w-7 h-7 grid place-items-center rounded-lg disabled:opacity-30" title="Dia anterior"><ChevronLeft size={16} /></button>
-            <button onClick={() => onDataSel(hoje)} className="min-w-[72px] text-center text-[13px] font-bold px-1" style={{ color: isHoje ? "#eef1f5" : "#e3a63c" }} title="Voltar pra hoje">{labelData(dataSel, hoje)}</button>
+            <button onClick={() => onDataSel(hoje)} className="min-w-[72px] text-center text-[13px] font-bold px-1" style={{ color: isHoje ? "var(--pnl-text)" : "#e3a63c" }} title="Voltar pra hoje">{labelData(dataSel, hoje)}</button>
             <button onClick={() => onDataSel(ymdAdd(dataSel, 1))} className="w-7 h-7 grid place-items-center rounded-lg" title="Próximo dia"><ChevronRight size={16} /></button>
           </div>
 
@@ -264,7 +270,7 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
             <Kpi ic={<CheckSquare size={15} />} cor="#e3a63c" v={`${chkCompletos}/${checklistsView.length}`} l="Checklists" />
             <Kpi ic={<Utensils size={15} />} cor="#e3a63c" v={String(reservasView.length)} l="Reservas" />
             <Kpi ic={<ChefHat size={15} />} cor="#4b9bf0" v={String(data.freelasAbertos.length)} l="Turnos abertos" />
-            <div className="text-right pl-1"><div className="font-extrabold text-2xl tabular-nums leading-none">{hora}</div><div className="text-[11px] text-[#9aa3b2] capitalize">{DIAS[agora.getDay()]}, {agora.getDate()} {MES[agora.getMonth()]}</div></div>
+            <div className="text-right pl-1"><div className="font-extrabold text-2xl tabular-nums leading-none">{hora}</div><div className="text-[11px] text-[var(--pnl-sub)] capitalize">{DIAS[agora.getDay()]}, {agora.getDate()} {MES[agora.getMonth()]}</div></div>
           </div>
         </div>
 
@@ -274,53 +280,53 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
           <div className={col}>
             <ColHead ic={<Music size={15} />} cor="#1db954" title="Música Ambiente" tag={devAtivo ? "● No ar" : "parado"} />
             <div className="flex gap-3">
-              <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-[#20242c] grid place-items-center text-[#6f7889]">
+              <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-[var(--pnl-box2)] grid place-items-center text-[var(--pnl-faint)]">
                 {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-full h-full object-cover" /> : <Music size={34} />}
               </div>
               <div className="min-w-0 flex flex-col justify-center">
                 <div className="font-extrabold text-[17px] leading-tight line-clamp-2">{faixa?.name || "Nada tocando"}</div>
-                <div className="text-[13px] text-[#9aa3b2] truncate">{(faixa?.artists || []).map((a: any) => a.name).join(", ") || (devAtivo ? devAtivo.name : "—")}</div>
+                <div className="text-[13px] text-[var(--pnl-sub)] truncate">{(faixa?.artists || []).map((a: any) => a.name).join(", ") || (devAtivo ? devAtivo.name : "—")}</div>
               </div>
             </div>
             <div>
-              <div className="h-1.5 rounded bg-[#2b3038] overflow-hidden"><div className="h-full bg-[#1db954] rounded" style={{ width: `${faixa?.duration_ms ? Math.min(100, progress / faixa.duration_ms * 100) : 0}%` }} /></div>
-              <div className="flex justify-between text-[10.5px] text-[#6f7889] tabular-nums mt-1"><span>{fmtTime(progress)}</span><span>{fmtTime(Number(faixa?.duration_ms) || 0)}</span></div>
+              <div className="h-1.5 rounded bg-[var(--pnl-track)] overflow-hidden"><div className="h-full bg-[#1db954] rounded" style={{ width: `${faixa?.duration_ms ? Math.min(100, progress / faixa.duration_ms * 100) : 0}%` }} /></div>
+              <div className="flex justify-between text-[10.5px] text-[var(--pnl-faint)] tabular-nums mt-1"><span>{fmtTime(progress)}</span><span>{fmtTime(Number(faixa?.duration_ms) || 0)}</span></div>
             </div>
             <div className="flex items-center justify-center gap-3">
-              <button className="w-9 h-9 grid place-items-center rounded-full border border-[#2a2f39]" onClick={() => void mus("previous")}><SkipBack size={16} /></button>
+              <button className="w-9 h-9 grid place-items-center rounded-full border border-[var(--pnl-border)]" onClick={() => void mus("previous")}><SkipBack size={16} /></button>
               <button className="w-12 h-12 grid place-items-center rounded-full bg-[#1db954] text-[#04170c]" onClick={() => void mus(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvo() })}>{tocando ? <Pause size={22} /> : <Play size={22} />}</button>
-              <button className="w-9 h-9 grid place-items-center rounded-full border border-[#2a2f39]" onClick={() => void mus("next")}><SkipForward size={16} /></button>
+              <button className="w-9 h-9 grid place-items-center rounded-full border border-[var(--pnl-border)]" onClick={() => void mus("next")}><SkipForward size={16} /></button>
             </div>
             <div className="flex items-center gap-1.5">
-              <Volume2 size={15} className="text-[#9aa3b2] shrink-0" />
-              <button onClick={() => mudarVol(-5)} className="w-6 h-6 grid place-items-center rounded-md border border-[#2a2f39] shrink-0"><Minus size={13} /></button>
+              <Volume2 size={15} className="text-[var(--pnl-sub)] shrink-0" />
+              <button onClick={() => mudarVol(-5)} className="w-6 h-6 grid place-items-center rounded-md border border-[var(--pnl-border)] shrink-0"><Minus size={13} /></button>
               <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvo() }), 250); }} className="flex-1 accent-[#1db954]" />
-              <button onClick={() => mudarVol(5)} className="w-6 h-6 grid place-items-center rounded-md border border-[#2a2f39] shrink-0"><Plus size={13} /></button>
-              <b className="text-xs text-[#9aa3b2] w-9 text-right tabular-nums">{vol}%</b>
+              <button onClick={() => mudarVol(5)} className="w-6 h-6 grid place-items-center rounded-md border border-[var(--pnl-border)] shrink-0"><Plus size={13} /></button>
+              <b className="text-xs text-[var(--pnl-sub)] w-9 text-right tabular-nums">{vol}%</b>
             </div>
             {nomePlaylist && <div className="text-[11px] text-[#1db954] truncate flex items-center gap-1"><ListMusic size={11} /> {nomePlaylist}</div>}
             {favs.length > 0 && (
               <div className="flex gap-1.5 overflow-x-auto -mx-0.5 px-0.5 pb-0.5">
                 {favs.map((f) => (
-                  <button key={f.uri} onClick={() => void tocar(f.uri)} title={f.name} className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-[#20242c] border grid place-items-center" style={{ borderColor: ctxUri === f.uri ? "#1db954" : "#2a2f39" }}>
-                    {f.image ? <img src={f.image} alt="" className="w-full h-full object-cover" /> : <ListMusic size={14} className="text-[#6f7889]" />}
+                  <button key={f.uri} onClick={() => void tocar(f.uri)} title={f.name} className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-[var(--pnl-box2)] border grid place-items-center" style={{ borderColor: ctxUri === f.uri ? "#1db954" : "var(--pnl-border)" }}>
+                    {f.image ? <img src={f.image} alt="" className="w-full h-full object-cover" /> : <ListMusic size={14} className="text-[var(--pnl-faint)]" />}
                   </button>
                 ))}
               </div>
             )}
-            <button onClick={() => void abrirDrawer()} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2 text-[12px] font-bold flex items-center justify-center gap-1.5 shrink-0"><ListMusic size={14} /> Playlists & busca</button>
+            <button onClick={() => void abrirDrawer()} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] py-2 text-[12px] font-bold flex items-center justify-center gap-1.5 shrink-0"><ListMusic size={14} /> Playlists & busca</button>
             {drawer && (
-              <div className="flex flex-col gap-2 border-t border-[#222730] pt-2 min-h-0">
+              <div className="flex flex-col gap-2 border-t border-[var(--pnl-border)] pt-2 min-h-0">
                 <div className="flex gap-1.5">
-                  <input value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void buscar(); }} placeholder="buscar música, álbum, playlist" className="flex-1 h-8 rounded-lg bg-[#1b1e25] border border-[#2a2f39] px-2 text-[12px] outline-none" />
-                  <button onClick={() => void buscar()} className="w-8 h-8 grid place-items-center rounded-lg border border-[#2a2f39] shrink-0"><Search size={14} /></button>
-                  <button onClick={tocarAleatorio} title="Tocar aleatório" className="w-8 h-8 grid place-items-center rounded-lg border border-[#2a2f39] shrink-0"><Shuffle size={14} /></button>
+                  <input value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void buscar(); }} placeholder="buscar música, álbum, playlist" className="flex-1 h-8 rounded-lg bg-[var(--pnl-box)] border border-[var(--pnl-border)] px-2 text-[12px] outline-none" />
+                  <button onClick={() => void buscar()} className="w-8 h-8 grid place-items-center rounded-lg border border-[var(--pnl-border)] shrink-0"><Search size={14} /></button>
+                  <button onClick={tocarAleatorio} title="Tocar aleatório" className="w-8 h-8 grid place-items-center rounded-lg border border-[var(--pnl-border)] shrink-0"><Shuffle size={14} /></button>
                 </div>
                 <div className="max-h-44 overflow-auto flex flex-col gap-1 -mr-1 pr-1">
                   {(resultados.length ? resultados : playlists.map((p) => ({ tipo: "playlist", nome: p.name, sub: p.owner?.display_name || "", uri: p.uri, img: p.images?.slice(-1)[0]?.url }))).map((it: any, i: number) => (
-                    <button key={it.uri + i} onClick={() => tocarItem(it)} className="flex items-center gap-2 text-left rounded-lg hover:bg-[#1b1e25] px-1.5 py-1">
-                      <div className="w-8 h-8 rounded bg-[#20242c] overflow-hidden shrink-0 grid place-items-center">{it.img ? <img src={it.img} alt="" className="w-full h-full object-cover" /> : <Music size={12} className="text-[#6f7889]" />}</div>
-                      <div className="min-w-0 flex-1"><div className="text-[12px] font-semibold truncate">{it.nome}</div><div className="text-[10px] text-[#6f7889] truncate">{it.tipo} · {it.sub}</div></div>
+                    <button key={it.uri + i} onClick={() => tocarItem(it)} className="flex items-center gap-2 text-left rounded-lg hover:bg-[var(--pnl-box)] px-1.5 py-1">
+                      <div className="w-8 h-8 rounded bg-[var(--pnl-box2)] overflow-hidden shrink-0 grid place-items-center">{it.img ? <img src={it.img} alt="" className="w-full h-full object-cover" /> : <Music size={12} className="text-[var(--pnl-faint)]" />}</div>
+                      <div className="min-w-0 flex-1"><div className="text-[12px] font-semibold truncate">{it.nome}</div><div className="text-[10px] text-[var(--pnl-faint)] truncate">{it.tipo} · {it.sub}</div></div>
                     </button>
                   ))}
                 </div>
@@ -334,13 +340,13 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
             {reservasView.length === 0 ? (
               data.proximaReserva ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-center px-3 gap-2">
-                  <div className="text-sm text-[#5c6373]">{isHoje ? "Sem reservas pro restante do turno." : "Sem reservas nesse dia."}</div>
-                  <button onClick={() => onDataSel(data.proximaReserva!.data)} className="w-full rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2.5 text-left hover:border-[#e3a63c]">
-                    <div className="text-[10px] uppercase tracking-wide font-bold text-[#6f7889] mb-1">Próxima reserva · toque pra ver o dia</div>
+                  <div className="text-sm text-[var(--pnl-faint)]">{isHoje ? "Sem reservas pro restante do turno." : "Sem reservas nesse dia."}</div>
+                  <button onClick={() => onDataSel(data.proximaReserva!.data)} className="w-full rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] px-3 py-2.5 text-left hover:border-[#e3a63c]">
+                    <div className="text-[10px] uppercase tracking-wide font-bold text-[var(--pnl-faint)] mb-1">Próxima reserva · toque pra ver o dia</div>
                     <div className="flex items-center gap-2">
                       <span className="font-extrabold tabular-nums text-[15px]">{data.proximaReserva.horario || "--:--"}</span>
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#e3a63c22", color: "#e3a63c" }}>{labelData(data.proximaReserva.data, hoje)}{data.proximaReserva.turno ? ` · ${data.proximaReserva.turno}` : ""}</span>
-                      <span className="ml-auto flex items-center gap-1 text-[12px] text-[#9aa3b2]"><Users size={12} />{data.proximaReserva.pessoas || "?"}</span>
+                      <span className="ml-auto flex items-center gap-1 text-[12px] text-[var(--pnl-sub)]"><Users size={12} />{data.proximaReserva.pessoas || "?"}</span>
                     </div>
                     <div className="text-[13px] font-semibold truncate mt-0.5">{data.proximaReserva.nome || "Reserva"}</div>
                   </button>
@@ -352,21 +358,21 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                 {reservasView.map((r) => {
                   const rel = relReserva(r);
                   return (
-                    <div key={r.id} className="rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2">
+                    <div key={r.id} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] px-3 py-2">
                       <div className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: RESERVA_COR[r.status || ""] || "#9aa3b2" }} />
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: RESERVA_COR[r.status || ""] || "var(--pnl-sub)" }} />
                         <span className="font-extrabold tabular-nums text-[15px]">{r.horario || "--:--"}</span>
                         {rel.t && <span className="text-[11px] font-bold" style={{ color: rel.c }}>{rel.t}</span>}
-                        <span className="ml-auto flex items-center gap-1 text-[12px] text-[#9aa3b2]"><Users size={12} />{r.pessoas || "?"}</span>
+                        <span className="ml-auto flex items-center gap-1 text-[12px] text-[var(--pnl-sub)]"><Users size={12} />{r.pessoas || "?"}</span>
                       </div>
                       <div className="text-[13px] font-semibold truncate mt-0.5">{r.nome || "Reserva"}</div>
-                      {r.mesas && <div className="text-[11px] text-[#6f7889] truncate">{r.mesas}</div>}
+                      {r.mesas && <div className="text-[11px] text-[var(--pnl-faint)] truncate">{r.mesas}</div>}
                     </div>
                   );
                 })}
               </div>
             )}
-            {reservaAtiva && <button onClick={novaReserva} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2.5 text-[13px] font-bold shrink-0 flex items-center justify-center gap-1.5"><Plus size={15} /> Nova reserva</button>}
+            {reservaAtiva && <button onClick={novaReserva} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] py-2.5 text-[13px] font-bold shrink-0 flex items-center justify-center gap-1.5"><Plus size={15} /> Nova reserva</button>}
           </div>
 
           {/* FREELAS & TURNOS */}
@@ -378,21 +384,21 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                   <div key={s.id} className="rounded-xl border px-3 py-2" style={{ borderColor: "#1e4a2e", background: "#13241a" }}>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded" style={{ background: "#1db95422", color: "#1db954" }}>EM TURNO</span>
-                      <span className="ml-auto text-[12px] tabular-nums text-[#9aa3b2]">desde {s.entrada || "--:--"}</span>
+                      <span className="ml-auto text-[12px] tabular-nums text-[var(--pnl-sub)]">desde {s.entrada || "--:--"}</span>
                     </div>
                     <div className="text-[13px] font-semibold truncate mt-0.5">{s.nome || "Freela"}</div>
-                    {s.area && <div className="text-[11px] text-[#6f7889] truncate">{s.area}</div>}
+                    {s.area && <div className="text-[11px] text-[var(--pnl-faint)] truncate">{s.area}</div>}
                   </div>
                 ))}
                 {data.freelasProgramados.map((s) => (
-                  <div key={s.id} className="rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2">
+                  <div key={s.id} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] px-3 py-2">
                     <div className="flex items-center gap-2">
-                      <Clock size={12} className="text-[#6f7889]" />
+                      <Clock size={12} className="text-[var(--pnl-faint)]" />
                       <span className="font-extrabold tabular-nums text-[14px]">{s.entradaPrevista || "--:--"}{s.saidaPrevista ? `–${s.saidaPrevista}` : ""}</span>
                       <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#4b9bf022", color: "#4b9bf0" }}>programado</span>
                     </div>
                     <div className="text-[13px] font-semibold truncate mt-0.5">{s.nome || "Freela"}</div>
-                    {s.area && <div className="text-[11px] text-[#6f7889] truncate">{s.area}</div>}
+                    {s.area && <div className="text-[11px] text-[var(--pnl-faint)] truncate">{s.area}</div>}
                     {freelaAtivo && <button onClick={() => abrirTurno(s.id)} disabled={abrindoId === s.id} className="mt-1.5 w-full rounded-lg bg-[#4b9bf0] text-[#04101f] py-1.5 text-[12px] font-extrabold disabled:opacity-50">{abrindoId === s.id ? "abrindo…" : "Abrir turno"}</button>}
                   </div>
                 ))}
@@ -406,22 +412,22 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
             <div className="flex flex-wrap gap-1">
               {AREAS.map((a) => {
                 const on = chkAreas.includes(a);
-                return <button key={a} onClick={() => toggleArea(a)} className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border" style={{ borderColor: on ? "#e3a63c" : "#2a2f39", background: on ? "#e3a63c22" : "transparent", color: on ? "#e3a63c" : "#6f7889" }}>{a}</button>;
+                return <button key={a} onClick={() => toggleArea(a)} className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border" style={{ borderColor: on ? "#e3a63c" : "var(--pnl-border)", background: on ? "#e3a63c22" : "transparent", color: on ? "#e3a63c" : "var(--pnl-faint)" }}>{a}</button>;
               })}
             </div>
             {checklistsView.length === 0 ? <Vazio txt={chkAreas.length ? "Sem checklists nas áreas escolhidas" : isHoje ? "Sem checklists pra hoje" : "Sem checklists nesse dia"} /> : (
               <div className={listCls}>
                 {checklistsView.map((c) => {
-                  const estilo = { borderColor: c.completo ? "#1e4a2e" : c.atrasado ? "#5a2320" : "#242a33", background: c.completo ? "#13241a" : c.atrasado ? "#241414" : "#1b1e25" };
+                  const estilo = { borderColor: c.completo ? "#1e4a2e" : c.atrasado ? "#5a2320" : "var(--pnl-border)", background: c.completo ? "#13241a" : c.atrasado ? "#241414" : "var(--pnl-box)" };
                   const inner = (
                     <>
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-[13px] truncate flex-1">{c.nome}</span>
                         <span className="font-extrabold tabular-nums text-[13px]" style={{ color: c.completo ? "#1db954" : c.atrasado ? "#f06b60" : "#e3a63c" }}>{c.pct}%</span>
                       </div>
-                      <div className="h-1.5 rounded bg-[#2b3038] overflow-hidden mt-1.5"><div className="h-full rounded" style={{ width: `${c.pct}%`, background: c.completo ? "#1db954" : c.atrasado ? "#f06b60" : "#e3a63c" }} /></div>
-                      <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#6f7889]">
-                        {c.turno && <span className="font-semibold" style={{ color: "#9aa3b2" }}>{TURNO_LABEL[c.turno] || c.turno}</span>}
+                      <div className="h-1.5 rounded bg-[var(--pnl-track)] overflow-hidden mt-1.5"><div className="h-full rounded" style={{ width: `${c.pct}%`, background: c.completo ? "#1db954" : c.atrasado ? "#f06b60" : "#e3a63c" }} /></div>
+                      <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[var(--pnl-faint)]">
+                        {c.turno && <span className="font-semibold" style={{ color: "var(--pnl-sub)" }}>{TURNO_LABEL[c.turno] || c.turno}</span>}
                         {c.hora && <span className="flex items-center gap-0.5"><Clock size={10} />{c.hora}</span>}
                         {c.atrasado && <span className="ml-auto font-extrabold" style={{ color: "#f06b60" }}>atrasado</span>}
                         {c.completo && <span className="ml-auto font-extrabold" style={{ color: "#1db954" }}>✓ ok</span>}
@@ -440,13 +446,13 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
           <div className={col}>
             <ColHead ic={<MessageSquare size={15} />} cor="#25d366" title="WhatsApp" tag={data.wa.total ? `${data.wa.total}` : undefined} />
             {waNumeros && waNumeros.length > 1 && (
-              <select value={waNumeroSel || ""} onChange={(e) => onWaNumero?.(e.target.value)} className="w-full h-8 rounded-lg bg-[#1b1e25] border border-[#2a2f39] text-[12px] px-2 text-[#eef1f5] outline-none">
+              <select value={waNumeroSel || ""} onChange={(e) => onWaNumero?.(e.target.value)} className="w-full h-8 rounded-lg bg-[var(--pnl-box)] border border-[var(--pnl-border)] text-[12px] px-2 text-[var(--pnl-text)] outline-none">
                 <option value="">Todos os números</option>
                 {waNumeros.map((n) => <option key={n.id} value={n.id}>{n.nome}</option>)}
               </select>
             )}
             {waAtivo && agindoComo && (
-              <div className="flex items-center gap-1.5 text-[11px]"><span className="text-[#6f7889]">respondendo como</span><b className="text-[#25d366]">{agindoComo.nome}</b><button onClick={() => setAgindoComo(null)} className="text-[#6f7889] underline ml-auto">trocar</button></div>
+              <div className="flex items-center gap-1.5 text-[11px]"><span className="text-[var(--pnl-faint)]">respondendo como</span><b className="text-[#25d366]">{agindoComo.nome}</b><button onClick={() => setAgindoComo(null)} className="text-[var(--pnl-faint)] underline ml-auto">trocar</button></div>
             )}
             {data.wa.list.length === 0 ? <Vazio txt="Tudo respondido 🎉" /> : (
               <div className={listCls}>
@@ -457,16 +463,16 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                         <span className="font-semibold text-[13px] truncate flex-1">{c.nome || c.key}</span>
                         <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#25d36622", color: "#25d366" }}>{c.naoLidas}</span>
                       </div>
-                      <div className="text-[11.5px] text-[#9aa3b2] truncate mt-0.5">{c.preview || "…"}</div>
+                      <div className="text-[11.5px] text-[var(--pnl-sub)] truncate mt-0.5">{c.preview || "…"}</div>
                     </>
                   );
                   return waAtivo
-                    ? <button key={c.key} onClick={() => void abrirConversa(c)} className="rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2 text-left w-full hover:border-[#25d366]">{inner}</button>
-                    : <div key={c.key} className="rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2">{inner}</div>;
+                    ? <button key={c.key} onClick={() => void abrirConversa(c)} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] px-3 py-2 text-left w-full hover:border-[#25d366]">{inner}</button>
+                    : <div key={c.key} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] px-3 py-2">{inner}</div>;
                 })}
               </div>
             )}
-            {!waAtivo && <button onClick={() => setGate(true)} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2.5 text-[13px] font-bold shrink-0">Abrir inbox</button>}
+            {!waAtivo && <button onClick={() => setGate(true)} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-box)] py-2.5 text-[13px] font-bold shrink-0">Abrir inbox</button>}
           </div>
         </div>
       </div>
@@ -474,14 +480,14 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       {/* Modal: quem está respondendo? (estação) */}
       {identCont && (
         <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-6" onClick={() => setIdentCont(null)}>
-          <div className="bg-[#1b1e25] border border-[#2a2f39] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--pnl-box)] border border-[var(--pnl-border)] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
             <div className="font-extrabold text-lg mb-1 text-center">Quem está respondendo?</div>
-            <p className="text-[12px] text-[#9aa3b2] mb-3 text-center">A ação fica registrada no seu nome.</p>
+            <p className="text-[12px] text-[var(--pnl-sub)] mb-3 text-center">A ação fica registrada no seu nome.</p>
             <div className="flex flex-col gap-1.5 max-h-72 overflow-auto">
-              {(estacaoUsuarios || []).map((u) => <button key={u.id} onClick={() => { setAgindoComo(u); const c = identCont; setIdentCont(null); c?.(u); }} className="rounded-xl border border-[#2a2f39] bg-[#15171c] py-2.5 text-sm font-bold hover:border-[#25d366]">{u.nome}</button>)}
-              {(estacaoUsuarios || []).length === 0 && <div className="text-center text-[13px] text-[#6f7889] py-4">Nenhum usuário habilitado nesta estação. Configure em Estações do Painel.</div>}
+              {(estacaoUsuarios || []).map((u) => <button key={u.id} onClick={() => { setAgindoComo(u); const c = identCont; setIdentCont(null); c?.(u); }} className="rounded-xl border border-[var(--pnl-border)] bg-[var(--pnl-col)] py-2.5 text-sm font-bold hover:border-[#25d366]">{u.nome}</button>)}
+              {(estacaoUsuarios || []).length === 0 && <div className="text-center text-[13px] text-[var(--pnl-faint)] py-4">Nenhum usuário habilitado nesta estação. Configure em Estações do Painel.</div>}
             </div>
-            <button onClick={() => setIdentCont(null)} className="mt-3 w-full text-[12px] text-[#6f7889] underline">cancelar</button>
+            <button onClick={() => setIdentCont(null)} className="mt-3 w-full text-[12px] text-[var(--pnl-faint)] underline">cancelar</button>
           </div>
         </div>
       )}
@@ -489,23 +495,23 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       {/* Conversa aberta (estação) */}
       {conv && (
         <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-4 sm:p-6" onClick={() => setConv(null)}>
-          <div className="bg-[#15171c] border border-[#2a2f39] rounded-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 p-3 border-b border-[#222730]">
+          <div className="bg-[var(--pnl-col)] border border-[var(--pnl-border)] rounded-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 p-3 border-b border-[var(--pnl-border)]">
               <div className="w-8 h-8 rounded-full bg-[#25d36622] text-[#25d366] grid place-items-center shrink-0"><MessageSquare size={16} /></div>
-              <div className="min-w-0 flex-1"><div className="font-bold truncate">{conv.nome}</div><div className="text-[11px] text-[#6f7889]">respondendo como {agindoComo?.nome}</div></div>
-              <button onClick={() => setConv(null)} className="text-[#9aa3b2] shrink-0"><X size={18} /></button>
+              <div className="min-w-0 flex-1"><div className="font-bold truncate">{conv.nome}</div><div className="text-[11px] text-[var(--pnl-faint)]">respondendo como {agindoComo?.nome}</div></div>
+              <button onClick={() => setConv(null)} className="text-[var(--pnl-sub)] shrink-0"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-auto p-3 flex flex-col gap-1.5">
-              {carregandoThread ? <div className="text-center text-[13px] text-[#6f7889] py-6">carregando conversa…</div>
-                : thread.length === 0 ? <div className="text-center text-[13px] text-[#6f7889] py-6">sem mensagens recentes</div>
+              {carregandoThread ? <div className="text-center text-[13px] text-[var(--pnl-faint)] py-6">carregando conversa…</div>
+                : thread.length === 0 ? <div className="text-center text-[13px] text-[var(--pnl-faint)] py-6">sem mensagens recentes</div>
                   : thread.map((m, i) => (
-                    <div key={m.id || i} className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-[13px] ${m.direcao === "out" ? "self-end bg-[#114b32] text-[#eafff3]" : "self-start bg-[#1b1e25] text-[#eef1f5]"}`}>
+                    <div key={m.id || i} className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-[13px] ${m.direcao === "out" ? "self-end bg-[#114b32] text-[#eafff3]" : "self-start bg-[var(--pnl-box)] text-[var(--pnl-text)]"}`}>
                       <div className="whitespace-pre-wrap break-words">{m.texto || (m.tipo ? `[${m.tipo}]` : "")}</div>
                     </div>
                   ))}
             </div>
-            <div className="p-3 border-t border-[#222730] flex items-end gap-2">
-              <textarea value={resp} onChange={(e) => setResp(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviarResp(); } }} rows={1} placeholder="escreva a resposta…" className="flex-1 resize-none rounded-xl bg-[#1b1e25] border border-[#2a2f39] px-3 py-2 text-sm outline-none max-h-28" />
+            <div className="p-3 border-t border-[var(--pnl-border)] flex items-end gap-2">
+              <textarea value={resp} onChange={(e) => setResp(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviarResp(); } }} rows={1} placeholder="escreva a resposta…" className="flex-1 resize-none rounded-xl bg-[var(--pnl-box)] border border-[var(--pnl-border)] px-3 py-2 text-sm outline-none max-h-28" />
               <button onClick={() => void enviarResp()} disabled={enviando || !resp.trim()} className="w-10 h-10 grid place-items-center rounded-full bg-[#25d366] text-[#04170c] disabled:opacity-40 shrink-0"><Send size={18} /></button>
             </div>
           </div>
@@ -515,23 +521,23 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       {/* Checklist aberto (estação) */}
       {chkAberto && (
         <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-4 sm:p-6" onClick={() => setChkAberto(null)}>
-          <div className="bg-[#15171c] border border-[#2a2f39] rounded-2xl w-full max-w-md flex flex-col" style={{ maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 p-3 border-b border-[#222730]">
+          <div className="bg-[var(--pnl-col)] border border-[var(--pnl-border)] rounded-2xl w-full max-w-md flex flex-col" style={{ maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 p-3 border-b border-[var(--pnl-border)]">
               <div className="w-8 h-8 rounded-lg bg-[#e3a63c22] text-[#e3a63c] grid place-items-center shrink-0"><CheckSquare size={16} /></div>
-              <div className="min-w-0 flex-1"><div className="font-bold truncate">{chkAberto.nome}</div><div className="text-[11px] text-[#6f7889]">preenchendo como {agindoComo?.nome} · {chkItens.filter((i) => i.feito).length}/{chkItens.length}</div></div>
-              <button onClick={() => setChkAberto(null)} className="text-[#9aa3b2] shrink-0"><X size={18} /></button>
+              <div className="min-w-0 flex-1"><div className="font-bold truncate">{chkAberto.nome}</div><div className="text-[11px] text-[var(--pnl-faint)]">preenchendo como {agindoComo?.nome} · {chkItens.filter((i) => i.feito).length}/{chkItens.length}</div></div>
+              <button onClick={() => setChkAberto(null)} className="text-[var(--pnl-sub)] shrink-0"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-auto p-3 flex flex-col gap-1.5">
-              {carregandoChk ? <div className="text-center text-[13px] text-[#6f7889] py-6">carregando itens…</div>
-                : chkItens.length === 0 ? <div className="text-center text-[13px] text-[#6f7889] py-6">sem itens</div>
+              {carregandoChk ? <div className="text-center text-[13px] text-[var(--pnl-faint)] py-6">carregando itens…</div>
+                : chkItens.length === 0 ? <div className="text-center text-[13px] text-[var(--pnl-faint)] py-6">sem itens</div>
                   : chkItens.map((it) => (
-                    <button key={it.id} onClick={() => void marcarChkItem(it)} className="flex items-start gap-2.5 text-left rounded-xl border px-3 py-2" style={{ borderColor: it.feito ? "#1e4a2e" : "#242a33", background: it.feito ? "#13241a" : "#1b1e25" }}>
+                    <button key={it.id} onClick={() => void marcarChkItem(it)} className="flex items-start gap-2.5 text-left rounded-xl border px-3 py-2" style={{ borderColor: it.feito ? "#1e4a2e" : "var(--pnl-border)", background: it.feito ? "#13241a" : "var(--pnl-box)" }}>
                       <span className="w-5 h-5 rounded-md grid place-items-center shrink-0 mt-0.5 border" style={{ borderColor: it.feito ? "#1db954" : "#3a4150", background: it.feito ? "#1db954" : "transparent", color: "#04170c" }}>{it.feito && <Check size={14} />}</span>
                       <span className="min-w-0 flex-1">
-                        <span className={`text-[13px] ${it.feito ? "text-[#9aa3b2] line-through" : "font-semibold"}`}>{it.texto}</span>
+                        <span className={`text-[13px] ${it.feito ? "text-[var(--pnl-sub)] line-through" : "font-semibold"}`}>{it.texto}</span>
                         {it.obrigatorio && <span className="ml-1 text-[10px] font-bold text-[#f0a860]">obrigatório</span>}
-                        {it.exigeFoto && <span className="ml-1 text-[10px] text-[#6f7889]">(foto só pelo celular)</span>}
-                        {it.observacao && <span className="block text-[11px] text-[#6f7889] mt-0.5">obs: {it.observacao}</span>}
+                        {it.exigeFoto && <span className="ml-1 text-[10px] text-[var(--pnl-faint)]">(foto só pelo celular)</span>}
+                        {it.observacao && <span className="block text-[11px] text-[var(--pnl-faint)] mt-0.5">obs: {it.observacao}</span>}
                         {it.feito && it.feitoPorNome && <span className="block text-[10px] text-[#4e8d63] mt-0.5">✓ {it.feitoPorNome}</span>}
                       </span>
                     </button>
@@ -544,21 +550,21 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       {/* Nova reserva (estação) */}
       {resvForm && (
         <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-6" onClick={() => setResvForm(null)}>
-          <div className="bg-[#1b1e25] border border-[#2a2f39] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--pnl-box)] border border-[var(--pnl-border)] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-1"><Utensils size={18} className="text-[#e3a63c]" /><div className="font-extrabold text-lg">Nova reserva</div></div>
-            <p className="text-[12px] text-[#9aa3b2] mb-3">registrando como {agindoComo?.nome}</p>
+            <p className="text-[12px] text-[var(--pnl-sub)] mb-3">registrando como {agindoComo?.nome}</p>
             <div className="flex flex-col gap-2">
-              <label className="text-[11px] text-[#9aa3b2] -mb-1">Dia</label>
-              <input type="date" value={resvForm.data} onChange={(e) => setResvForm({ ...resvForm, data: e.target.value })} className="h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" />
+              <label className="text-[11px] text-[var(--pnl-sub)] -mb-1">Dia</label>
+              <input type="date" value={resvForm.data} onChange={(e) => setResvForm({ ...resvForm, data: e.target.value })} className="h-10 rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 text-sm outline-none" />
               <div className="grid grid-cols-2 gap-2">
-                <div><label className="text-[11px] text-[#9aa3b2]">Horário</label><input type="time" value={resvForm.horario} onChange={(e) => setResvForm({ ...resvForm, horario: e.target.value })} className="w-full h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" /></div>
-                <div><label className="text-[11px] text-[#9aa3b2]">Pessoas</label><input type="number" min={1} value={resvForm.pessoas} onChange={(e) => setResvForm({ ...resvForm, pessoas: e.target.value })} className="w-full h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" /></div>
+                <div><label className="text-[11px] text-[var(--pnl-sub)]">Horário</label><input type="time" value={resvForm.horario} onChange={(e) => setResvForm({ ...resvForm, horario: e.target.value })} className="w-full h-10 rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 text-sm outline-none" /></div>
+                <div><label className="text-[11px] text-[var(--pnl-sub)]">Pessoas</label><input type="number" min={1} value={resvForm.pessoas} onChange={(e) => setResvForm({ ...resvForm, pessoas: e.target.value })} className="w-full h-10 rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 text-sm outline-none" /></div>
               </div>
-              <label className="text-[11px] text-[#9aa3b2] -mb-1">Nome do cliente</label>
-              <input value={resvForm.nome} onChange={(e) => setResvForm({ ...resvForm, nome: e.target.value })} placeholder="quem reservou" className="h-10 rounded-xl bg-[#15171c] border border-[#2a2f39] px-3 text-sm outline-none" />
+              <label className="text-[11px] text-[var(--pnl-sub)] -mb-1">Nome do cliente</label>
+              <input value={resvForm.nome} onChange={(e) => setResvForm({ ...resvForm, nome: e.target.value })} placeholder="quem reservou" className="h-10 rounded-xl bg-[var(--pnl-col)] border border-[var(--pnl-border)] px-3 text-sm outline-none" />
             </div>
             <div className="flex gap-2 mt-4">
-              <button onClick={() => setResvForm(null)} className="flex-1 rounded-xl border border-[#2a2f39] py-2.5 text-sm font-bold">Cancelar</button>
+              <button onClick={() => setResvForm(null)} className="flex-1 rounded-xl border border-[var(--pnl-border)] py-2.5 text-sm font-bold">Cancelar</button>
               <button onClick={() => void salvarReserva()} disabled={salvandoResv} className="flex-1 rounded-xl py-2.5 text-sm font-extrabold text-[#1a1205] disabled:opacity-50" style={{ background: "#e3a63c" }}>{salvandoResv ? "salvando…" : "Salvar"}</button>
             </div>
           </div>
@@ -568,10 +574,10 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       {/* Portão */}
       {gate && (
         <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-6" onClick={() => setGate(false)}>
-          <div className="bg-[#1b1e25] border border-[#2a2f39] rounded-2xl max-w-sm w-full p-6 text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--pnl-box)] border border-[var(--pnl-border)] rounded-2xl max-w-sm w-full p-6 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="w-14 h-14 rounded-2xl grid place-items-center mx-auto mb-3" style={{ background: "#3a2e17", color: "#e3a63c" }}><Lock size={26} /></div>
             <div className="font-extrabold text-lg mb-1">Ação protegida</div>
-            <p className="text-sm text-[#9aa3b2] mb-4">Este painel é só de visualização. Pra responder ou lançar, entre com o <b>seu login</b> no planejamento.app pelo celular ou navegador.</p>
+            <p className="text-sm text-[var(--pnl-sub)] mb-4">Este painel é só de visualização. Pra responder ou lançar, entre com o <b>seu login</b> no planejamento.app pelo celular ou navegador.</p>
             <div className="text-[13px] font-bold">admin.planejamento.app</div>
             <button className="mt-4 w-full rounded-xl py-3 font-extrabold text-[#1a1205]" style={{ background: "#e3a63c" }} onClick={() => setGate(false)}>Entendi</button>
           </div>

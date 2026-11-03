@@ -133,6 +133,17 @@ function Editor({ est, restaurants, numeros, pessoas, onCancel, onSaved }: { est
 
       {f.restaurantId && (
         <>
+          {/* Tema */}
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Tema da parede</div>
+            <div className="flex gap-1.5">
+              {([["escuro", "Escuro"], ["claro", "Claro"]] as const).map(([v, l]) => {
+                const on = (f.tema || "escuro") === v;
+                return <button key={v} onClick={() => set({ tema: v })} className="text-xs font-semibold px-3 py-1 rounded-full border" style={{ borderColor: on ? "#6366f1" : "", background: on ? "#6366f122" : "", color: on ? "#6366f1" : "" }}>{l}</button>;
+              })}
+            </div>
+          </div>
+
           {/* Números de WhatsApp */}
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Números de WhatsApp na estação <span className="normal-case text-gray-400">(nenhum = todos do restaurante)</span></div>

@@ -13,6 +13,7 @@ export type EstacaoToken = {
   nome: string;          // rótulo da estação (ex.: "Parede do salão")
   restaurantId: string;
   restaurantNome: string;
+  tema?: "escuro" | "claro";                     // tema da parede (default escuro)
   whatsappNumeroIds?: string[];                 // números que a estação mostra (vazio = todos do rest)
   checklistAreas?: string[];                     // áreas de checklist exibidas (vazio = todas)
   usuariosIds?: string[];                        // pessoas que podem AGIR pela estação (allow-list)

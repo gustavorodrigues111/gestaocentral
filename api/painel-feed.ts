@@ -121,7 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const waTotal = waList.reduce((s, c) => s + c.naoLidas, 0);
 
     res.status(200).json({
-      ok: true, rid, nome, ts: Date.now(), dataSel,
+      ok: true, rid, nome, ts: Date.now(), dataSel, tema: est.tema === "claro" ? "claro" : "escuro",
       reservas, proximaReserva, freelasAbertos, freelasProgramados, checklists,
       waNumeros, waNumeroSel,
       wa: { list: waList.map((c) => ({ key: c.key, nome: c.nome, naoLidas: c.naoLidas, preview: c.preview, numeroId: c.numeroId, waId: c.waId })), total: waTotal },
