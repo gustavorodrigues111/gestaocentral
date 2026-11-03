@@ -1,12 +1,13 @@
 // PainelEstacaoPage — a tela de parede (ESTAÇÃO), rota pública /painel-estacao.
-// NÃO tem login de pessoa: a estação carrega só um "código de estação" (token),
-// que vem da URL (?t=...) ou do localStorage (o app Electron grava uma vez), e
-// busca tudo do /api/painel-feed (read-only, escopado a 1 restaurante). Poll a
-// cada 30s. Mesma tela do painel autenticado (<PainelColunas>), dados via feed.
+// NÃO tem login de pessoa: carrega só um "código de estação" (token) da URL
+// (?t=...) ou do localStorage, e busca tudo do /api/painel-feed (read-only,
+// escopado a 1 restaurante). Poll a cada 30s. Suporta navegação de dia e seletor
+// de número do WhatsApp (passados ao feed). Mesma tela do painel autenticado.
 import { useEffect, useState } from "react";
 import { PainelColunas, type PainelData } from "./PainelColunas";
 
 const LS_KEY = "painel_estacao_token";
+function todayYmd(): string { const d = new Date(); const p = (n: number) => (n < 10 ? `0${n}` : `${n}`); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
 
 export function PainelEstacaoPage() {
   const [token, setToken] = useState<string>(() => {
@@ -21,13 +22,18 @@ export function PainelEstacaoPage() {
   const [feed, setFeed] = useState<any>(null);
   const [erro, setErro] = useState("");
   const [ts, setTs] = useState<Date | undefined>(undefined);
+  const [dataSel, setDataSel] = useState<string>(() => todayYmd());
+  const [waSel, setWaSel] = useState<string | null>(null); // null = default (servidor escolhe); "" = todos; <id>
 
   useEffect(() => {
     if (!token) return;
     let stop = false;
     async function tick() {
       try {
-        const r = await fetch(`/api/painel-feed?t=${encodeURIComponent(token)}`);
+        let u = `/api/painel-feed?t=${encodeURIComponent(token)}`;
+        if (dataSel && dataSel !== todayYmd()) u += `&data=${dataSel}`;
+        if (waSel != null) u += `&numero=${encodeURIComponent(waSel === "" ? "__todos__" : waSel)}`;
+        const r = await fetch(u);
         const j = await r.json();
         if (stop) return;
         if (j?.ok) { setFeed(j); setErro(""); setTs(new Date()); }
@@ -37,7 +43,7 @@ export function PainelEstacaoPage() {
     void tick();
     const iv = setInterval(() => void tick(), 30000);
     return () => { stop = true; clearInterval(iv); };
-  }, [token]);
+  }, [token, dataSel, waSel]);
 
   // Sem token → pede o código de estação (setup único na parede).
   if (!token) {
@@ -66,6 +72,17 @@ export function PainelEstacaoPage() {
     );
   }
 
-  const data: PainelData = { nome: feed.nome, reservas: feed.reservas || [], freelasAbertos: feed.freelasAbertos || [], freelasProgramados: feed.freelasProgramados || [], checklists: feed.checklists || [], wa: feed.wa || { list: [], total: 0 } };
-  return <PainelColunas rid={feed.rid} data={data} atualizadoEm={ts} />;
+  const data: PainelData = { nome: feed.nome, reservas: feed.reservas || [], proximaReserva: feed.proximaReserva, freelasAbertos: feed.freelasAbertos || [], freelasProgramados: feed.freelasProgramados || [], checklists: feed.checklists || [], wa: feed.wa || { list: [], total: 0 } };
+  return (
+    <PainelColunas
+      rid={feed.rid}
+      data={data}
+      atualizadoEm={ts}
+      dataSel={dataSel}
+      onDataSel={setDataSel}
+      waNumeros={feed.waNumeros || []}
+      waNumeroSel={feed.waNumeroSel || ""}
+      onWaNumero={(id) => setWaSel(id)}
+    />
+  );
 }

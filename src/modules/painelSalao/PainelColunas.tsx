@@ -1,21 +1,25 @@
 // PainelColunas — a tela do Painel do Salão (apresentação pura). Recebe os dados
-// já normalizados (via props) e cuida de tudo que é relativo ao RELÓGIO (delta
-// das reservas, atraso dos checklists, "somem 2h depois") + o controle da MÚSICA
-// (direto no /api/spotify-control, só isso é interativo). As ações caem num
-// "portão" pedindo login pessoal. Usado por duas fontes de dados:
-//   - PainelSalaoPage  → navegador autenticado, lê Firestore ao vivo
-//   - PainelEstacaoPage → estação de parede, lê do feed do servidor (token)
+// já normalizados (via props) e cuida do que é relativo ao RELÓGIO (delta das
+// reservas, atraso dos checklists, "somem 2h depois", só quando o dia é HOJE) +
+// o controle da MÚSICA (direto no /api/spotify-control, só isso é interativo).
+// Tem navegação de DIA (hoje → amanhã → …) e seletor de NÚMERO do WhatsApp —
+// ambos controlados pelo container (que refaz a leitura/feed). As ações caem num
+// "portão" pedindo login pessoal. Usado por PainelSalaoPage (navegador) e
+// PainelEstacaoPage (parede, via feed).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 
 export type PReserva = { id: string; horario?: string; status?: string; nome?: string; pessoas?: number; mesas?: string };
 export type PFreelaAberto = { id: string; nome?: string; area?: string; entrada?: string };
 export type PFreelaProg = { id: string; nome?: string; area?: string; entradaPrevista?: string; saidaPrevista?: string };
 export type PChecklist = { id: string; nome?: string; turno?: string; area?: string; hora?: string; pct: number; completo: boolean };
 export type PWaConv = { key: string; nome?: string; naoLidas: number; preview?: string };
+export type PWaNumero = { id: string; nome: string };
+export type PProxReserva = { data: string; horario?: string; turno?: string; nome?: string; pessoas?: number };
 export type PainelData = {
   nome: string;
   reservas: PReserva[];
+  proximaReserva?: PProxReserva | null; // quando não há reserva no dia selecionado
   freelasAbertos: PFreelaAberto[];
   freelasProgramados: PFreelaProg[];
   checklists: PChecklist[];
@@ -28,13 +32,40 @@ async function ctrl(rid: string, action: string, extra: Record<string, unknown> 
 }
 const fmtTime = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const hhmmToMin = (s?: string): number => { if (!s) return -1; const [h, m] = s.split(":").map(Number); return (h || 0) * 60 + (m || 0); };
+function todayYmd(): string { const d = new Date(); const p = (n: number) => (n < 10 ? `0${n}` : `${n}`); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+function ymdAdd(d: string, n: number): string { const dt = new Date(d + "T12:00:00"); dt.setDate(dt.getDate() + n); const p = (x: number) => (x < 10 ? `0${x}` : `${x}`); return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`; }
+const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const AREAS = ["Bar", "Cozinha", "Salão", "Limpeza"];
+const CHK_AREAS_LS = "painel_chk_areas";
+function labelData(d: string, hoje: string): string {
+  if (d === hoje) return "Hoje";
+  if (d === ymdAdd(hoje, 1)) return "Amanhã";
+  const dt = new Date(d + "T12:00:00");
+  return `${DIAS[dt.getDay()]}, ${dt.getDate()} ${MES[dt.getMonth()]}`;
+}
 const RESERVA_COR: Record<string, string> = { confirmada: "#1db954", pendente: "#e3a63c", chegou: "#4b9bf0" };
 const TURNO_LABEL: Record<string, string> = { abertura: "Abertura", meio: "Meio", fechamento: "Fechamento" };
 
-export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: PainelData; atualizadoEm?: Date }) {
+export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero }: {
+  rid: string;
+  data: PainelData;
+  atualizadoEm?: Date;
+  dataSel: string;                       // YYYY-MM-DD do dia em exibição
+  onDataSel: (d: string) => void;        // troca o dia (hoje → amanhã → …)
+  waNumeros?: PWaNumero[];               // números de WhatsApp do restaurante
+  waNumeroSel?: string;                  // "" = todos; <id> = um número
+  onWaNumero?: (id: string) => void;
+}) {
   const [agora, setAgora] = useState(new Date());
   const [gate, setGate] = useState(false);
+  const [chkAreas, setChkAreas] = useState<string[]>(() => { try { const v = localStorage.getItem(CHK_AREAS_LS); return v ? JSON.parse(v) : []; } catch { return []; } });
   useEffect(() => { const t = setInterval(() => setAgora(new Date()), 15000); return () => clearInterval(t); }, []);
+  const hoje = todayYmd();
+  const isHoje = dataSel === hoje;
+  function toggleArea(a: string) {
+    setChkAreas((prev) => { const next = prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]; try { localStorage.setItem(CHK_AREAS_LS, JSON.stringify(next)); } catch { /* */ } return next; });
+  }
 
   // ── Música (ao vivo, interativa) ──
   const [player, setPlayer] = useState<any>(null);
@@ -59,23 +90,25 @@ export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: 
   useEffect(() => { if (!tocando) return; const dur = Number(faixa?.duration_ms) || 0; const t = setInterval(() => setProgress((p) => (dur && p + 1000 > dur ? dur : p + 1000)), 1000); return () => clearInterval(t); }, [tocando, faixa?.duration_ms]);
   async function mus(action: string, extra: Record<string, unknown> = {}) { await ctrl(rid, action, extra); setTimeout(() => void carregarMusica(), 400); }
 
-  // ── Relativos ao relógio ──
+  // ── Relativos ao relógio (só quando o dia é HOJE) ──
   const nowMin = agora.getHours() * 60 + agora.getMinutes();
-  const reservasView = useMemo(() => data.reservas
-    .map((r) => { const min = hhmmToMin(r.horario); return { ...r, _min: min, _delta: min - nowMin }; })
-    .filter((r) => r._delta > -120) // somem 2h após o horário
-    .sort((a, b) => a._min - b._min), [data.reservas, nowMin]);
-  const checklistsView = useMemo(() => data.checklists.map((c) => {
-    const refMin = hhmmToMin(c.hora);
-    const atrasado = !c.completo && refMin >= 0 && nowMin > refMin;
-    return { ...c, atrasado };
-  }), [data.checklists, nowMin]);
+  const reservasView = useMemo(() => {
+    const base = data.reservas.map((r) => { const min = hhmmToMin(r.horario); return { ...r, _min: min, _delta: min - nowMin }; });
+    const filtradas = isHoje ? base.filter((r) => r._delta > -120) : base; // só HOJE some 2h depois
+    return filtradas.sort((a, b) => a._min - b._min);
+  }, [data.reservas, nowMin, isHoje]);
+  const checklistsView = useMemo(() => data.checklists
+    .filter((c) => chkAreas.length === 0 || (c.area && chkAreas.includes(c.area)))
+    .map((c) => {
+      const refMin = hhmmToMin(c.hora);
+      const atrasado = isHoje && !c.completo && refMin >= 0 && nowMin > refMin;
+      return { ...c, atrasado };
+    }), [data.checklists, nowMin, isHoje, chkAreas]);
   const chkCompletos = checklistsView.filter((c) => c.completo).length;
 
-  const dias = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-  const mes = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   const hora = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
   function relReserva(r: { status?: string; _delta: number }): { t: string; c: string } {
+    if (!isHoje) return { t: "", c: "#9aa3b2" };
     if (r.status === "chegou") return { t: "chegou", c: "#4b9bf0" };
     const d = r._delta;
     if (d <= 0) return { t: "agora", c: "#e3a63c" };
@@ -110,12 +143,20 @@ export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: 
             <div className="w-10 h-10 rounded-xl grid place-items-center font-extrabold text-[#1a1205]" style={{ background: "linear-gradient(135deg,#e3a63c,#b9792a)" }}>{(data.nome || "R")[0]}</div>
             <div><div className="font-extrabold text-lg leading-none">{data.nome || "Restaurante"} · Salão</div><div className="text-[11px] text-[#9aa3b2]">Painel operacional{atualizadoEm ? ` · atualizado ${String(atualizadoEm.getHours()).padStart(2, "0")}:${String(atualizadoEm.getMinutes()).padStart(2, "0")}` : ""}</div></div>
           </div>
+
+          {/* Navegação de dia */}
+          <div className="flex items-center gap-1 rounded-2xl border border-[#2a2f39] bg-[#1b1e25] px-1.5 py-1">
+            <button onClick={() => onDataSel(ymdAdd(dataSel, -1))} disabled={isHoje} className="w-7 h-7 grid place-items-center rounded-lg disabled:opacity-30" title="Dia anterior"><ChevronLeft size={16} /></button>
+            <button onClick={() => onDataSel(hoje)} className="min-w-[72px] text-center text-[13px] font-bold px-1" style={{ color: isHoje ? "#eef1f5" : "#e3a63c" }} title="Voltar pra hoje">{labelData(dataSel, hoje)}</button>
+            <button onClick={() => onDataSel(ymdAdd(dataSel, 1))} className="w-7 h-7 grid place-items-center rounded-lg" title="Próximo dia"><ChevronRight size={16} /></button>
+          </div>
+
           <div className="flex gap-2 flex-wrap ml-auto items-center">
             <Kpi ic={<MessageSquare size={15} />} cor="#25d366" v={String(data.wa.total)} l="a responder" />
             <Kpi ic={<CheckSquare size={15} />} cor="#e3a63c" v={`${chkCompletos}/${checklistsView.length}`} l="Checklists" />
             <Kpi ic={<Utensils size={15} />} cor="#e3a63c" v={String(reservasView.length)} l="Reservas" />
             <Kpi ic={<ChefHat size={15} />} cor="#4b9bf0" v={String(data.freelasAbertos.length)} l="Turnos abertos" />
-            <div className="text-right pl-1"><div className="font-extrabold text-2xl tabular-nums leading-none">{hora}</div><div className="text-[11px] text-[#9aa3b2] capitalize">{dias[agora.getDay()].slice(0, 3)}, {agora.getDate()} {mes[agora.getMonth()]}</div></div>
+            <div className="text-right pl-1"><div className="font-extrabold text-2xl tabular-nums leading-none">{hora}</div><div className="text-[11px] text-[#9aa3b2] capitalize">{DIAS[agora.getDay()]}, {agora.getDate()} {MES[agora.getMonth()]}</div></div>
           </div>
         </div>
 
@@ -152,8 +193,23 @@ export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: 
 
           {/* RESERVAS */}
           <div className={col}>
-            <ColHead ic={<Utensils size={15} />} cor="#e3a63c" title="Reservas do turno" tag={reservasView.length ? `${reservasView.length}` : undefined} />
-            {reservasView.length === 0 ? <Vazio txt="Sem reservas pro restante do turno" /> : (
+            <ColHead ic={<Utensils size={15} />} cor="#e3a63c" title={isHoje ? "Reservas do turno" : "Reservas"} tag={reservasView.length ? `${reservasView.length}` : undefined} />
+            {reservasView.length === 0 ? (
+              data.proximaReserva ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center px-3 gap-2">
+                  <div className="text-sm text-[#5c6373]">{isHoje ? "Sem reservas pro restante do turno." : "Sem reservas nesse dia."}</div>
+                  <div className="w-full rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2.5 text-left">
+                    <div className="text-[10px] uppercase tracking-wide font-bold text-[#6f7889] mb-1">Próxima reserva</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold tabular-nums text-[15px]">{data.proximaReserva.horario || "--:--"}</span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#e3a63c22", color: "#e3a63c" }}>{labelData(data.proximaReserva.data, hoje)}{data.proximaReserva.turno ? ` · ${data.proximaReserva.turno}` : ""}</span>
+                      <span className="ml-auto flex items-center gap-1 text-[12px] text-[#9aa3b2]"><Users size={12} />{data.proximaReserva.pessoas || "?"}</span>
+                    </div>
+                    <div className="text-[13px] font-semibold truncate mt-0.5">{data.proximaReserva.nome || "Reserva"}</div>
+                  </div>
+                </div>
+              ) : <Vazio txt={isHoje ? "Sem reservas pro restante do turno" : "Sem reservas nesse dia"} />
+            ) : (
               <div className={listCls}>
                 {reservasView.map((r) => {
                   const rel = relReserva(r);
@@ -162,7 +218,7 @@ export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: 
                       <div className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: RESERVA_COR[r.status || ""] || "#9aa3b2" }} />
                         <span className="font-extrabold tabular-nums text-[15px]">{r.horario || "--:--"}</span>
-                        <span className="text-[11px] font-bold" style={{ color: rel.c }}>{rel.t}</span>
+                        {rel.t && <span className="text-[11px] font-bold" style={{ color: rel.c }}>{rel.t}</span>}
                         <span className="ml-auto flex items-center gap-1 text-[12px] text-[#9aa3b2]"><Users size={12} />{r.pessoas || "?"}</span>
                       </div>
                       <div className="text-[13px] font-semibold truncate mt-0.5">{r.nome || "Reserva"}</div>
@@ -177,7 +233,7 @@ export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: 
           {/* FREELAS & TURNOS */}
           <div className={col}>
             <ColHead ic={<ChefHat size={15} />} cor="#4b9bf0" title="Freelas & Turnos" tag={data.freelasAbertos.length ? `${data.freelasAbertos.length} aberto(s)` : undefined} />
-            {data.freelasAbertos.length === 0 && data.freelasProgramados.length === 0 ? <Vazio txt="Nenhum freela programado hoje" /> : (
+            {data.freelasAbertos.length === 0 && data.freelasProgramados.length === 0 ? <Vazio txt={isHoje ? "Nenhum freela programado hoje" : "Nenhum freela programado nesse dia"} /> : (
               <div className={listCls}>
                 {data.freelasAbertos.map((s) => (
                   <div key={s.id} className="rounded-xl border px-3 py-2" style={{ borderColor: "#1e4a2e", background: "#13241a" }}>
@@ -202,13 +258,18 @@ export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: 
                 ))}
               </div>
             )}
-            <button onClick={() => setGate(true)} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2.5 text-[13px] font-bold shrink-0">Abrir turno</button>
           </div>
 
           {/* CHECKLISTS */}
           <div className={col}>
             <ColHead ic={<CheckSquare size={15} />} cor="#e3a63c" title="Checklists" tag={checklistsView.length ? `${chkCompletos}/${checklistsView.length}` : undefined} />
-            {checklistsView.length === 0 ? <Vazio txt="Sem checklists pra hoje" /> : (
+            <div className="flex flex-wrap gap-1">
+              {AREAS.map((a) => {
+                const on = chkAreas.includes(a);
+                return <button key={a} onClick={() => toggleArea(a)} className="text-[10.5px] font-bold px-2 py-0.5 rounded-full border" style={{ borderColor: on ? "#e3a63c" : "#2a2f39", background: on ? "#e3a63c22" : "transparent", color: on ? "#e3a63c" : "#6f7889" }}>{a}</button>;
+              })}
+            </div>
+            {checklistsView.length === 0 ? <Vazio txt={chkAreas.length ? "Sem checklists nas áreas escolhidas" : isHoje ? "Sem checklists pra hoje" : "Sem checklists nesse dia"} /> : (
               <div className={listCls}>
                 {checklistsView.map((c) => (
                   <div key={c.id} className={`rounded-xl border px-3 py-2 ${c.atrasado ? "animate-pulse" : ""}`} style={{ borderColor: c.completo ? "#1e4a2e" : c.atrasado ? "#5a2320" : "#242a33", background: c.completo ? "#13241a" : c.atrasado ? "#241414" : "#1b1e25" }}>
@@ -232,6 +293,12 @@ export function PainelColunas({ rid, data, atualizadoEm }: { rid: string; data: 
           {/* WHATSAPP */}
           <div className={col}>
             <ColHead ic={<MessageSquare size={15} />} cor="#25d366" title="WhatsApp" tag={data.wa.total ? `${data.wa.total}` : undefined} />
+            {waNumeros && waNumeros.length > 1 && (
+              <select value={waNumeroSel || ""} onChange={(e) => onWaNumero?.(e.target.value)} className="w-full h-8 rounded-lg bg-[#1b1e25] border border-[#2a2f39] text-[12px] px-2 text-[#eef1f5] outline-none">
+                <option value="">Todos os números</option>
+                {waNumeros.map((n) => <option key={n.id} value={n.id}>{n.nome}</option>)}
+              </select>
+            )}
             {data.wa.list.length === 0 ? <Vazio txt="Tudo respondido 🎉" /> : (
               <div className={listCls}>
                 {data.wa.list.map((c) => (
