@@ -42,7 +42,7 @@ export function ProducaoSispPage() {
   const { activeRestaurant, restaurants } = useRestaurant();
   const { can } = useCanAcao(rid);
 
-  const [tab, setTab] = useTabPersistida("producaoSisp_tab", "esteira", ["esteira", "catalogo"] as const);
+  const [tab, setTab] = useTabPersistida("producaoSisp_tab", "operacao", ["operacao", "painel", "config"] as const);
   const [especies, setEspecies] = useState<ProducaoSispEspecie[]>([]);
   const [cortes, setCortes] = useState<ProducaoSispCorte[]>([]);
   const [fornecedores, setFornecedores] = useState<ProducaoSispFornecedor[]>([]);
@@ -122,13 +122,18 @@ export function ProducaoSispPage() {
         </div>
       </div>
 
-      {/* Abas (mobile: pílulas) */}
+      {/* Áreas (permissões próprias via Perfis de Acesso) */}
       <div className="flex gap-2 my-3">
-        <button onClick={() => setTab("esteira")} className={`h-9 px-4 rounded-full text-sm font-medium ${tab === "esteira" ? "bg-sky-600 text-white" : "border border-gray-300 dark:border-gray-600"}`}>Esteira</button>
-        <button onClick={() => setTab("catalogo")} className={`h-9 px-4 rounded-full text-sm font-medium ${tab === "catalogo" ? "bg-sky-600 text-white" : "border border-gray-300 dark:border-gray-600"}`}>Catálogo</button>
+        <button onClick={() => setTab("operacao")} className={`h-9 px-4 rounded-full text-sm font-medium ${tab === "operacao" ? "bg-sky-600 text-white" : "border border-gray-300 dark:border-gray-600"}`}>Operação</button>
+        <button onClick={() => setTab("painel")} className={`h-9 px-4 rounded-full text-sm font-medium ${tab === "painel" ? "bg-sky-600 text-white" : "border border-gray-300 dark:border-gray-600"}`}>Painel</button>
+        <button onClick={() => setTab("config")} className={`h-9 px-4 rounded-full text-sm font-medium ${tab === "config" ? "bg-sky-600 text-white" : "border border-gray-300 dark:border-gray-600"}`}>Config</button>
       </div>
 
-      {tab === "esteira" && (
+      {tab === "painel" && (
+        <PainelTab recebimentos={recebimentos} lotes={lotes} especies={especies} />
+      )}
+
+      {tab === "operacao" && (
         <div className="space-y-5">
           {podeReceber && (
             <button className={`${BTN_PRIMARY} w-full`} onClick={() => setNovoReceb(true)}>
@@ -224,7 +229,7 @@ export function ProducaoSispPage() {
         </div>
       )}
 
-      {tab === "catalogo" && (
+      {tab === "config" && (
         <CatalogoTab
           rid={rid} especies={especies} cortes={cortes} fornecedores={fornecedores} config={config}
           podeEditar={podeCatalogo}
@@ -273,6 +278,126 @@ export function ProducaoSispPage() {
         />
       )}
     </PageContainer>
+  );
+}
+
+// ── Painel: dashboards de recebimento (qualidade/volume) e produção (rendimento) ─
+function PainelTab({ recebimentos, lotes, especies }: {
+  recebimentos: ProducaoSispRecebimento[]; lotes: ProducaoSispLote[];
+  especies: ProducaoSispEspecie[];
+}) {
+  const [sub, setSub] = useTabPersistida("producaoSisp_painel", "receb", ["receb", "prod"] as const);
+  const [fReceForn, setFReceForn] = useState("");
+  const [fReceReceb, setFReceReceb] = useState("");
+  const [fProdEsp, setFProdEsp] = useState("");
+  const [fProdForn, setFProdForn] = useState("");
+  const nomeEsp = (id: string) => especies.find((e) => e.id === id)?.nome || "—";
+  const fornDoReceb = useMemo(() => { const m: Record<string, string> = {}; recebimentos.forEach((r) => { m[r.id] = r.fornecedorNome || "Sem fornecedor"; }); return m; }, [recebimentos]);
+
+  // Recebimento: 1 linha por leva
+  const receRows = useMemo(() => recebimentos.flatMap((r) => (r.itens || []).map((it) => ({
+    recebId: r.id, forn: r.fornecedorNome || "Sem fornecedor", especie: nomeEsp(it.especieId),
+    kg: Number(it.pesoBrutoKg) || 0, caixas: Number(it.qtdCaixas) || 0,
+    conforme: it.conforme !== false, temp: it.temperaturaC == null ? null : Number(it.temperaturaC),
+  }))), [recebimentos, especies]);
+  const receF = useMemo(() => receRows.filter((x) => (!fReceForn || x.forn === fReceForn) && (!fReceReceb || x.recebId === fReceReceb)), [receRows, fReceForn, fReceReceb]);
+  const recKg = receF.reduce((s, x) => s + x.kg, 0);
+  const recCargas = new Set(receF.map((x) => x.recebId)).size;
+  const recCaixas = receF.reduce((s, x) => s + x.caixas, 0);
+  const recConf = receF.filter((x) => x.conforme).length;
+  const recNConf = receF.length - recConf;
+  const recPctConf = receF.length ? Math.round(recConf / receF.length * 100) : 0;
+  const recTemps = receF.filter((x) => x.temp != null).map((x) => x.temp as number);
+  const recTemp = recTemps.length ? recTemps.reduce((s, t) => s + t, 0) / recTemps.length : null;
+  const recPorForn = useMemo(() => { const m: Record<string, number> = {}; receF.forEach((x) => { m[x.forn] = (m[x.forn] || 0) + x.kg; }); return Object.entries(m).sort((a, b) => b[1] - a[1]); }, [receF]);
+  const recMax = Math.max(1, ...recPorForn.map((e) => e[1]));
+
+  // Produção: 1 linha por lote
+  const prodRows = useMemo(() => lotes.map((l) => ({
+    especie: nomeEsp(l.especieId), forn: fornDoReceb[l.recebimentoId] || "—",
+    bruto: Number(l.pesoBrutoEntradaKg) || 0, benef: Number(l.pesoBeneficiadoKg) || 0,
+  })), [lotes, especies, fornDoReceb]);
+  const prodF = useMemo(() => prodRows.filter((x) => (!fProdEsp || x.especie === fProdEsp) && (!fProdForn || x.forn === fProdForn)), [prodRows, fProdEsp, fProdForn]);
+  const pBruto = prodF.reduce((s, x) => s + x.bruto, 0);
+  const pBenef = prodF.reduce((s, x) => s + x.benef, 0);
+  const pRend = pBruto > 0 ? Math.round(pBenef / pBruto * 100) : 0;
+  const pPerda = pBruto > 0 ? 100 - pRend : 0;
+  const prodPorEsp = useMemo(() => { const m: Record<string, { b: number; be: number }> = {}; prodF.forEach((x) => { const a = m[x.especie] || { b: 0, be: 0 }; a.b += x.bruto; a.be += x.benef; m[x.especie] = a; }); return Object.entries(m).map(([k, v]) => [k, v.b > 0 ? Math.round(v.be / v.b * 100) : 0] as [string, number]).sort((a, b) => b[1] - a[1]); }, [prodF]);
+
+  const sel = "h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs w-full";
+  const Kpi = ({ l, v, d, tone }: { l: string; v: string; d?: string; tone?: "up" | "dn" }) => (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">{l}</div>
+      <div className="text-2xl font-bold tabular-nums mt-0.5">{v}</div>
+      {d && <div className={`text-[11px] font-semibold mt-0.5 ${tone === "up" ? "text-emerald-600" : tone === "dn" ? "text-rose-600" : "text-gray-500"}`}>{d}</div>}
+    </div>
+  );
+  const Bar = ({ label, pct, bv, color }: { label: string; pct: number; bv: string; color?: string }) => (
+    <div className="flex items-center gap-2">
+      <span className="text-xs w-28 shrink-0 truncate">{label}</span>
+      <span className="flex-1 h-2.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden"><i className="block h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: color || "#0284c7" }} /></span>
+      <span className="text-xs font-semibold w-16 text-right tabular-nums">{bv}</span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-gray-800">
+        <button onClick={() => setSub("receb")} className={`flex-1 h-9 rounded-lg text-sm font-semibold ${sub === "receb" ? "bg-white dark:bg-gray-900 text-sky-700 dark:text-sky-300 shadow-sm" : "text-gray-500"}`}>Recebimento</button>
+        <button onClick={() => setSub("prod")} className={`flex-1 h-9 rounded-lg text-sm font-semibold ${sub === "prod" ? "bg-white dark:bg-gray-900 text-sky-700 dark:text-sky-300 shadow-sm" : "text-gray-500"}`}>Produção</button>
+      </div>
+
+      {sub === "receb" && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <select className={sel} value={fReceForn} onChange={(e) => setFReceForn(e.target.value)}>
+              <option value="">Todos fornecedores</option>
+              {[...new Set(receRows.map((x) => x.forn))].sort().map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+            <select className={sel} value={fReceReceb} onChange={(e) => setFReceReceb(e.target.value)}>
+              <option value="">Todos recebimentos</option>
+              {recebimentos.map((r) => <option key={r.id} value={r.id}>{(r.fornecedorNome || "Sem forn.")} · {dataBR(r.recebidoEm)}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Kpi l="Volume" v={fmtKg(recKg)} d={`${recCaixas} caixas`} />
+            <Kpi l="Cargas" v={String(recCargas)} />
+            <Kpi l="Conforme" v={`${recPctConf}%`} d={recNConf ? `${recNConf} não-conforme` : "tudo ok"} tone={recPctConf >= 90 ? "up" : "dn"} />
+            <Kpi l="Temp. média" v={recTemp == null ? "—" : `${recTemp.toFixed(1)}°C`} />
+          </div>
+          {recNConf > 0 && <div className="flex items-center gap-2 rounded-xl bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 px-3 py-2 text-xs"><AlertTriangle size={14} /> {recNConf} leva(s) não-conforme no filtro.</div>}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1">Volume por fornecedor</div>
+            {recPorForn.length ? recPorForn.map(([f, v]) => <Bar key={f} label={f} pct={v / recMax * 100} bv={fmtKg(v)} />) : <div className="text-xs text-gray-400">Sem dados.</div>}
+          </div>
+        </div>
+      )}
+
+      {sub === "prod" && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <select className={sel} value={fProdEsp} onChange={(e) => setFProdEsp(e.target.value)}>
+              <option value="">Todas as espécies</option>
+              {[...new Set(prodRows.map((x) => x.especie))].sort().map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+            <select className={sel} value={fProdForn} onChange={(e) => setFProdForn(e.target.value)}>
+              <option value="">Todos fornecedores</option>
+              {[...new Set(prodRows.map((x) => x.forn))].sort().map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Kpi l="Rendimento médio" v={`${pRend}%`} d={pRend >= 55 ? "na meta" : "abaixo da meta"} tone={pRend >= 55 ? "up" : "dn"} />
+            <Kpi l="MP processada" v={fmtKg(pBruto)} />
+            <Kpi l="Beneficiado" v={fmtKg(pBenef)} />
+            <Kpi l="Perda / merma" v={`${pPerda}%`} d={fmtKg(pBruto - pBenef)} />
+          </div>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1">Rendimento por espécie</div>
+            {prodPorEsp.length ? prodPorEsp.map(([e, r]) => <Bar key={e} label={e} pct={r} bv={`${r}%`} color={r >= 55 ? "#16a34a" : "#d97706"} />) : <div className="text-xs text-gray-400">Sem dados.</div>}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -496,7 +621,7 @@ function LevasStep({ rid, especies, itens, setItens }: {
           <option value="">Espécie…</option>
           {especies.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
         </select>
-        {especies.length === 0 && <div className="text-[11px] text-amber-600">Cadastre espécies na aba Catálogo primeiro.</div>}
+        {especies.length === 0 && <div className="text-[11px] text-amber-600">Cadastre espécies na aba Config primeiro.</div>}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label className="text-xs text-gray-500">Qtd. de caixas
@@ -639,7 +764,7 @@ function PlanoEditor({ rid, meNome, recebimento, especies, cortes, onClose }: {
           <option value="">Corte / produto…</option>
           {cortesDaEspecie.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
         </select>
-        {especieId && cortesDaEspecie.length === 0 && <div className="text-[11px] text-amber-600">Cadastre cortes dessa espécie no Catálogo.</div>}
+        {especieId && cortesDaEspecie.length === 0 && <div className="text-[11px] text-amber-600">Cadastre cortes dessa espécie na aba Config.</div>}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label className="text-xs text-gray-500">Conservação
             <select className={INPUT} value={conserv} onChange={(e) => setConserv(e.target.value as ProducaoSispConservacao)}>
