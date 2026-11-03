@@ -58,6 +58,7 @@ export function ProducaoSispPage() {
   const [produzirPlano, setProduzirPlano] = useState<ProducaoSispPlano | null>(null);
   const [expedirLotes, setExpedirLotes] = useState(false);
   const [entradaDe, setEntradaDe] = useState<ProducaoSispRomaneio | null>(null);
+  const [printLote, setPrintLote] = useState<ProducaoSispLote | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -98,19 +99,6 @@ export function ProducaoSispPage() {
 
   const nomeEspecie = (id: string) => especies.find((e) => e.id === id)?.nome || "—";
   const nomeCorte = (id: string) => cortes.find((c) => c.id === id)?.nome || "—";
-
-  async function imprimirSisp(l: ProducaoSispLote) {
-    const esp = especies.find((e) => e.id === l.especieId);
-    const doc = await etiquetaSispPDF({
-      razaoSocial: config?.razaoSocial, registroSisp: config?.registroSisp, cnpj: config?.cnpj,
-      produto: `${nomeEspecie(l.especieId)} — ${nomeCorte(l.corteId)}`,
-      especieCientifico: esp?.nomeCientifico,
-      codigoLote: l.codigo, fabricacaoISO: l.fabricacaoEm, validadeISO: l.validadeEm,
-      conservacao: CONSERV.find((c) => c.v === l.conservacao)?.label || l.conservacao,
-      qtd: l.nPacotes || l.saldoPacotes || 1,
-    });
-    abrirPDF(doc);
-  }
 
   return (
     <PageContainer>
@@ -193,7 +181,7 @@ export function ProducaoSispPage() {
                       {l.rendimentoPct != null ? `Rend. ${l.rendimentoPct}% · ` : ""}{CONSERV.find((c) => c.v === l.conservacao)?.label} · val. {dataBR(l.validadeEm)}
                     </div>
                   </div>
-                  <button className="shrink-0 text-gray-400 hover:text-sky-600" title="Etiqueta SISP" onClick={() => void imprimirSisp(l)}><Printer size={16} /></button>
+                  <button className="shrink-0 text-gray-400 hover:text-sky-600" title="Etiqueta SISP" onClick={() => setPrintLote(l)}><Printer size={16} /></button>
                 </div>
               </Card>
             ))}
@@ -277,7 +265,85 @@ export function ProducaoSispPage() {
           onClose={() => setEntradaDe(null)}
         />
       )}
+
+      {printLote && (
+        <PrintSispModal
+          lote={printLote} config={config}
+          especie={especies.find((e) => e.id === printLote.especieId) || null}
+          corte={cortes.find((c) => c.id === printLote.corteId) || null}
+          onClose={() => setPrintLote(null)}
+        />
+      )}
     </PageContainer>
+  );
+}
+
+// ── Impressão da etiqueta SISP: prévia + quantidade + imprimir ───────────────────
+function PrintSispModal({ lote, config, especie, corte, onClose }: {
+  lote: ProducaoSispLote; config: ProducaoSispConfig | null;
+  especie: ProducaoSispEspecie | null; corte: ProducaoSispCorte | null; onClose: () => void;
+}) {
+  const [qtd, setQtd] = useState(Math.max(1, lote.nPacotes || lote.saldoPacotes || 1));
+  const [imprimindo, setImprimindo] = useState(false);
+  const rotulo = (config?.rotulos || []).find((r) => r.codigo === (corte?.rotuloCodigo || "")) || null;
+  const produtoLabel = (rotulo?.produto || `${especie?.nome || ""} — ${corte?.nome || ""}`).trim();
+  const consLabel = CONSERV.find((c) => c.v === lote.conservacao)?.label || lote.conservacao;
+  const rotuloCodigo = corte?.rotuloCodigo || rotulo?.codigo || null;
+
+  async function imprimir() {
+    setImprimindo(true);
+    try {
+      const doc = await etiquetaSispPDF({
+        razaoSocial: config?.razaoSocial, registroSisp: config?.registroSisp, cnpj: config?.cnpj,
+        produto: produtoLabel, especieCientifico: especie?.nomeCientifico,
+        codigoLote: lote.codigo, fabricacaoISO: lote.fabricacaoEm, validadeISO: lote.validadeEm,
+        conservacao: consLabel, rotuloCodigo, qtd,
+      });
+      abrirPDF(doc); onClose();
+    } finally { setImprimindo(false); }
+  }
+
+  const footer = (
+    <button className={`${BTN_PRIMARY} w-full`} disabled={imprimindo} onClick={() => void imprimir()}>
+      <Printer size={16} /> {imprimindo ? "Gerando…" : `Imprimir ${qtd} etiqueta${qtd > 1 ? "s" : ""}`}
+    </button>
+  );
+
+  return (
+    <Overlay titulo="Imprimir etiqueta SISP" onClose={onClose} footer={footer}>
+      {/* Prévia (100×150) */}
+      <div className="mx-auto w-[200px] rounded-lg border-2 border-gray-800 bg-white text-black p-2.5 text-center" style={{ aspectRatio: "100/150" }}>
+        <div className="font-extrabold text-sm tracking-widest">🐟 {(config?.razaoSocial || "SOROROCA").split(" ")[0].toUpperCase()}</div>
+        <div className="text-[6.5px] leading-tight mt-0.5">
+          Produzido por: Unid. de Beneficiamento de Pescado<br />
+          <b>{config?.razaoSocial || "—"}</b>{config?.cnpj ? ` · CNPJ ${config.cnpj}` : ""}<br />
+          {config?.endereco || ""}<br />
+          {config?.sac ? `SAC ${config.sac} · ` : ""}<b>PRODUTO ARTESANAL</b>
+        </div>
+        <div className="border border-gray-800 my-1 py-1">
+          <div className="font-extrabold text-[11px] leading-none">{produtoLabel.toUpperCase()}</div>
+          {especie?.nome && <div className="text-[7px]">({especie.nome})</div>}
+        </div>
+        <div className="inline-block border-2 border-gray-800 rounded px-2 py-0.5 font-extrabold text-[8px]">◈ SISP INSPECIONADO {config?.registroSisp || "—"}</div>
+        <div className="text-[6.5px] mt-0.5">Rótulo registrado no SISP sob nº {rotuloCodigo || "—"}</div>
+        <div className="flex gap-1 mt-1">
+          {["FAB.", "VAL.", "LOTE"].map((l) => <div key={l} className="flex-1 border border-gray-800 rounded text-[5.5px] text-left px-1 py-0.5 text-gray-600 h-4">{l}</div>)}
+        </div>
+        <div className="w-8 h-8 mt-1 ml-auto border border-gray-800" style={{ background: "repeating-conic-gradient(#111 0 25%, #fff 0 50%) 0 0/6px 6px" }} />
+      </div>
+
+      <div className="text-xs text-gray-500 mt-3">Lote {lote.codigo} · {consLabel} · val. {dataBR(lote.validadeEm)}</div>
+
+      <div className="flex items-center justify-between gap-3 mt-2 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2">
+        <div className="text-xs uppercase tracking-wide text-gray-500 font-semibold">Quantidade</div>
+        <div className="flex items-center gap-3">
+          <button className="w-10 h-10 rounded-xl border-2 border-gray-200 dark:border-gray-700 text-xl font-extrabold text-sky-600" onClick={() => setQtd((q) => Math.max(1, q - 1))}>−</button>
+          <span className="text-2xl font-extrabold tabular-nums w-10 text-center">{qtd}</span>
+          <button className="w-10 h-10 rounded-xl border-2 border-gray-200 dark:border-gray-700 text-xl font-extrabold text-sky-600" onClick={() => setQtd((q) => q + 1)}>＋</button>
+        </div>
+      </div>
+      <div className="text-[11px] text-gray-400 mt-1">1 por peça · nível lote. Sugerido: {lote.nPacotes || lote.saldoPacotes || 1} (pacotes do lote).</div>
+    </Overlay>
   );
 }
 

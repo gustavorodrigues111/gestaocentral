@@ -53,6 +53,7 @@ export type EtqSispArgs = {
   especieCientifico?: string | null;
   codigoLote: string; fabricacaoISO: string; validadeISO?: string | null;
   conservacao: string;         // "Ultracongelado" | "Refrigerado"
+  rotuloCodigo?: string | null; // nº do rótulo aprovado no registro (ex.: 2209/001)
   qtd: number;                 // nº de etiquetas (= nº de pacotes do lote)
 };
 
@@ -67,6 +68,7 @@ export async function etiquetaSispPDF(a: EtqSispArgs): Promise<JsPDFType> {
     doc.text((a.razaoSocial || "Produção SISP").toUpperCase(), MX, y); y += 4;
     doc.setFont("helvetica", "normal"); doc.setFontSize(7);
     doc.text(`SISP nº ${a.registroSisp || "—"}${a.cnpj ? `   CNPJ ${a.cnpj}` : ""}`, MX, y); y += 3;
+    if (a.rotuloCodigo) { doc.text(`Rótulo registrado no SISP sob nº ${a.rotuloCodigo}`, MX, y); y += 3; }
     linha(doc, y); y += 6;
 
     doc.setFont("helvetica", "bold"); doc.setFontSize(13);
