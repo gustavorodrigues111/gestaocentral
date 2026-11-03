@@ -906,7 +906,7 @@ function CatalogoTab({ rid, especies, cortes, fornecedores, config, podeEditar }
         ))}
       </div>
       {sub === "especies" && <EspeciesCat rid={rid} especies={especies} />}
-      {sub === "cortes" && <CortesCat rid={rid} especies={especies} cortes={cortes} />}
+      {sub === "cortes" && <CortesCat rid={rid} especies={especies} cortes={cortes} config={config} />}
       {sub === "fornecedores" && <FornecedoresCat rid={rid} fornecedores={fornecedores} />}
       {sub === "config" && <ConfigCat key={config?.atualizadoEm || "none"} rid={rid} config={config} />}
     </div>
@@ -941,7 +941,7 @@ function EspeciesCat({ rid, especies }: { rid: string; especies: ProducaoSispEsp
   );
 }
 
-function CortesCat({ rid, especies, cortes }: { rid: string; especies: ProducaoSispEspecie[]; cortes: ProducaoSispCorte[] }) {
+function CortesCat({ rid, especies, cortes, config }: { rid: string; especies: ProducaoSispEspecie[]; cortes: ProducaoSispCorte[]; config: ProducaoSispConfig | null }) {
   const [especieId, setEspecieId] = useState("");
   const [nome, setNome] = useState("");
   const [conserv, setConserv] = useState<ProducaoSispConservacao>("ultracongelado");
@@ -950,6 +950,8 @@ function CortesCat({ rid, especies, cortes }: { rid: string; especies: ProducaoS
   const [precoVar, setPrecoVar] = useState("");
   const [precoAta, setPrecoAta] = useState("");
   const [rend, setRend] = useState("");
+  const [rotuloCodigo, setRotuloCodigo] = useState("");
+  const rotulos = config?.rotulos || [];
   async function add() {
     if (!especieId || !nome.trim()) return;
     await repo.salvarCorte({
@@ -959,9 +961,10 @@ function CortesCat({ rid, especies, cortes }: { rid: string; especies: ProducaoS
       validadeDias: { ultracongelado: valUltra.trim() === "" ? null : Number(valUltra), refrigerado: valRefri.trim() === "" ? null : Number(valRefri) },
       precoVarejoKg: precoVar.trim() === "" ? null : Number(precoVar),
       precoAtacadoKg: precoAta.trim() === "" ? null : Number(precoAta),
+      rotuloCodigo: rotuloCodigo || null,
       ativo: true, criadoEm: hojeISO(),
     });
-    setNome(""); setValUltra(""); setValRefri(""); setPrecoVar(""); setPrecoAta(""); setRend("");
+    setNome(""); setValUltra(""); setValRefri(""); setPrecoVar(""); setPrecoAta(""); setRend(""); setRotuloCodigo("");
   }
   const nomeEsp = (id: string) => especies.find((e) => e.id === id)?.nome || "—";
   return (
@@ -998,12 +1001,19 @@ function CortesCat({ rid, especies, cortes }: { rid: string; especies: ProducaoS
             <input className={INPUT} type="number" inputMode="decimal" value={precoAta} onChange={(e) => setPrecoAta(e.target.value)} />
           </label>
         </div>
+        <label className="text-xs text-gray-500 block">Rótulo SISP aprovado (etiqueta)
+          <select className={INPUT} value={rotuloCodigo} onChange={(e) => setRotuloCodigo(e.target.value)}>
+            <option value="">— sem rótulo —</option>
+            {rotulos.map((r) => <option key={r.codigo} value={r.codigo}>{r.codigo} · {r.produto}</option>)}
+          </select>
+          {rotulos.length === 0 && <span className="text-[11px] text-amber-600">Cadastre os rótulos aprovados na aba Config.</span>}
+        </label>
         <button className={`${BTN_GHOST} w-full`} onClick={() => void add()}><Plus size={14} /> Adicionar corte</button>
       </div>
       <div className="space-y-2">
         {cortes.map((c) => (
           <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
-            <div className="min-w-0 text-sm"><div className="font-medium truncate">{c.nome}</div><div className="text-xs text-gray-500 truncate">{nomeEsp(c.especieId)}{c.precoVarejoKg ? ` · R$ ${c.precoVarejoKg}/kg` : ""}</div></div>
+            <div className="min-w-0 text-sm"><div className="font-medium truncate">{c.nome}</div><div className="text-xs text-gray-500 truncate">{nomeEsp(c.especieId)}{c.rotuloCodigo ? ` · ${c.rotuloCodigo}` : ""}{c.precoVarejoKg ? ` · R$ ${c.precoVarejoKg}/kg` : ""}</div></div>
             <button className="text-gray-400 hover:text-rose-600" onClick={() => void repo.excluirCorte(c.id)}><Trash2 size={16} /></button>
           </div>
         ))}
