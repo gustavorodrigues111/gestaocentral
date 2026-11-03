@@ -4,7 +4,7 @@
 // e músicas, play/pause/pular/volume. Agenda por horário = v2.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, Speaker, RefreshCw, Search, LogOut, Loader2, ListMusic, Star, Pin, ChevronDown } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, Speaker, RefreshCw, Search, LogOut, Loader2, ListMusic, Star, Pin, ChevronDown, Plus, Minus } from "lucide-react";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -107,6 +107,14 @@ export function MusicaAmbientePage() {
   async function definirPreferido(d: Device) {
     await ctrl(rid, "setPrefDevice", { deviceId: d.id, deviceNome: d.name });
     setDevPrefId(d.id);
+  }
+  function ajustarVol(delta: number) {
+    setVol((v) => {
+      const nv = Math.max(0, Math.min(100, v + delta));
+      if (volRef.current) clearTimeout(volRef.current);
+      volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: nv, deviceId: alvoDevice() }), 300);
+      return nv;
+    });
   }
 
   useEffect(() => {
@@ -254,11 +262,12 @@ export function MusicaAmbientePage() {
                   </div>
                 )}
               </div>
-              {/* Volume vertical (mais grosso) */}
-              <div className="shrink-0 flex flex-col items-center gap-1 pl-1">
-                <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="accent-emerald-600" style={{ WebkitAppearance: "slider-vertical", appearance: "slider-vertical", width: "16px", height: "96px" } as unknown as React.CSSProperties} />
-                <span className="text-[10px] font-semibold tabular-nums text-gray-500">{vol}%</span>
-                <Volume2 size={15} className="text-gray-400" />
+              {/* Volume vertical (mais grosso) com +/- de 1 em 1% */}
+              <div className="shrink-0 flex flex-col items-center gap-1.5 pl-1">
+                <button onClick={() => ajustarVol(1)} className="w-7 h-7 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 active:bg-emerald-50 dark:active:bg-emerald-900/20"><Plus size={14} /></button>
+                <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="accent-emerald-600" style={{ WebkitAppearance: "slider-vertical", appearance: "slider-vertical", width: "16px", height: "84px" } as unknown as React.CSSProperties} />
+                <button onClick={() => ajustarVol(-1)} className="w-7 h-7 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 active:bg-emerald-50 dark:active:bg-emerald-900/20"><Minus size={14} /></button>
+                <span className="text-[10px] font-semibold tabular-nums text-gray-500 flex items-center gap-0.5"><Volume2 size={12} /> {vol}%</span>
               </div>
             </div>
           </div>
