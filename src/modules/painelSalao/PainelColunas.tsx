@@ -7,7 +7,7 @@
 // "portão" pedindo login pessoal. Usado por PainelSalaoPage (navegador) e
 // PainelEstacaoPage (parede, via feed).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight, Minus, Plus, Search, Shuffle, ListMusic, Send, X } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight, Minus, Plus, Search, Shuffle, ListMusic, Send, X, Check } from "lucide-react";
 
 export type PReserva = { id: string; horario?: string; status?: string; nome?: string; pessoas?: number; mesas?: string };
 export type PFreelaAberto = { id: string; nome?: string; area?: string; entrada?: string };
@@ -47,7 +47,7 @@ function labelData(d: string, hoje: string): string {
 const RESERVA_COR: Record<string, string> = { confirmada: "#1db954", pendente: "#e3a63c", chegou: "#4b9bf0" };
 const TURNO_LABEL: Record<string, string> = { abertura: "Abertura", meio: "Meio", fechamento: "Fechamento" };
 
-export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir }: {
+export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir, onChecklistAbrir, onChecklistItem }: {
   rid: string;
   data: PainelData;
   atualizadoEm?: Date;
@@ -62,6 +62,8 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
   onWaThread?: (numeroId: string, waId: string) => Promise<{ ok: boolean; mensagens?: any[]; erro?: string }>;
   onWaResponder?: (pessoaId: string, numeroId: string, waId: string, texto: string) => Promise<{ ok: boolean; erro?: string }>;
   onFreelaAbrir?: (pessoaId: string, shiftId: string) => Promise<{ ok: boolean; erro?: string }>;
+  onChecklistAbrir?: (templateId: string) => Promise<{ ok: boolean; nome?: string; itens?: any[]; erro?: string }>;
+  onChecklistItem?: (pessoaId: string, templateId: string, itemId: string, feito: boolean, observacao?: string) => Promise<{ ok: boolean; erro?: string }>;
 }) {
   const [agora, setAgora] = useState(new Date());
   const [gate, setGate] = useState(false);
@@ -103,6 +105,27 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       setAbrindoId(null);
       if (!r?.ok) alert("Não abriu o turno: " + (r?.erro || "erro"));
     });
+  }
+  const chkAtivo = !!(estacaoAcoes?.checklist && onChecklistAbrir && onChecklistItem);
+  const [chkAberto, setChkAberto] = useState<null | { templateId: string; nome: string }>(null);
+  const [chkItens, setChkItens] = useState<any[]>([]);
+  const [carregandoChk, setCarregandoChk] = useState(false);
+  function abrirChecklist(c: PChecklist) {
+    pedirIdentidade(async () => {
+      setChkAberto({ templateId: c.id, nome: c.nome || "Checklist" }); setChkItens([]); setCarregandoChk(true);
+      const r = await onChecklistAbrir!(c.id);
+      setCarregandoChk(false);
+      if (r?.ok) setChkItens(r.itens || []);
+    });
+  }
+  async function marcarChkItem(it: any) {
+    if (!chkAberto || !agindoComo) return;
+    const feito = !it.feito;
+    let observacao: string | undefined;
+    if (feito && it.exigeObs) { const o = window.prompt(`Observação pra "${it.texto}" (obrigatória):`, it.observacao || ""); if (o == null || !o.trim()) return; observacao = o.trim(); }
+    setChkItens((prev) => prev.map((x) => x.id === it.id ? { ...x, feito, observacao: observacao ?? x.observacao, feitoPorNome: feito ? agindoComo!.nome : null } : x));
+    const r = await onChecklistItem!(agindoComo.id, chkAberto.templateId, it.id, feito, observacao);
+    if (!r?.ok) { setChkItens((prev) => prev.map((x) => x.id === it.id ? { ...x, feito: !feito } : x)); alert("Não marcou: " + (r?.erro || "erro")); }
   }
   useEffect(() => { const t = setInterval(() => setAgora(new Date()), 15000); return () => clearInterval(t); }, []);
   const hoje = todayYmd();
@@ -366,21 +389,27 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
             </div>
             {checklistsView.length === 0 ? <Vazio txt={chkAreas.length ? "Sem checklists nas áreas escolhidas" : isHoje ? "Sem checklists pra hoje" : "Sem checklists nesse dia"} /> : (
               <div className={listCls}>
-                {checklistsView.map((c) => (
-                  <div key={c.id} className={`rounded-xl border px-3 py-2 ${c.atrasado ? "animate-pulse" : ""}`} style={{ borderColor: c.completo ? "#1e4a2e" : c.atrasado ? "#5a2320" : "#242a33", background: c.completo ? "#13241a" : c.atrasado ? "#241414" : "#1b1e25" }}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-[13px] truncate flex-1">{c.nome}</span>
-                      <span className="font-extrabold tabular-nums text-[13px]" style={{ color: c.completo ? "#1db954" : c.atrasado ? "#f06b60" : "#e3a63c" }}>{c.pct}%</span>
-                    </div>
-                    <div className="h-1.5 rounded bg-[#2b3038] overflow-hidden mt-1.5"><div className="h-full rounded" style={{ width: `${c.pct}%`, background: c.completo ? "#1db954" : c.atrasado ? "#f06b60" : "#e3a63c" }} /></div>
-                    <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#6f7889]">
-                      {c.turno && <span className="font-semibold" style={{ color: "#9aa3b2" }}>{TURNO_LABEL[c.turno] || c.turno}</span>}
-                      {c.hora && <span className="flex items-center gap-0.5"><Clock size={10} />{c.hora}</span>}
-                      {c.atrasado && <span className="ml-auto font-extrabold" style={{ color: "#f06b60" }}>atrasado</span>}
-                      {c.completo && <span className="ml-auto font-extrabold" style={{ color: "#1db954" }}>✓ ok</span>}
-                    </div>
-                  </div>
-                ))}
+                {checklistsView.map((c) => {
+                  const estilo = { borderColor: c.completo ? "#1e4a2e" : c.atrasado ? "#5a2320" : "#242a33", background: c.completo ? "#13241a" : c.atrasado ? "#241414" : "#1b1e25" };
+                  const inner = (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-[13px] truncate flex-1">{c.nome}</span>
+                        <span className="font-extrabold tabular-nums text-[13px]" style={{ color: c.completo ? "#1db954" : c.atrasado ? "#f06b60" : "#e3a63c" }}>{c.pct}%</span>
+                      </div>
+                      <div className="h-1.5 rounded bg-[#2b3038] overflow-hidden mt-1.5"><div className="h-full rounded" style={{ width: `${c.pct}%`, background: c.completo ? "#1db954" : c.atrasado ? "#f06b60" : "#e3a63c" }} /></div>
+                      <div className="flex items-center gap-2 mt-1 text-[10.5px] text-[#6f7889]">
+                        {c.turno && <span className="font-semibold" style={{ color: "#9aa3b2" }}>{TURNO_LABEL[c.turno] || c.turno}</span>}
+                        {c.hora && <span className="flex items-center gap-0.5"><Clock size={10} />{c.hora}</span>}
+                        {c.atrasado && <span className="ml-auto font-extrabold" style={{ color: "#f06b60" }}>atrasado</span>}
+                        {c.completo && <span className="ml-auto font-extrabold" style={{ color: "#1db954" }}>✓ ok</span>}
+                      </div>
+                    </>
+                  );
+                  return chkAtivo
+                    ? <button key={c.id} onClick={() => abrirChecklist(c)} className={`rounded-xl border px-3 py-2 text-left w-full ${c.atrasado ? "animate-pulse" : ""}`} style={estilo}>{inner}</button>
+                    : <div key={c.id} className={`rounded-xl border px-3 py-2 ${c.atrasado ? "animate-pulse" : ""}`} style={estilo}>{inner}</div>;
+                })}
               </div>
             )}
           </div>
@@ -456,6 +485,35 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
             <div className="p-3 border-t border-[#222730] flex items-end gap-2">
               <textarea value={resp} onChange={(e) => setResp(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviarResp(); } }} rows={1} placeholder="escreva a resposta…" className="flex-1 resize-none rounded-xl bg-[#1b1e25] border border-[#2a2f39] px-3 py-2 text-sm outline-none max-h-28" />
               <button onClick={() => void enviarResp()} disabled={enviando || !resp.trim()} className="w-10 h-10 grid place-items-center rounded-full bg-[#25d366] text-[#04170c] disabled:opacity-40 shrink-0"><Send size={18} /></button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Checklist aberto (estação) */}
+      {chkAberto && (
+        <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-4 sm:p-6" onClick={() => setChkAberto(null)}>
+          <div className="bg-[#15171c] border border-[#2a2f39] rounded-2xl w-full max-w-md flex flex-col" style={{ maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 p-3 border-b border-[#222730]">
+              <div className="w-8 h-8 rounded-lg bg-[#e3a63c22] text-[#e3a63c] grid place-items-center shrink-0"><CheckSquare size={16} /></div>
+              <div className="min-w-0 flex-1"><div className="font-bold truncate">{chkAberto.nome}</div><div className="text-[11px] text-[#6f7889]">preenchendo como {agindoComo?.nome} · {chkItens.filter((i) => i.feito).length}/{chkItens.length}</div></div>
+              <button onClick={() => setChkAberto(null)} className="text-[#9aa3b2] shrink-0"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-3 flex flex-col gap-1.5">
+              {carregandoChk ? <div className="text-center text-[13px] text-[#6f7889] py-6">carregando itens…</div>
+                : chkItens.length === 0 ? <div className="text-center text-[13px] text-[#6f7889] py-6">sem itens</div>
+                  : chkItens.map((it) => (
+                    <button key={it.id} onClick={() => void marcarChkItem(it)} className="flex items-start gap-2.5 text-left rounded-xl border px-3 py-2" style={{ borderColor: it.feito ? "#1e4a2e" : "#242a33", background: it.feito ? "#13241a" : "#1b1e25" }}>
+                      <span className="w-5 h-5 rounded-md grid place-items-center shrink-0 mt-0.5 border" style={{ borderColor: it.feito ? "#1db954" : "#3a4150", background: it.feito ? "#1db954" : "transparent", color: "#04170c" }}>{it.feito && <Check size={14} />}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`text-[13px] ${it.feito ? "text-[#9aa3b2] line-through" : "font-semibold"}`}>{it.texto}</span>
+                        {it.obrigatorio && <span className="ml-1 text-[10px] font-bold text-[#f0a860]">obrigatório</span>}
+                        {it.exigeFoto && <span className="ml-1 text-[10px] text-[#6f7889]">(foto só pelo celular)</span>}
+                        {it.observacao && <span className="block text-[11px] text-[#6f7889] mt-0.5">obs: {it.observacao}</span>}
+                        {it.feito && it.feitoPorNome && <span className="block text-[10px] text-[#4e8d63] mt-0.5">✓ {it.feitoPorNome}</span>}
+                      </span>
+                    </button>
+                  ))}
             </div>
           </div>
         </div>

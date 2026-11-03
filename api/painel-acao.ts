@@ -10,7 +10,10 @@
 //   acao="wa-thread"    { numeroId, waId }         → lê a conversa (e marca lido)
 //   acao="wa-responder" { pessoaId, numeroId, waId, texto } → envia pela Evolution
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { firestoreDisponivel, firestoreLer, firestoreListar, firestoreRunQuery, firestoreAtualizar, fGte } from "./_firestoreRest.js";
+import { firestoreDisponivel, firestoreLer, firestoreListar, firestoreRunQuery, firestoreAtualizar, firestoreCriar, firestorePatchCampos, fEq, fGte } from "./_firestoreRest.js";
+
+function hojeSP(): string { return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }
+function uidRun(): string { return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
 
 function foneKey(waId?: string): string { let d = String(waId || "").replace(/\D/g, ""); if (d.startsWith("55")) d = d.slice(2); if (d.length >= 10) d = d.slice(0, 2) + d.slice(-8); return d; }
 function normalizarFone(raw: string): string { let d = (raw || "").replace(/\D/g, ""); if (!d) return ""; if (d.length <= 11) d = "55" + d; return d; }
@@ -92,6 +95,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const thread = await carregarThread(numeroId, waId);
       await Promise.all(thread.filter((m) => m.direcao === "in" && !m.lido).map((m) => firestoreAtualizar("whatsappMensagens", String(m.id), { lido: true }).catch(() => false)));
       res.status(200).json({ ok: true, messageId: (j as any)?.key?.id || null });
+      return;
+    }
+
+    // Carrega template + run de hoje de um checklist. Helpers compartilhados.
+    async function loadChecklist(templateId: string): Promise<{ template: any; run: any | null } | null> {
+      const template = await firestoreLer("checklistTemplates", templateId).catch(() => null);
+      if (!template || String(template.restaurantId) !== rid) return null;
+      const hoje = hojeSP();
+      const runs = await firestoreRunQuery({ from: [{ collectionId: "checklistRuns" }], where: fEq("restaurantId", rid) }).catch(() => [] as any[]);
+      const run = runs.find((r) => r.data === hoje && String(r.templateId) === templateId) || null;
+      return { template, run };
+    }
+
+    if (acao === "checklist-abrir") {
+      if (!acoes.checklist) { res.status(403).json({ ok: false, erro: "acao_desabilitada" }); return; }
+      const lc = await loadChecklist(String(body.templateId || ""));
+      if (!lc) { res.status(403).json({ ok: false, erro: "template_invalido" }); return; }
+      const resultado = (lc.run?.resultado || {}) as Record<string, any>;
+      const itens = (Array.isArray(lc.template.itens) ? lc.template.itens : []).map((i: any) => ({ id: i.id, texto: i.texto, obrigatorio: !!i.obrigatorio, exigeObs: !!i.exigeObs, exigeFoto: !!i.exigeFoto, feito: !!resultado[i.id]?.feito, observacao: resultado[i.id]?.observacao || "", feitoPorNome: resultado[i.id]?.feitoPorNome || null }));
+      res.status(200).json({ ok: true, nome: lc.template.nome || "Checklist", itens });
+      return;
+    }
+
+    if (acao === "checklist-item") {
+      if (!acoes.checklist) { res.status(403).json({ ok: false, erro: "acao_desabilitada" }); return; }
+      const pessoa = validaPessoa(String(body.pessoaId || ""));
+      if (!pessoa) { res.status(403).json({ ok: false, erro: "pessoa_nao_autorizada" }); return; }
+      const templateId = String(body.templateId || "");
+      const itemId = String(body.itemId || "");
+      const feito = !!body.feito;
+      const observacao = typeof body.observacao === "string" ? body.observacao : undefined;
+      const lc = await loadChecklist(templateId);
+      if (!lc) { res.status(403).json({ ok: false, erro: "template_invalido" }); return; }
+      const itensT = (Array.isArray(lc.template.itens) ? lc.template.itens : []) as any[];
+      const it = itensT.find((i) => i.id === itemId);
+      if (!it) { res.status(400).json({ ok: false, erro: "item_invalido" }); return; }
+      const now = new Date().toISOString();
+      const novo = { itemId, textoSnapshot: it.texto, feito, marcadoEm: feito ? now : null, feitoPorId: feito ? pessoa.id : null, feitoPorNome: feito ? pessoa.nome : null, observacao: observacao ?? (lc.run?.resultado?.[itemId]?.observacao || undefined) };
+      const resultado: Record<string, any> = { ...(lc.run?.resultado || {}), [itemId]: novo };
+      const total = itensT.length;
+      const feitos = itensT.filter((i) => resultado[i.id]?.feito).length;
+      const obrig = itensT.filter((i) => i.obrigatorio);
+      const obrigatoriosTotal = obrig.length;
+      const obrigatoriosFeitos = obrig.filter((i) => resultado[i.id]?.feito).length;
+      const completo = total > 0 && feitos === total;
+      const status = completo ? "completo" : "rascunho";
+      if (lc.run) {
+        await firestorePatchCampos("checklistRuns", String(lc.run.id), {
+          [`resultado.${itemId}`]: novo, feitos, totalItens: total, obrigatoriosFeitos, obrigatoriosTotal,
+          status, finalizadoEm: completo ? now : null, atualizadoEm: now,
+        });
+      } else {
+        const id = uidRun();
+        await firestoreCriar("checklistRuns", id, {
+          restaurantId: rid, templateId, templateNomeSnapshot: lc.template.nome, templateAreaSnapshot: lc.template.area || null,
+          data: hojeSP(), executorNome: pessoa.nome,
+          itens: itensT.map((i) => resultado[i.id] || { itemId: i.id, textoSnapshot: i.texto, feito: false }),
+          resultado, totalItens: total, feitos, obrigatoriosFeitos, obrigatoriosTotal,
+          status, iniciadoEm: now, finalizadoEm: completo ? now : null, atualizadoEm: now, log: [],
+        });
+      }
+      res.status(200).json({ ok: true, feito, feitos, total });
       return;
     }
 
