@@ -67,6 +67,7 @@ import { ComandasPage } from "../../modules/comandas/ComandasPage";
 import { ProducaoSispPage } from "../../modules/producaoSisp/ProducaoSispPage";
 import { MusicaAmbientePage } from "../../modules/musicaAmbiente/MusicaAmbientePage";
 import { AppsDownloadPage } from "../../modules/appsDownload/AppsDownloadPage";
+import { PainelSalaoPage } from "../../modules/painelSalao/PainelSalaoPage";
 import { RelatoriosVendasPage } from "../../modules/relatoriosVendas/RelatoriosVendasPage";
 import { FaturasPage } from "../../modules/faturas/FaturasPage";
 import { FolhasPage } from "../../modules/folhas/FolhasPage";
@@ -231,6 +232,7 @@ export function ProtectedShell() {
             <Route path="/perfis" element={<PerfisAcessoPage />} />
             <Route path="/portal/:rid" element={<PortalPage />} />
             <Route path="/portal/:rid/:tab" element={<PortalPage />} />
+            <Route path="/r/:rid/painel" element={<PainelSalaoPage />} />
             <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
