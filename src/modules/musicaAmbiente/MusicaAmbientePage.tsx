@@ -4,14 +4,29 @@
 // e músicas, play/pause/pular/volume. Agenda por horário = v2.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, Speaker, RefreshCw, Search, LogOut, Loader2, ListMusic } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, Speaker, RefreshCw, Search, LogOut, Loader2, ListMusic, Star, Pin, ChevronDown } from "lucide-react";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Device = { id: string; name: string; type: string; is_active: boolean; volume_percent?: number | null };
 type Playlist = { id: string; uri: string; name: string; images?: { url: string }[]; tracks?: { total?: number } };
-type Track = { uri: string; name: string; artists?: { name: string }[] };
+type Track = { uri: string; name: string; artists?: { name: string }[]; album?: { images?: { url: string }[] } };
+type FavItem = { id: string; uri: string; name: string; image?: string | null };
+
+function PlaylistCard({ img, name, total, fav, onPlay, onFav }: { img?: string | null; name: string; total?: number; fav: boolean; onPlay: () => void; onFav: () => void }) {
+  return (
+    <div className="relative rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <button onClick={onPlay} className="block w-full text-left active:opacity-80">
+        {img ? <img src={img} alt="" className="w-full aspect-square object-cover" /> : <div className="w-full aspect-square bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400"><ListMusic size={22} /></div>}
+        <div className="p-2"><div className="text-xs font-medium truncate">{name}</div>{total != null && <div className="text-[10px] text-gray-400">{total} músicas</div>}</div>
+      </button>
+      <button onClick={onFav} title={fav ? "Remover das preferidas" : "Marcar como preferida"} className="absolute top-1.5 right-1.5 w-7 h-7 grid place-items-center rounded-full bg-black/40 text-white">
+        <Star size={14} className={fav ? "text-amber-400" : "text-white"} fill={fav ? "currentColor" : "none"} />
+      </button>
+    </div>
+  );
+}
 
 async function ctrl(rid: string, action: string, extra: Record<string, unknown> = {}): Promise<any> {
   const r = await fetch("/api/spotify-control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rid, action, ...extra }) });
@@ -41,31 +56,54 @@ export function MusicaAmbientePage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [diag, setDiag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [queue, setQueue] = useState<Track[]>([]);
+  const [verFila, setVerFila] = useState(false);
+  const [devPrefId, setDevPrefId] = useState<string | null>(null);
+  const [favs, setFavs] = useState<FavItem[]>([]);
+  const [vol, setVol] = useState(50);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const volRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const deviceAtivo = useMemo(() => devices.find((d) => d.is_active) || null, [devices]);
   const tocando = !!player?.is_playing;
   const faixa = player?.item;
+  const isFav = (id: string) => favs.some((f) => f.id === id);
 
   const carregarEstado = useCallback(async () => {
-    const [dv, st] = await Promise.all([ctrl(rid, "devices"), ctrl(rid, "state")]);
-    setDevices(Array.isArray(dv?.devices) ? (dv.devices as Device[]) : []);
+    const [dv, st, qu] = await Promise.all([ctrl(rid, "devices"), ctrl(rid, "state"), ctrl(rid, "queue")]);
+    const devs = Array.isArray(dv?.devices) ? (dv.devices as Device[]) : [];
+    setDevices(devs);
     setPlayer(st?.player || null);
+    setQueue(((qu?.queue || []) as (Track | null)[]).filter((x): x is Track => !!x));
+    const ativo = devs.find((d) => d.is_active);
+    if (ativo && typeof ativo.volume_percent === "number") setVol(ativo.volume_percent);
     const errTxt = dv?.error ? ` — ${dv.error.message || dv.error.reason || JSON.stringify(dv.error)}` : "";
-    setDiag(`dispositivos: HTTP ${dv?.status ?? "?"}${errTxt} · ${(dv?.devices || []).length} na lista · player: HTTP ${st?.status ?? "?"}`);
+    setDiag(`dispositivos: HTTP ${dv?.status ?? "?"}${errTxt} · ${devs.length} na lista · player: HTTP ${st?.status ?? "?"}`);
   }, [rid]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     const s = await ctrl(rid, "status");
     setConectado(!!s?.conectado); setDisplayName(s?.displayName || null);
+    setDevPrefId(s?.devicePreferidoId || null);
+    setFavs(Array.isArray(s?.playlistsPreferidas) ? (s.playlistsPreferidas as FavItem[]) : []);
     if (s?.conectado) {
       await carregarEstado();
       const pl = await ctrl(rid, "playlists");
-      if (pl?.items) setPlaylists(pl.items as Playlist[]);
+      if (pl?.items) setPlaylists((pl.items as (Playlist | null)[]).filter((x): x is Playlist => !!x));
     }
     setCarregando(false);
   }, [rid, carregarEstado]);
+
+  async function toggleFav(p: { id: string; uri: string; name: string; images?: { url: string }[]; image?: string | null }) {
+    const image = p.images?.[0]?.url ?? p.image ?? null;
+    const r = await ctrl(rid, "toggleFav", { playlist: { id: p.id, uri: p.uri, name: p.name, image } });
+    if (Array.isArray(r?.playlistsPreferidas)) setFavs(r.playlistsPreferidas as FavItem[]);
+  }
+  async function definirPreferido(d: Device) {
+    await ctrl(rid, "setPrefDevice", { deviceId: d.id, deviceNome: d.name });
+    setDevPrefId(d.id);
+  }
 
   useEffect(() => {
     // mensagem de retorno do OAuth (?sp=ok|erro)
@@ -89,7 +127,11 @@ export function MusicaAmbientePage() {
     setTimeout(() => void carregarEstado(), 400);
     setBusy(false);
   }
-  const alvoDevice = () => deviceAtivo?.id || devices[0]?.id || "";
+  const alvoDevice = () => {
+    if (deviceAtivo) return deviceAtivo.id;
+    if (devPrefId && devices.some((d) => d.id === devPrefId)) return devPrefId;
+    return devices[0]?.id || "";
+  };
   async function tocarContexto(uri: string) { await acao("play", { contextUri: uri, deviceId: alvoDevice() }); }
   async function tocarFaixa(uri: string) { await acao("play", { uris: [uri], deviceId: alvoDevice() }); }
 
@@ -104,7 +146,10 @@ export function MusicaAmbientePage() {
       const trs = ((r?.tracks?.items || []) as (Track | null)[]).filter((x): x is Track => !!x);
       setBuscaPl(pls); setBuscaTr(trs);
       setBuscouVazio(pls.length === 0 && trs.length === 0);
-      if (r && r.ok === false && r.erro) setMsg(`Busca: ${r.erro}`);
+      if (pls.length === 0 && trs.length === 0) {
+        const apiErr = r?.erroApi?.error?.message || r?.erro || "";
+        setDiag(`busca: HTTP ${r?.status ?? "?"}${apiErr ? " — " + apiErr : ""}`);
+      }
     } finally { setBuscando(false); }
   }
 
@@ -144,10 +189,14 @@ export function MusicaAmbientePage() {
             ) : (
               <div className="space-y-1.5">
                 {devices.map((d) => (
-                  <button key={d.id} onClick={() => void acao("transfer", { deviceId: d.id, play: tocando })} className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-sm ${d.is_active ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700"}`}>
-                    <Speaker size={15} /> <span className="flex-1 text-left truncate">{d.name}</span>
-                    {d.is_active && <span className="text-[10px] font-bold">ATIVO</span>}
-                  </button>
+                  <div key={d.id} className={`flex items-center gap-1 rounded-xl border text-sm ${d.is_active ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700"}`}>
+                    <button onClick={() => void acao("transfer", { deviceId: d.id, play: tocando })} className="flex-1 flex items-center gap-2 px-3 py-2 text-left min-w-0">
+                      <Speaker size={15} className="shrink-0" /> <span className="truncate flex-1">{d.name}</span>
+                      {d.id === devPrefId && <span className="text-[9px] font-bold text-sky-600 shrink-0">PREFERENCIAL</span>}
+                      {d.is_active && <span className="text-[9px] font-bold shrink-0">ATIVO</span>}
+                    </button>
+                    <button onClick={() => void definirPreferido(d)} title="Definir como preferencial" className={`w-9 h-9 grid place-items-center shrink-0 ${d.id === devPrefId ? "text-sky-600" : "text-gray-300 hover:text-sky-500"}`}><Pin size={15} fill={d.id === devPrefId ? "currentColor" : "none"} /></button>
+                  </div>
                 ))}
               </div>
             )}
@@ -167,10 +216,31 @@ export function MusicaAmbientePage() {
               <button disabled={busy} className="w-14 h-14 grid place-items-center rounded-full bg-emerald-600 text-white" onClick={() => void acao(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvoDevice() })}>{tocando ? <Pause size={24} /> : <Play size={24} />}</button>
               <button disabled={busy} className="w-11 h-11 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700" onClick={() => void acao("next")}><SkipForward size={18} /></button>
             </div>
-            <div className="flex items-center gap-2 mt-3">
-              <Volume2 size={16} className="text-gray-400 shrink-0" />
-              <input type="range" min={0} max={100} defaultValue={deviceAtivo?.volume_percent ?? 50} onMouseUp={(e) => void acao("volume", { volume: Number((e.target as HTMLInputElement).value), deviceId: alvoDevice() })} onTouchEnd={(e) => void acao("volume", { volume: Number((e.target as HTMLInputElement).value), deviceId: alvoDevice() })} className="flex-1 accent-emerald-600" />
+            <div className="flex items-center gap-3 mt-4">
+              <Volume2 size={18} className="text-gray-400 shrink-0" />
+              <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="flex-1 h-2 accent-emerald-600" />
+              <span className="text-xs font-semibold tabular-nums w-10 text-right text-gray-500">{vol}%</span>
             </div>
+
+            {/* Fila: próximas músicas */}
+            {queue.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">A seguir</div>
+                <div className="space-y-1">
+                  {(verFila ? queue : queue.slice(0, 5)).map((t, i) => (
+                    <div key={t.uri + i} className="flex items-center gap-2 text-sm">
+                      {t.album?.images?.[0]?.url ? <img src={t.album.images[0].url} alt="" className="w-7 h-7 rounded object-cover shrink-0" /> : <div className="w-7 h-7 rounded bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400 shrink-0"><Music size={13} /></div>}
+                      <span className="truncate flex-1">{t.name} <span className="text-gray-400">· {(t.artists || []).map((a) => a.name).join(", ")}</span></span>
+                    </div>
+                  ))}
+                </div>
+                {queue.length > 5 && (
+                  <button onClick={() => setVerFila((v) => !v)} className="mt-2 text-xs font-semibold text-emerald-600 inline-flex items-center gap-1">
+                    {verFila ? "Ver menos" : `Ver todas (${queue.length})`} <ChevronDown size={13} className={verFila ? "rotate-180" : ""} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Busca */}
@@ -182,7 +252,7 @@ export function MusicaAmbientePage() {
               </div>
               <button disabled={buscando} className={`${BTN} border border-gray-200 dark:border-gray-700`} onClick={() => void buscar()}>{buscando ? <Loader2 size={15} className="animate-spin" /> : "Buscar"}</button>
             </div>
-            {buscouVazio && !buscando && <div className="mt-3 text-xs text-gray-400">Nenhum resultado para "{q}".</div>}
+            {buscouVazio && !buscando && <div className="mt-3 text-xs text-gray-400">Nenhum resultado para "{q}".{diag && <span className="block mt-1 text-[10px] text-gray-300 dark:text-gray-600">{diag}</span>}</div>}
             {(buscaPl.length > 0 || buscaTr.length > 0) && (
               <div className="mt-3 space-y-1.5 max-h-72 overflow-auto">
                 {buscaPl.map((p) => (
@@ -199,16 +269,21 @@ export function MusicaAmbientePage() {
             )}
           </div>
 
+          {/* Playlists preferidas */}
+          {favs.length > 0 && (
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 px-0.5 flex items-center gap-1.5"><Star size={12} className="text-amber-400" fill="currentColor" /> Preferidas</div>
+              <div className="grid grid-cols-2 gap-2">
+                {favs.map((p) => <PlaylistCard key={p.id} img={p.image} name={p.name} fav onPlay={() => void tocarContexto(p.uri)} onFav={() => void toggleFav(p)} />)}
+              </div>
+            </div>
+          )}
+
           {/* Playlists da conta */}
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 px-0.5">Suas playlists</div>
             <div className="grid grid-cols-2 gap-2">
-              {playlists.map((p) => (
-                <button key={p.id} onClick={() => void tocarContexto(p.uri)} className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-left active:border-emerald-400">
-                  {p.images?.[0]?.url ? <img src={p.images[0].url} alt="" className="w-full aspect-square object-cover" /> : <div className="w-full aspect-square bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400"><ListMusic size={22} /></div>}
-                  <div className="p-2"><div className="text-xs font-medium truncate">{p.name}</div><div className="text-[10px] text-gray-400">{p.tracks?.total ?? 0} músicas</div></div>
-                </button>
-              ))}
+              {playlists.map((p) => <PlaylistCard key={p.id} img={p.images?.[0]?.url} name={p.name} total={p.tracks?.total} fav={isFav(p.id)} onPlay={() => void tocarContexto(p.uri)} onFav={() => void toggleFav(p)} />)}
             </div>
             {playlists.length === 0 && <div className="text-xs text-gray-400">Nenhuma playlist na conta.</div>}
           </div>

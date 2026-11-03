@@ -71,6 +71,27 @@ export async function salvarConta(rid: string, tok: TokenResp, perfil: { id?: st
   });
 }
 
+// ── Preferências (dispositivo preferencial + playlists preferidas) ────────────
+export type FavPlaylist = { id: string; uri: string; name: string; image?: string | null };
+export async function getPrefs(rid: string): Promise<{ devicePreferidoId: string | null; devicePreferidoNome: string | null; playlistsPreferidas: FavPlaylist[] }> {
+  const d = await firestoreLer("spotifyContas", rid);
+  return {
+    devicePreferidoId: (d?.devicePreferidoId as string) || null,
+    devicePreferidoNome: (d?.devicePreferidoNome as string) || null,
+    playlistsPreferidas: Array.isArray(d?.playlistsPreferidas) ? (d!.playlistsPreferidas as FavPlaylist[]) : [],
+  };
+}
+export async function setDevicePreferido(rid: string, id: string, nome: string): Promise<void> {
+  await firestorePatchCampos("spotifyContas", rid, { devicePreferidoId: id || "", devicePreferidoNome: nome || "" });
+}
+export async function toggleFavPlaylist(rid: string, pl: FavPlaylist): Promise<FavPlaylist[]> {
+  const { playlistsPreferidas: list } = await getPrefs(rid);
+  const existe = list.some((x) => x.id === pl.id);
+  const next = existe ? list.filter((x) => x.id !== pl.id) : [...list, { id: pl.id, uri: pl.uri, name: pl.name, image: pl.image || null }];
+  await firestorePatchCampos("spotifyContas", rid, { playlistsPreferidas: next });
+  return next;
+}
+
 export async function desconectar(rid: string): Promise<void> {
   await firestorePatchCampos("spotifyContas", rid, { accessToken: "", refreshToken: "", expiraEm: 0, desconectadoEm: new Date().toISOString() });
 }
