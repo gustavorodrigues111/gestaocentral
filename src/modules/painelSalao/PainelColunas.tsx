@@ -335,15 +335,15 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
               data.proximaReserva ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-center px-3 gap-2">
                   <div className="text-sm text-[#5c6373]">{isHoje ? "Sem reservas pro restante do turno." : "Sem reservas nesse dia."}</div>
-                  <div className="w-full rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2.5 text-left">
-                    <div className="text-[10px] uppercase tracking-wide font-bold text-[#6f7889] mb-1">Próxima reserva</div>
+                  <button onClick={() => onDataSel(data.proximaReserva!.data)} className="w-full rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2.5 text-left hover:border-[#e3a63c]">
+                    <div className="text-[10px] uppercase tracking-wide font-bold text-[#6f7889] mb-1">Próxima reserva · toque pra ver o dia</div>
                     <div className="flex items-center gap-2">
                       <span className="font-extrabold tabular-nums text-[15px]">{data.proximaReserva.horario || "--:--"}</span>
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#e3a63c22", color: "#e3a63c" }}>{labelData(data.proximaReserva.data, hoje)}{data.proximaReserva.turno ? ` · ${data.proximaReserva.turno}` : ""}</span>
                       <span className="ml-auto flex items-center gap-1 text-[12px] text-[#9aa3b2]"><Users size={12} />{data.proximaReserva.pessoas || "?"}</span>
                     </div>
                     <div className="text-[13px] font-semibold truncate mt-0.5">{data.proximaReserva.nome || "Reserva"}</div>
-                  </div>
+                  </button>
                 </div>
               ) : <Vazio txt={isHoje ? "Sem reservas pro restante do turno" : "Sem reservas nesse dia"} />
             ) : null}
