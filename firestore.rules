@@ -252,6 +252,11 @@ service cloud.firestore {
     match /botComandos/{id}            { allow read, write: if authed(); }   // Bot: comando em aberto por grupo (excluir/quitar/coincidir)
     match /botPendencias/{id}          { allow read, write: if authed(); }   // Bot: dúvida aguardando resposta no privado
     match /botAvisosParcela/{id}       { allow read, write: if authed(); }   // Bot: dedup do aviso diário de parcelas
+    // Música Ambiente: tokens OAuth do Spotify (sensíveis). O front NUNCA lê daqui —
+    // tudo passa por /api/spotify-control (usuário de serviço). Mantido em authed()
+    // pra consistência com as demais coleções de serviço; dá pra travar em
+    // isServico()+isMaster() quando tivermos o e-mail do usuário de serviço.
+    match /spotifyContas/{id}          { allow read, write: if authed(); }
     match /whatsappAgenteSessoes/{id}  { allow read, write: if authed(); }
     match /rotinaNotificacoes/{id}     { allow read, write: if authed(); }
     match /notificacaoConfigs/{id}     { allow read, write: if authed(); }

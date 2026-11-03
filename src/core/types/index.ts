@@ -74,7 +74,7 @@ export type ModuleArea = "minhas" | "ops" | "dp" | "planejamento" | "inst" | "ma
 export type ModuleId =
   // Operação
   | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas" | "eventos"
-  | "horarios" | "seguranca"
+  | "horarios" | "seguranca" | "musicaAmbiente"
   // Produção SISP ART — fábrica de pescado sob inspeção (peixaria): recebimento,
   // plano, rendimento, lote, romaneio, venda. Mobile-first.
   | "producaoSisp"
