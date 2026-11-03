@@ -15,7 +15,7 @@ import { FotoUpload } from "../checklists/FotoUpload";
 import type {
   ProducaoSispEspecie, ProducaoSispCorte, ProducaoSispFornecedor,
   ProducaoSispRecebimento, ProducaoSispRecebimentoItem, ProducaoSispPlano,
-  ProducaoSispPlanoAlvo, ProducaoSispConservacao, ProducaoSispPesoModo, ProducaoSispConfig,
+  ProducaoSispPlanoAlvo, ProducaoSispConservacao, ProducaoSispConfig,
   ProducaoSispLote, ProducaoSispPeca, ProducaoSispRomaneio, ProducaoSispRomaneioItem,
   ProducaoSispRomaneioTipo, ProducaoSispRomaneioDestino, Restaurant,
 } from "../../core/types";
@@ -239,7 +239,7 @@ export function ProducaoSispPage() {
       {novoReceb && (
         <RecebimentoWizard
           rid={rid} meNome={pessoa?.nome || null} meId={pessoa?.id || null}
-          especies={especies} fornecedores={fornecedores}
+          especies={especies} fornecedores={fornecedores} config={config}
           onClose={() => setNovoReceb(false)}
         />
       )}
@@ -434,248 +434,289 @@ function Overlay({ titulo, onClose, children, footer }: { titulo: string; onClos
 }
 
 // ── Wizard de recebimento ───────────────────────────────────────────────────────
-function RecebimentoWizard({ rid, meNome, meId, especies, fornecedores, onClose }: {
-  rid: string; meNome: string | null; meId: string | null;
-  especies: ProducaoSispEspecie[]; fornecedores: ProducaoSispFornecedor[]; onClose: () => void;
-}) {
-  const [passo, setPasso] = useState(1);
-  const [fornecedorId, setFornecedorId] = useState<string>("");
-  const [semForn, setSemForn] = useState(false);
-  const [novoForn, setNovoForn] = useState(false);
-  const [fNome, setFNome] = useState("");
-  const [fCnpj, setFCnpj] = useState("");
-  const [fWhats, setFWhats] = useState("");
-  const [fReg, setFReg] = useState("");
-  const [itens, setItens] = useState<ProducaoSispRecebimentoItem[]>([]);
-  const [nota, setNota] = useState("");
-  const [obs, setObs] = useState("");
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState("");
-
-  const fornSel = fornecedores.find((f) => f.id === fornecedorId) || null;
-
-  async function salvarNovoFornecedor(): Promise<string | null> {
-    if (!fNome.trim()) { setErro("Informe o nome do fornecedor."); return null; }
-    const f: ProducaoSispFornecedor = {
-      id: uid(), restaurantId: rid, nome: fNome.trim(),
-      cnpj: fCnpj.trim() || null, whatsapp: fWhats.trim() || null,
-      registroSanitario: fReg.trim() || null, ativo: true, criadoEm: hojeISO(),
-    };
-    await repo.salvarFornecedor(f);
-    setFornecedorId(f.id); setNovoForn(false);
-    return f.id;
-  }
-
-  async function finalizar() {
-    setErro("");
-    if (itens.length === 0) { setErro("Adicione ao menos uma leva."); return; }
-    let fid = fornecedorId || null;
-    let fnome: string | null = fornSel?.nome || null;
-    if (novoForn && fNome.trim()) { fid = await salvarNovoFornecedor(); fnome = fNome.trim(); }
-    if (!semForn && !fid) { setErro("Selecione um fornecedor, cadastre um, ou marque 'sem fornecedor'."); return; }
-    setSalvando(true);
-    try {
-      const r: ProducaoSispRecebimento = {
-        id: uid(), restaurantId: rid,
-        fornecedorId: semForn ? null : fid, fornecedorNome: semForn ? null : fnome,
-        notaFornecedor: nota.trim() || null, obs: obs.trim() || null,
-        itens, status: "aguardando_plano",
-        recebidoEm: hojeISO(), recebidoPorId: meId, recebidoPorNome: meNome, criadoEm: hojeISO(),
-      };
-      await repo.salvarRecebimento(r);
-      onClose();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao salvar.");
-      setSalvando(false);
-    }
-  }
-
-  const footer = passo < 3
-    ? <button className={`${BTN_PRIMARY} w-full`} onClick={() => { setErro(""); if (passo === 1 && !semForn && !fornecedorId && !(novoForn && fNome.trim())) { setErro("Escolha o fornecedor ou marque 'sem fornecedor'."); return; } setPasso(passo + 1); }}>Continuar <ArrowRight size={16} /></button>
-    : <button className={`${BTN_PRIMARY} w-full`} disabled={salvando} onClick={() => void finalizar()}>{salvando ? "Salvando…" : "Salvar recebimento"}</button>;
-
+// ── Novo recebimento: wizard tela-cheia, uma pergunta por vez (mão molhada) ──────
+const PS_MOTIVOS = ["Temperatura", "Frescor/odor", "Cor/aspecto", "Embalagem", "Peso", "Outro"];
+type PSStep = "forn" | "esp" | "qtd" | "peso" | "temp" | "conf" | "motivo" | "rev" | "opts" | "resumo";
+type PSDraft = {
+  especieId: string; qtd: number; brutoStr: string;
+  conservacao: ProducaoSispConservacao; tempNeg: boolean; tempStr: string;
+  conforme: boolean; motivo: string; motivoDesc: string; fotoUrl: string | null;
+};
+const psNovoDraft = (): PSDraft => ({ especieId: "", qtd: 1, brutoStr: "", conservacao: "ultracongelado", tempNeg: true, tempStr: "", conforme: true, motivo: "", motivoDesc: "", fotoUrl: null });
+const psNum = (s: string) => parseFloat((s || "0").replace(",", ".")) || 0;
+const psBR = (n: number) => n.toFixed(2).replace(".", ",");
+function psRtl(val: string, k: string): string {
+  let d = (String(val).match(/\d/g) || []).join("");
+  if (k === "⌫") d = d.slice(0, -1);
+  else if (/^\d$/.test(k)) { if (d.length >= 6) return val; d += k; }
+  else return val;
+  const n = parseInt(d || "0", 10);
+  return `${Math.floor(n / 100)},${String(n % 100).padStart(2, "0")}`;
+}
+function psTemp(val: string, k: string): string {
+  if (k === "⌫") return val.slice(0, -1);
+  if (k === ",") return val.indexOf(",") >= 0 ? val : (val === "" ? "0," : val + ",");
+  const dot = val.indexOf(","); if (dot >= 0 && val.length - dot - 1 >= 2) return val;
+  return (val + k).replace(/^0(?=\d)/, "");
+}
+function PSKeypad({ onKey }: { onKey: (k: string) => void }) {
   return (
-    <Overlay titulo={`Novo recebimento · passo ${passo}/3`} onClose={onClose} footer={footer}>
-      {erro && <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
-
-      {passo === 1 && (
-        <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">Fornecedor</div>
-          {!novoForn && (
-            <>
-              <select className={INPUT} value={fornecedorId} disabled={semForn} onChange={(e) => setFornecedorId(e.target.value)}>
-                <option value="">Selecione um fornecedor…</option>
-                {fornecedores.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-              </select>
-              <div className="flex gap-2">
-                <button className={BTN_GHOST} onClick={() => { setNovoForn(true); setSemForn(false); setFornecedorId(""); }}><Plus size={14} /> Novo</button>
-                <label className="inline-flex items-center gap-2 text-sm px-3">
-                  <input type="checkbox" checked={semForn} onChange={(e) => { setSemForn(e.target.checked); if (e.target.checked) setFornecedorId(""); }} />
-                  Receber sem fornecedor
-                </label>
-              </div>
-              {semForn && <div className="text-[11px] text-amber-600 inline-flex items-center gap-1"><AlertTriangle size={12} /> Fica pendente de relacionar o fornecedor antes de lançar o rendimento.</div>}
-            </>
-          )}
-          {novoForn && (
-            <div className="space-y-2 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
-              <input className={INPUT} placeholder="Nome / razão social *" value={fNome} onChange={(e) => setFNome(e.target.value)} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input className={INPUT} placeholder="CNPJ" value={fCnpj} onChange={(e) => setFCnpj(e.target.value)} />
-                <input className={INPUT} placeholder="WhatsApp" value={fWhats} onChange={(e) => setFWhats(e.target.value)} />
-              </div>
-              <input className={INPUT} placeholder="Registro sanitário / SIF (origem)" value={fReg} onChange={(e) => setFReg(e.target.value)} />
-              <div className="flex gap-2">
-                <button className={BTN_GHOST} onClick={() => void salvarNovoFornecedor()}><Check size={14} /> Salvar fornecedor</button>
-                <button className={BTN_GHOST} onClick={() => setNovoForn(false)}>Cancelar</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {passo === 2 && (
-        <LevasStep rid={rid} especies={especies} itens={itens} setItens={setItens} />
-      )}
-
-      {passo === 3 && (
-        <div className="space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">Revisar</div>
-          <div className="text-sm">{semForn ? "Sem fornecedor" : (fornSel?.nome || (novoForn ? fNome : "—"))}</div>
-          <div className="space-y-2">
-            {itens.map((it) => (
-              <div key={it.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 text-sm">
-                <div className="font-medium">{especies.find((e) => e.id === it.especieId)?.nome || "—"}</div>
-                <div className="text-xs text-gray-500">{it.qtdCaixas} caixa(s) · {fmtKg(it.pesoBrutoKg)} {it.temperaturaC != null ? `· ${it.temperaturaC}°C` : ""} {it.conforme === false ? "· ⚠ rejeitada" : ""}</div>
-              </div>
-            ))}
-          </div>
-          <input className={INPUT} placeholder="Nº da nota/romaneio do fornecedor (opcional)" value={nota} onChange={(e) => setNota(e.target.value)} />
-          <textarea className={`${INPUT} h-auto py-2`} rows={2} placeholder="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
-        </div>
-      )}
-    </Overlay>
+    <div className="grid grid-cols-3 gap-2">
+      {["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"].map((k) => (
+        <button key={k} onClick={() => onKey(k)} className="h-14 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-2xl font-bold active:bg-sky-50 dark:active:bg-sky-900/30">{k}</button>
+      ))}
+    </div>
   );
 }
 
-// ── Passo 2: adicionar levas ────────────────────────────────────────────────────
-function LevasStep({ rid, especies, itens, setItens }: {
-  rid: string; especies: ProducaoSispEspecie[];
-  itens: ProducaoSispRecebimentoItem[]; setItens: (f: (prev: ProducaoSispRecebimentoItem[]) => ProducaoSispRecebimentoItem[]) => void;
+function RecebimentoWizard({ rid, meNome, meId, especies, fornecedores, config, onClose }: {
+  rid: string; meNome: string | null; meId: string | null;
+  especies: ProducaoSispEspecie[]; fornecedores: ProducaoSispFornecedor[]; config: ProducaoSispConfig | null; onClose: () => void;
 }) {
-  const [especieId, setEspecieId] = useState("");
-  const [qtdCaixas, setQtdCaixas] = useState("1");
-  const [pesoModo, setPesoModo] = useState<ProducaoSispPesoModo>("total");
-  const [pesoTotal, setPesoTotal] = useState("");
-  const [pesoNominal, setPesoNominal] = useState("");
-  const [pesosCaixa, setPesosCaixa] = useState<string[]>([""]);
-  const [tempC, setTempC] = useState("");
-  const [conforme, setConforme] = useState(true);
-  const [foto, setFoto] = useState<string | null>(null);
-  const [erro, setErro] = useState("");
+  const [step, setStep] = useState<PSStep>("forn");
+  const [fornecedorId, setFornecedorId] = useState("");
+  const [fornNome, setFornNome] = useState("");
+  const [semForn, setSemForn] = useState(false);
+  const [novoForn, setNovoForn] = useState(false);
+  const [fNome, setFNome] = useState(""); const [fCnpj, setFCnpj] = useState(""); const [fWhats, setFWhats] = useState("");
+  const [produtos, setProdutos] = useState<ProducaoSispRecebimentoItem[]>([]);
+  const [p, setP] = useState<PSDraft>(psNovoDraft());
+  const [nota, setNota] = useState(""); const [obs, setObs] = useState("");
+  const [salvando, setSalvando] = useState(false); const [erro, setErro] = useState("");
+  const upd = (patch: Partial<PSDraft>) => setP((prev) => ({ ...prev, ...patch }));
 
-  const qtd = Math.max(1, parseInt(qtdCaixas) || 1);
+  const tara = (config?.taraTipos && config.taraTipos[0]?.taraKg != null) ? config.taraTipos[0].taraKg : 0.8;
+  const tolRefrig = config?.tolTempRefrigC ?? 4;
+  const tolCong = config?.tolTempCongeladoC ?? -12;
+  const brutoKg = psNum(p.brutoStr);
+  const liqKg = Math.max(0, brutoKg - p.qtd * tara);
+  const tempVal = (p.tempNeg ? -1 : 1) * psNum(p.tempStr);
+  const tolAtual = p.conservacao === "ultracongelado" ? tolCong : tolRefrig;
+  const tempWarn = p.tempStr !== "" && tempVal > tolAtual;
+  const consLabel = (c: ProducaoSispConservacao) => c === "ultracongelado" ? "Congelado" : "Refrigerado";
+  const nomeEsp = (id: string) => especies.find((e) => e.id === id)?.nome || "—";
+  const liqItem = (it: ProducaoSispRecebimentoItem) => Number(it.pesoBrutoKg) || 0;
+  const totCaixas = produtos.reduce((s, it) => s + (it.qtdCaixas || 0), 0);
+  const totLiq = produtos.reduce((s, it) => s + liqItem(it), 0);
 
-  function pesoBruto(): number {
-    if (pesoModo === "total") return Number(pesoTotal) || 0;
-    if (pesoModo === "nominal") return (Number(pesoNominal) || 0) * qtd;
-    let s = 0; for (let i = 0; i < qtd; i++) s += Number(pesosCaixa[i]) || 0; return s;
-  }
-
-  function adicionar() {
-    setErro("");
-    if (!especieId) { setErro("Escolha a espécie."); return; }
-    const pb = pesoBruto();
-    if (pb <= 0) { setErro("Informe o peso."); return; }
+  function setCons(c: ProducaoSispConservacao) { upd({ conservacao: c, tempNeg: c === "ultracongelado" }); }
+  function confirmaProduto() {
     const it: ProducaoSispRecebimentoItem = {
-      id: uid(), especieId, qtdCaixas: qtd, pesoModo, pesoBrutoKg: pb,
-      pesosPorCaixaKg: pesoModo === "porCaixa" ? pesosCaixa.slice(0, qtd).map((p) => Number(p) || 0) : null,
-      pesoNominalCaixaKg: pesoModo === "nominal" ? (Number(pesoNominal) || 0) : null,
-      temperaturaC: tempC.trim() === "" ? null : Number(tempC),
-      conforme, motivoRejeicao: null, loteFornecedor: null, validadeOrigem: null, fotoUrl: foto,
+      id: uid(), especieId: p.especieId, qtdCaixas: p.qtd, pesoModo: "total",
+      pesoBrutoKg: liqKg, pesoComCaixaKg: brutoKg, taraKgUnit: tara,
+      conservacao: p.conservacao, temperaturaC: p.tempStr ? Math.round(tempVal * 10) / 10 : null,
+      conforme: p.conforme, motivoCategoria: p.conforme ? null : (p.motivo || null),
+      motivoRejeicao: p.conforme ? null : (p.motivoDesc.trim() || null), fotoUrl: p.fotoUrl || null,
     };
-    setItens((prev) => [...prev, it]);
-    setEspecieId(""); setQtdCaixas("1"); setPesoTotal(""); setPesoNominal(""); setPesosCaixa([""]); setTempC(""); setConforme(true); setFoto(null); setPesoModo("total");
+    setProdutos((prev) => [...prev, it]); setStep("opts");
   }
+  function novoProduto() { setP(psNovoDraft()); setStep("esp"); }
+
+  async function salvarNovoFornecedor(): Promise<{ id: string; nome: string } | null> {
+    if (!fNome.trim()) { setErro("Informe o nome do fornecedor."); return null; }
+    const f: ProducaoSispFornecedor = { id: uid(), restaurantId: rid, nome: fNome.trim(), cnpj: fCnpj.trim() || null, whatsapp: fWhats.trim() || null, registroSanitario: null, ativo: true, criadoEm: hojeISO() };
+    await repo.salvarFornecedor(f);
+    setFornecedorId(f.id); setFornNome(f.nome); setNovoForn(false);
+    return { id: f.id, nome: f.nome };
+  }
+  async function finalizar() {
+    if (!produtos.length) { setErro("Adicione ao menos um produto."); return; }
+    setSalvando(true); setErro("");
+    try {
+      const r: ProducaoSispRecebimento = {
+        id: uid(), restaurantId: rid,
+        fornecedorId: semForn ? null : (fornecedorId || null), fornecedorNome: semForn ? null : (fornNome || null),
+        notaFornecedor: nota.trim() || null, obs: obs.trim() || null,
+        itens: produtos, status: "aguardando_plano",
+        recebidoEm: hojeISO(), recebidoPorId: meId, recebidoPorNome: meNome, criadoEm: hojeISO(),
+      };
+      await repo.salvarRecebimento(r); onClose();
+    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao salvar."); setSalvando(false); }
+  }
+
+  function back() {
+    setErro("");
+    if (step === "forn") return onClose();
+    if (step === "esp") return setStep(produtos.length ? "opts" : "forn");
+    if (step === "qtd") return setStep("esp");
+    if (step === "peso") return setStep("qtd");
+    if (step === "temp") return setStep("peso");
+    if (step === "conf") return setStep("temp");
+    if (step === "motivo") return setStep("conf");
+    if (step === "rev") return setStep(p.conforme ? "conf" : "motivo");
+    if (step === "opts") return setStep("rev");
+    if (step === "resumo") return setStep("opts");
+  }
+
+  const bigBrand = "w-full h-14 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-lg font-bold flex items-center justify-center gap-2 disabled:opacity-40";
+  const bigGhost = "w-full h-12 rounded-2xl border-2 border-gray-200 dark:border-gray-700 text-base font-semibold flex items-center justify-center gap-2";
+  const pickRow = "w-full text-left rounded-2xl border-2 border-gray-200 dark:border-gray-700 px-4 py-4 text-base font-semibold flex items-center gap-3 active:border-sky-500 active:bg-sky-50 dark:active:bg-sky-900/20";
+  const Q = ({ children }: { children: React.ReactNode }) => <div className="text-[26px] font-extrabold leading-tight tracking-tight mb-1">{children}</div>;
+  const Sub = ({ children }: { children: React.ReactNode }) => <div className="text-sm text-gray-500 mb-4">{children}</div>;
+  const motivoOk = !!p.motivo && p.motivoDesc.trim().length >= 3;
 
   return (
-    <div className="space-y-4">
-      {itens.length > 0 && (
-        <div className="space-y-2">
-          {itens.map((it) => (
-            <div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
-              <div className="min-w-0 text-sm">
-                <div className="font-medium truncate">{especies.find((e) => e.id === it.especieId)?.nome || "—"}</div>
-                <div className="text-xs text-gray-500">{it.qtdCaixas} cx · {fmtKg(it.pesoBrutoKg)} {it.temperaturaC != null ? `· ${it.temperaturaC}°C` : ""}</div>
+    <div className="fixed inset-0 z-50 bg-white dark:bg-gray-950 flex flex-col">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+        <button onClick={back} className="w-10 h-10 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-center text-xl">‹</button>
+        <div className="flex-1 font-bold">Novo recebimento</div>
+        <button onClick={onClose} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400"><X size={20} /></button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4" style={{ WebkitOverflowScrolling: "touch" }}>
+        {erro && <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mb-3">{erro}</div>}
+
+        {step === "forn" && (
+          <div>
+            <Q>De quem chegou?</Q><Sub>Toque no fornecedor desta carga.</Sub>
+            {!novoForn ? (
+              <div className="space-y-2.5">
+                {fornecedores.map((f) => (
+                  <button key={f.id} className={pickRow} onClick={() => { setFornecedorId(f.id); setFornNome(f.nome); setSemForn(false); setStep("esp"); }}>🚚 {f.nome}</button>
+                ))}
+                <button className={`${pickRow} text-sky-600`} onClick={() => { setNovoForn(true); }}>＋ Novo fornecedor</button>
+                <button className={`${pickRow} text-amber-600`} onClick={() => { setSemForn(true); setFornecedorId(""); setFornNome(""); setStep("esp"); }}>⚠ Receber sem fornecedor</button>
               </div>
-              <button className="text-gray-400 hover:text-rose-600" onClick={() => setItens((prev) => prev.filter((x) => x.id !== it.id))}><Trash2 size={16} /></button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
-        <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">Adicionar leva</div>
-        {erro && <div className="text-xs text-rose-600">{erro}</div>}
-        <select className={INPUT} value={especieId} onChange={(e) => setEspecieId(e.target.value)}>
-          <option value="">Espécie…</option>
-          {especies.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
-        </select>
-        {especies.length === 0 && <div className="text-[11px] text-amber-600">Cadastre espécies na aba Config primeiro.</div>}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="text-xs text-gray-500">Qtd. de caixas
-            <input className={INPUT} type="number" inputMode="numeric" min={1} value={qtdCaixas} onChange={(e) => setQtdCaixas(e.target.value)} />
-          </label>
-          <label className="text-xs text-gray-500">Como pesou
-            <select className={INPUT} value={pesoModo} onChange={(e) => setPesoModo(e.target.value as ProducaoSispPesoModo)}>
-              <option value="total">Peso total da leva</option>
-              <option value="nominal">Nominal × qtd</option>
-              <option value="porCaixa">Por caixa</option>
-            </select>
-          </label>
-        </div>
-
-        {pesoModo === "total" && (
-          <label className="text-xs text-gray-500">Peso total bruto (kg)
-            <input className={INPUT} type="number" inputMode="decimal" value={pesoTotal} onChange={(e) => setPesoTotal(e.target.value)} />
-          </label>
+            ) : (
+              <div className="space-y-2">
+                <input className={INPUT} placeholder="Nome / razão social *" value={fNome} onChange={(e) => setFNome(e.target.value)} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input className={INPUT} placeholder="CNPJ" value={fCnpj} onChange={(e) => setFCnpj(e.target.value)} />
+                  <input className={INPUT} placeholder="WhatsApp" value={fWhats} onChange={(e) => setFWhats(e.target.value)} />
+                </div>
+                <button className={bigBrand} onClick={async () => { const r = await salvarNovoFornecedor(); if (r) setStep("esp"); }}><Check size={18} /> Salvar e continuar</button>
+                <button className={bigGhost} onClick={() => setNovoForn(false)}>Cancelar</button>
+              </div>
+            )}
+          </div>
         )}
-        {pesoModo === "nominal" && (
-          <label className="text-xs text-gray-500">Peso nominal por caixa (kg) — total: {fmtKg((Number(pesoNominal) || 0) * qtd)}
-            <input className={INPUT} type="number" inputMode="decimal" value={pesoNominal} onChange={(e) => setPesoNominal(e.target.value)} />
-          </label>
-        )}
-        {pesoModo === "porCaixa" && (
-          <div className="space-y-1">
-            <div className="text-xs text-gray-500">Peso de cada caixa (kg) — total: {fmtKg(pesoBruto())}</div>
-            <div className="grid grid-cols-3 gap-2">
-              {Array.from({ length: qtd }).map((_, i) => (
-                <input key={i} className={INPUT} type="number" inputMode="decimal" placeholder={`cx ${i + 1}`} value={pesosCaixa[i] ?? ""}
-                  onChange={(e) => setPesosCaixa((prev) => { const next = [...prev]; while (next.length <= i) next.push(""); next[i] = e.target.value; return next; })} />
+
+        {step === "esp" && (
+          <div>
+            <Q>Qual espécie<br />deste produto?</Q><Sub>Produto {produtos.length + 1} do recebimento</Sub>
+            {especies.length === 0 && <div className="text-sm text-amber-600 mb-3">Cadastre espécies na aba Config primeiro.</div>}
+            <div className="grid grid-cols-2 gap-2.5">
+              {especies.map((e) => (
+                <button key={e.id} className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 px-3 py-5 text-base font-bold active:border-sky-500 active:bg-sky-50 dark:active:bg-sky-900/20 min-h-[88px]" onClick={() => { upd({ especieId: e.id }); setStep("qtd"); }}>🐟<br />{e.nome}</button>
               ))}
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="text-xs text-gray-500">Temperatura (°C)
-            <input className={INPUT} type="number" inputMode="decimal" placeholder="ex.: -18" value={tempC} onChange={(e) => setTempC(e.target.value)} />
-          </label>
-          <label className="text-xs text-gray-500">Conformidade
-            <select className={INPUT} value={conforme ? "1" : "0"} onChange={(e) => setConforme(e.target.value === "1")}>
-              <option value="1">Aprovada</option>
-              <option value="0">Rejeitada</option>
-            </select>
-          </label>
-        </div>
+        {step === "qtd" && (
+          <div>
+            <Q>Quantas caixas?</Q><Sub>{nomeEsp(p.especieId)} · caixa padrão (tara {psBR(tara)} kg)</Sub>
+            <div className="flex items-center justify-center gap-5 my-3">
+              <button className="w-16 h-16 rounded-2xl border-2 border-gray-200 dark:border-gray-700 text-3xl font-extrabold text-sky-600" onClick={() => upd({ qtd: Math.max(1, p.qtd - 1) })}>−</button>
+              <div className="text-center min-w-[80px]"><div className="text-5xl font-extrabold tabular-nums leading-none">{p.qtd}</div><div className="text-[11px] uppercase text-gray-400 mt-1">caixas</div></div>
+              <button className="w-16 h-16 rounded-2xl border-2 border-gray-200 dark:border-gray-700 text-3xl font-extrabold text-sky-600" onClick={() => upd({ qtd: p.qtd + 1 })}>＋</button>
+            </div>
+            <div className="flex gap-2 justify-center mb-2">
+              {[1, 2, 3, 4, 6, 8].map((n) => <button key={n} className={`flex-1 h-10 rounded-xl border-2 text-base font-bold ${p.qtd === n ? "border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-600" : "border-gray-200 dark:border-gray-700"}`} onClick={() => upd({ qtd: n })}>{n}</button>)}
+            </div>
+            <div className="text-center text-sm text-gray-500 mb-3">tara total: {p.qtd} × {psBR(tara)} = <b>{psBR(p.qtd * tara)} kg</b></div>
+            <button className={bigBrand} onClick={() => setStep("peso")}>Continuar</button>
+          </div>
+        )}
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Foto da caixa:</span>
-          <FotoUpload rid={rid} bucketPrefix="producaoSisp" pathPrefix="receb" url={foto} onChange={setFoto} label="foto" />
-        </div>
+        {step === "peso" && (
+          <div>
+            <Q>Peso total das caixas</Q><Sub>{nomeEsp(p.especieId)} · {p.qtd} caixa(s) na balança (com a caixa)</Sub>
+            <div className="mb-3"><FotoUpload rid={rid} bucketPrefix="producaoSisp" pathPrefix="receb" url={p.fotoUrl || ""} onChange={(u) => upd({ fotoUrl: u })} label="foto na balança" /></div>
+            <div className="rounded-2xl border-2 border-gray-200 dark:border-gray-700 p-5 text-center mb-2"><span className="text-5xl font-extrabold tabular-nums">{p.brutoStr === "" ? "0,00" : p.brutoStr}</span><span className="text-base text-gray-400 font-semibold ml-1">kg bruto</span></div>
+            <div className="text-center text-sm text-gray-500 mb-3">− tara {p.qtd} × {psBR(tara)} = {psBR(p.qtd * tara)} kg · líquido <b>{psBR(liqKg)} kg</b></div>
+            <PSKeypad onKey={(k) => upd({ brutoStr: psRtl(p.brutoStr, k) })} />
+            <button className={`${bigBrand} mt-3`} onClick={() => setStep("temp")}>Continuar</button>
+          </div>
+        )}
 
-        <button className={`${BTN_GHOST} w-full`} onClick={adicionar}><Plus size={14} /> Adicionar leva</button>
+        {step === "temp" && (
+          <div>
+            <Q>Temperatura</Q><Sub>Como o produto chegou? A tolerância muda.</Sub>
+            <div className="grid grid-cols-2 gap-2.5 mb-3">
+              <button className={`rounded-2xl border-2 px-3 py-4 font-bold ${p.conservacao === "refrigerado" ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-600" : "border-gray-200 dark:border-gray-700"}`} onClick={() => setCons("refrigerado")}>🧊 Refrigerado<br /><span className="text-[11px] font-medium text-gray-500">tol. ≤ {tolRefrig}°C</span></button>
+              <button className={`rounded-2xl border-2 px-3 py-4 font-bold ${p.conservacao === "ultracongelado" ? "border-sky-400 bg-sky-50 dark:bg-sky-900/20 text-sky-600" : "border-gray-200 dark:border-gray-700"}`} onClick={() => setCons("ultracongelado")}>❄️ Congelado<br /><span className="text-[11px] font-medium text-gray-500">tol. ≤ {tolCong}°C</span></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 mb-2">
+              <button className={`h-11 rounded-xl border-2 font-bold text-sm ${p.tempNeg ? "border-sky-400 bg-sky-50 dark:bg-sky-900/20 text-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-500"}`} onClick={() => upd({ tempNeg: true })}>− Temp. negativa</button>
+              <button className={`h-11 rounded-xl border-2 font-bold text-sm ${!p.tempNeg ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-600" : "border-gray-200 dark:border-gray-700 text-gray-500"}`} onClick={() => upd({ tempNeg: false })}>+ Temp. positiva</button>
+            </div>
+            <div className={`rounded-2xl border-2 p-5 text-center mb-1 ${tempWarn ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20" : p.tempNeg ? "border-sky-300 bg-sky-50/60 dark:bg-sky-900/15" : "border-amber-300 bg-amber-50/60 dark:bg-amber-900/15"}`}><span className="text-5xl font-extrabold tabular-nums">{p.tempNeg ? "−" : "+"}{p.tempStr === "" ? "0,0" : p.tempStr}</span><span className="text-base text-gray-400 font-semibold ml-1">°C</span></div>
+            <div className="text-center text-xs mb-3 min-h-[16px]">{p.tempStr === "" ? "" : tempWarn ? <span className="text-rose-600 font-semibold">⚠️ Acima da tolerância (≤ {tolAtual}°C p/ {consLabel(p.conservacao).toLowerCase()})</span> : <span className="text-gray-500">Dentro da tolerância ✓</span>}</div>
+            <PSKeypad onKey={(k) => upd({ tempStr: psTemp(p.tempStr, k) })} />
+            <button className={`${bigBrand} mt-3`} onClick={() => setStep("conf")}>Continuar</button>
+          </div>
+        )}
+
+        {step === "conf" && (
+          <div>
+            <Q>Este produto está conforme?</Q><Sub>Frescor, cor, odor e temperatura dentro do padrão.</Sub>
+            <div className="space-y-3">
+              <button className="w-full h-16 rounded-2xl bg-emerald-600 text-white text-lg font-bold" onClick={() => { upd({ conforme: true }); setStep("rev"); }}>✓ SIM, conforme</button>
+              <button className="w-full h-16 rounded-2xl bg-rose-600 text-white text-lg font-bold" onClick={() => { upd({ conforme: false }); setStep("motivo"); }}>✕ NÃO conforme</button>
+            </div>
+          </div>
+        )}
+
+        {step === "motivo" && (
+          <div>
+            <Q>Por que não<br />está conforme?</Q><Sub>Registro obrigatório. Escolha o motivo e descreva.</Sub>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {PS_MOTIVOS.map((m) => <button key={m} className={`px-3 h-10 rounded-xl border-2 text-sm font-bold ${p.motivo === m ? "border-sky-500 bg-sky-50 dark:bg-sky-900/20 text-sky-600" : "border-gray-200 dark:border-gray-700"}`} onClick={() => upd({ motivo: m })}>{m}</button>)}
+            </div>
+            <textarea className={`${INPUT} h-auto py-2`} rows={3} placeholder="Ex.: caixa com odor forte e gelo derretido na chegada…" value={p.motivoDesc} onChange={(e) => upd({ motivoDesc: e.target.value })} />
+            <button className={`${bigBrand} mt-3`} disabled={!motivoOk} onClick={() => setStep("rev")}>Continuar</button>
+          </div>
+        )}
+
+        {step === "rev" && (
+          <div>
+            <Q>Confirmar dados</Q><Sub>Deste produto.</Sub>
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 text-sm mb-4">
+              {[["Espécie", nomeEsp(p.especieId)], ["Caixas", `${p.qtd} × caixa padrão`], ["Peso bruto", `${p.brutoStr || "0,00"} kg`], ["Tara", `${psBR(p.qtd * tara)} kg`], ["Peso líquido", `${psBR(liqKg)} kg`], ["Conservação", consLabel(p.conservacao)], ["Temperatura", `${p.tempStr ? (p.tempNeg ? "−" : "+") + p.tempStr : "—"} °C`], ["Conformidade", p.conforme ? "✓ conforme" : "⚠️ NÃO conforme"]].map(([k, v]) => (
+                <div key={k} className="flex justify-between px-3 py-2.5"><span className="text-gray-500">{k}</span><span className="font-medium text-right">{v}</span></div>
+              ))}
+              {!p.conforme && <div className="flex justify-between px-3 py-2.5"><span className="text-gray-500">Motivo</span><span className="font-medium text-right">{p.motivo || "—"}</span></div>}
+              {!p.conforme && <div className="px-3 py-2.5"><span className="text-gray-500">Descrição</span><div className="font-medium mt-0.5">{p.motivoDesc || "—"}</div></div>}
+            </div>
+            <button className={bigBrand} onClick={confirmaProduto}>✓ Confirmar produto</button>
+          </div>
+        )}
+
+        {step === "opts" && (
+          <div>
+            <div className="text-center py-3">
+              <div className="w-16 h-16 rounded-full bg-sky-50 dark:bg-sky-900/20 text-sky-600 flex items-center justify-center mx-auto mb-2 text-3xl">✓</div>
+              <div className="text-xl font-extrabold">Produto confirmado</div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-2 text-center"><div className="text-2xl font-extrabold tabular-nums">{produtos.length}</div><div className="text-[10px] uppercase text-gray-400">produtos</div></div>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-2 text-center"><div className="text-2xl font-extrabold tabular-nums">{totCaixas}</div><div className="text-[10px] uppercase text-gray-400">caixas</div></div>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-2 text-center"><div className="text-2xl font-extrabold tabular-nums">{psBR(totLiq)}</div><div className="text-[10px] uppercase text-gray-400">kg líq.</div></div>
+            </div>
+            <div className="space-y-3">
+              <button className={bigBrand} onClick={novoProduto}>＋ Adicionar novo produto</button>
+              <button className={bigGhost} onClick={() => setStep("resumo")}>Concluir recebimento</button>
+            </div>
+          </div>
+        )}
+
+        {step === "resumo" && (
+          <div>
+            <Q>Confira antes de salvar</Q><Sub>Fornecedor: {semForn ? "Sem fornecedor" : (fornNome || "—")}</Sub>
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 text-sm mb-3">
+              {produtos.map((it) => (
+                <div key={it.id} className="flex justify-between px-3 py-2.5">
+                  <span><b>{nomeEsp(it.especieId)}</b> · {it.qtdCaixas} cx</span>
+                  <span className="text-gray-500 text-right">{psBR(liqItem(it))} kg líq {it.conforme === false ? "· ⚠️" : "· ✓"}</span>
+                </div>
+              ))}
+            </div>
+            <input className={`${INPUT} mb-2`} placeholder="Nº da nota/romaneio do fornecedor (opcional)" value={nota} onChange={(e) => setNota(e.target.value)} />
+            <textarea className={`${INPUT} h-auto py-2 mb-3`} rows={2} placeholder="Observação (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
+            <button className={bigBrand} disabled={salvando} onClick={() => void finalizar()}>{salvando ? "Salvando…" : "CONFIRMAR RECEBIMENTO"}</button>
+          </div>
+        )}
       </div>
     </div>
   );

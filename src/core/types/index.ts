@@ -6901,6 +6901,7 @@ export type ProducaoSispCorte = {
   validadeDias?: { ultracongelado?: number | null; refrigerado?: number | null } | null;
   precoVarejoKg?: number | null;        // R$/kg varejo (default; preço real pode vir do lote)
   precoAtacadoKg?: number | null;       // R$/kg atacado (default)
+  rotuloCodigo?: string | null;         // rótulo SISP aprovado vinculado (ex.: "2209/001")
   ativo: boolean;
   ordem?: number;
   criadoEm: string;
@@ -6931,9 +6932,13 @@ export type ProducaoSispRecebimentoItem = {
   pesoBrutoKg: number;                  // total bruto da leva (kg) — base do rendimento
   pesosPorCaixaKg?: number[] | null;    // detalhe opcional (modo "porCaixa")
   pesoNominalCaixaKg?: number | null;   // modo "nominal" (ex.: 20)
+  conservacao?: ProducaoSispConservacao | null; // como chegou (define tolerância de temp)
   temperaturaC?: number | null;         // temperatura de recebimento (digitada na v1)
+  pesoComCaixaKg?: number | null;       // peso total com a caixa (bruto medido na balança)
+  taraKgUnit?: number | null;           // tara da caixa aplicada por unidade
   conforme?: boolean | null;            // aprovado/rejeitado
-  motivoRejeicao?: string | null;
+  motivoCategoria?: string | null;      // motivo da não-conformidade (categoria)
+  motivoRejeicao?: string | null;       // descrição da não-conformidade
   loteFornecedor?: string | null;
   validadeOrigem?: string | null;       // ISO
   fotoUrl?: string | null;              // foto da caixa (celular na v1)
@@ -7074,12 +7079,21 @@ export type ProducaoSispRomaneio = {
 };
 
 // ── Config por restaurante: producaoSispConfig/{rid} ──────────────────────────
+export type ProducaoSispTaraTipo = { id: string; nome: string; taraKg: number };
+export type ProducaoSispRotulo = { codigo: string; produto: string }; // rótulo aprovado (ex.: 2209/001 · peixe congelado)
+
 export type ProducaoSispConfig = {
   rid: string;
   registroSisp?: string | null;         // nº de registro no SISP (etiqueta oficial)
   razaoSocial?: string | null;
   cnpj?: string | null;
+  endereco?: string | null;             // endereço do estabelecimento (etiqueta)
+  sac?: string | null;                  // SAC (etiqueta)
   lotePrefixo?: string | null;          // prefixo do código de lote (ex.: "PAM")
+  tolTempRefrigC?: number | null;       // tolerância temp. refrigerado (default 4)
+  tolTempCongeladoC?: number | null;    // tolerância temp. congelado (default -12)
+  taraTipos?: ProducaoSispTaraTipo[] | null;   // tipos de caixa + tara (default: Caixa padrão)
+  rotulos?: ProducaoSispRotulo[] | null;       // rótulos aprovados no registro SISP
   atualizadoEm?: string | null;
 };
 
