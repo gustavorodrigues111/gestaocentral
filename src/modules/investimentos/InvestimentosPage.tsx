@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
-import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown, Users, RotateCcw, Download } from "lucide-react";
+import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown, Users, RotateCcw, Download, UserX } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -185,6 +185,7 @@ export function InvestimentosPage() {
   const lancLixeira = useMemo(() => lancamentos.filter((l) => l.excluido), [lancamentos]);
   const [verLixeira, setVerLixeira] = useState(false);
   const [verRascunhos, setVerRascunhos] = useState(false);
+  const [verSemPagador, setVerSemPagador] = useState(false);
   const [editSocios, setEditSocios] = useState(false);
   const total = useMemo(() => lancAtivos.reduce((s, l) => s + (l.valor || 0), 0), [lancAtivos]);
 
@@ -297,6 +298,12 @@ export function InvestimentosPage() {
     const nome = (proj.nome || "investimentos").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
     XLSX.writeFile(wb, `${nome}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
+  // Lançamento tem pagador? (pagamentos[] com nome OU pagoPor preenchido)
+  const temPagador = (l: InvestLancamento) =>
+    (Array.isArray(l.pagamentos) && l.pagamentos.some((p) => (p.pagador || "").trim() !== "")) || (l.pagoPor || "").trim() !== "";
+  // Pagamentos sem pagador atribuído — pra nenhum passar despercebido.
+  const semPagador = useMemo(() => lancAtivos.filter((l) => !temPagador(l)), [lancAtivos]);
+  const totalSemPagador = useMemo(() => semPagador.reduce((s, l) => s + (l.valor || 0), 0), [semPagador]);
   // Rascunhos aguardando conferência + confirmar (tira o flag rascunho).
   const rascunhos = useMemo(() => lancAtivos.filter((l) => l.rascunho), [lancAtivos]);
   async function confirmarRascunho(l: InvestLancamento) {
@@ -486,6 +493,31 @@ export function InvestimentosPage() {
             </div>
           )}
 
+          {/* Sem pagador — destaca lançamentos sem "quem pagou" pra nenhum passar batido */}
+          {semPagador.length > 0 && (
+            <div className="mb-3 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-900/20 overflow-hidden">
+              <div onClick={() => setVerSemPagador((v) => !v)} className="flex items-center gap-2 px-3 py-2 text-[13px] text-amber-800 dark:text-amber-200 cursor-pointer select-none">
+                <UserX size={15} className="shrink-0" />
+                <span className="font-semibold">{semPagador.length} sem pagador</span>
+                <span className="text-amber-600 dark:text-amber-300 tabular-nums hidden sm:inline">— {fmtR(totalSemPagador)} sem quem pagou</span>
+                <ChevronDown size={15} className={"ml-auto shrink-0 transition-transform " + (verSemPagador ? "rotate-180" : "")} />
+              </div>
+              {verSemPagador && (
+                <div className="border-t border-amber-200 dark:border-amber-900/60 divide-y divide-amber-100 dark:divide-amber-900/40">
+                  {semPagador.map((l) => (
+                    <div key={l.id} className="flex items-center gap-2 px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-medium text-gray-800 dark:text-gray-100 truncate">{l.seq != null ? `#${l.seq} ` : ""}{l.estabelecimento || "—"}</div>
+                        <div className="text-[11px] text-gray-500 tabular-nums">{fmtBR(l.data)} · {fmtR(l.valor)}{l.categoriaNome ? ` · ${l.categoriaNome}` : ""}</div>
+                      </div>
+                      {podeLancar && <button onClick={() => setLancModal(l)} className="shrink-0 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white inline-flex items-center gap-1"><UserX size={12} /> Atribuir</button>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Linha tracejada "novo lançamento" */}
           {podeLancar && (
             <button onClick={() => setLancModal("new")} className="w-full mb-3 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20 py-3 text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition-colors"><Plus size={16} /> Novo lançamento</button>
@@ -518,6 +550,7 @@ export function InvestimentosPage() {
                         <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{l.estabelecimento || "—"}</span>
                         {l.seq != null && <span className="shrink-0 text-[10px] text-gray-400 tabular-nums">#{l.seq}</span>}
                         {l.rascunho && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200" title="Rascunho do Bot — confira e salve">rascunho</span>}
+                        {!temPagador(l) && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" title="Sem pagador atribuído — edite e informe quem pagou">sem pagador</span>}
                         {idsDuplicados.has(l.id) && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" title="Possível duplicidade — mesmo valor, estabelecimento e data próximos">⚠ dup?</span>}
                       </div>
                       <div className="text-[12px] text-gray-400 tabular-nums mt-0.5">{fmtBR(l.data)}</div>
