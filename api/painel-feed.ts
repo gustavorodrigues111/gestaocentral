@@ -100,7 +100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     else if (numeroParam && waNumeros.some((n) => n.id === numeroParam)) waNumeroSel = numeroParam;
     else waNumeroSel = waNumeros.length > 1 ? waNumeros[0].id : "";
     const numIds = new Set(waNumeroSel ? [waNumeroSel] : waNumeros.map((n) => n.id));
-    let waList: Array<{ key: string; nome?: string; naoLidas: number; preview?: string; _ts: string }> = [];
+    let waList: Array<{ key: string; nome?: string; naoLidas: number; preview?: string; _ts: string; numeroId?: string; waId?: string }> = [];
     if (numIds.size) {
       const cutoff = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
       const msgs = await firestoreRunQuery({ from: [{ collectionId: "whatsappMensagens" }], where: fGte("timestamp", cutoff), orderBy: [{ field: { fieldPath: "timestamp" }, direction: "DESCENDING" }], limit: 300 });
@@ -109,8 +109,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!m.numeroId || !numIds.has(String(m.numeroId)) || m.ehGrupo) continue;
         const k = foneKey(m.waId as string);
         let c = conv.get(k);
-        if (!c) { c = { key: k, nome: undefined, naoLidas: 0, preview: m.texto || (m.tipo ? `[${m.tipo}]` : ""), _ts: String(m.timestamp || "") }; conv.set(k, c); }
-        if (String(m.timestamp || "") > c._ts) { c._ts = String(m.timestamp || ""); c.preview = m.texto || (m.tipo ? `[${m.tipo}]` : ""); }
+        if (!c) { c = { key: k, nome: undefined, naoLidas: 0, preview: m.texto || (m.tipo ? `[${m.tipo}]` : ""), _ts: String(m.timestamp || ""), numeroId: String(m.numeroId), waId: String(m.waId || "") }; conv.set(k, c); }
+        if (String(m.timestamp || "") > c._ts) { c._ts = String(m.timestamp || ""); c.preview = m.texto || (m.tipo ? `[${m.tipo}]` : ""); c.waId = String(m.waId || c.waId); }
         if (m.nome && m.direcao === "in" && !c.nome) c.nome = m.nome;
         if (m.direcao === "in" && !m.lido) c.naoLidas++;
       }
@@ -122,7 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ok: true, rid, nome, ts: Date.now(), dataSel,
       reservas, proximaReserva, freelasAbertos, freelasProgramados, checklists,
       waNumeros, waNumeroSel,
-      wa: { list: waList.map((c) => ({ key: c.key, nome: c.nome, naoLidas: c.naoLidas, preview: c.preview })), total: waTotal },
+      wa: { list: waList.map((c) => ({ key: c.key, nome: c.nome, naoLidas: c.naoLidas, preview: c.preview, numeroId: c.numeroId, waId: c.waId })), total: waTotal },
       acoes: est.acoes || { whatsapp: true, checklist: true, freela: true }, // F5b: ações permitidas na estação
       usuarios: Array.isArray(est.usuariosNomes) ? est.usuariosNomes : [],   // F5b: allow-list "quem está agindo"
     });

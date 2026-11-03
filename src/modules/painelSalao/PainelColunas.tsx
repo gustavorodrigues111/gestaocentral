@@ -7,13 +7,13 @@
 // "portão" pedindo login pessoal. Usado por PainelSalaoPage (navegador) e
 // PainelEstacaoPage (parede, via feed).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight, Minus, Plus, Search, Shuffle, ListMusic } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight, Minus, Plus, Search, Shuffle, ListMusic, Send, X } from "lucide-react";
 
 export type PReserva = { id: string; horario?: string; status?: string; nome?: string; pessoas?: number; mesas?: string };
 export type PFreelaAberto = { id: string; nome?: string; area?: string; entrada?: string };
 export type PFreelaProg = { id: string; nome?: string; area?: string; entradaPrevista?: string; saidaPrevista?: string };
 export type PChecklist = { id: string; nome?: string; turno?: string; area?: string; hora?: string; pct: number; completo: boolean };
-export type PWaConv = { key: string; nome?: string; naoLidas: number; preview?: string };
+export type PWaConv = { key: string; nome?: string; naoLidas: number; preview?: string; numeroId?: string; waId?: string };
 export type PWaNumero = { id: string; nome: string };
 export type PProxReserva = { data: string; horario?: string; turno?: string; nome?: string; pessoas?: number };
 export type PainelData = {
@@ -47,7 +47,7 @@ function labelData(d: string, hoje: string): string {
 const RESERVA_COR: Record<string, string> = { confirmada: "#1db954", pendente: "#e3a63c", chegou: "#4b9bf0" };
 const TURNO_LABEL: Record<string, string> = { abertura: "Abertura", meio: "Meio", fechamento: "Fechamento" };
 
-export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero }: {
+export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder }: {
   rid: string;
   data: PainelData;
   atualizadoEm?: Date;
@@ -56,10 +56,43 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
   waNumeros?: PWaNumero[];               // números de WhatsApp do restaurante
   waNumeroSel?: string;                  // "" = todos; <id> = um número
   onWaNumero?: (id: string) => void;
+  // Modo ESTAÇÃO com ações (parede). Ausente = só visualização (navegador usa o portão).
+  estacaoAcoes?: { whatsapp: boolean; checklist: boolean; freela: boolean };
+  estacaoUsuarios?: PWaNumero[];         // allow-list "quem está agindo" (id+nome)
+  onWaThread?: (numeroId: string, waId: string) => Promise<{ ok: boolean; mensagens?: any[]; erro?: string }>;
+  onWaResponder?: (pessoaId: string, numeroId: string, waId: string, texto: string) => Promise<{ ok: boolean; erro?: string }>;
 }) {
   const [agora, setAgora] = useState(new Date());
   const [gate, setGate] = useState(false);
   const [chkAreas, setChkAreas] = useState<string[]>(() => { try { const v = localStorage.getItem(CHK_AREAS_LS); return v ? JSON.parse(v) : []; } catch { return []; } });
+  // Modo estação: "quem está agindo" + conversa aberta
+  const waAtivo = !!(estacaoAcoes?.whatsapp && onWaThread && onWaResponder);
+  const [agindoComo, setAgindoComo] = useState<{ id: string; nome: string } | null>(null);
+  const [identCont, setIdentCont] = useState<null | ((p: { id: string; nome: string }) => void)>(null);
+  const [conv, setConv] = useState<null | { numeroId: string; waId: string; nome: string }>(null);
+  const [thread, setThread] = useState<any[]>([]);
+  const [carregandoThread, setCarregandoThread] = useState(false);
+  const [resp, setResp] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  function pedirIdentidade(cont: (p: { id: string; nome: string }) => void) { if (agindoComo) cont(agindoComo); else setIdentCont(() => cont); }
+  async function abrirConversa(c: PWaConv) {
+    if (!c.numeroId || !c.waId || !onWaThread) return;
+    pedirIdentidade(async () => {
+      setConv({ numeroId: c.numeroId!, waId: c.waId!, nome: c.nome || c.key });
+      setThread([]); setResp(""); setCarregandoThread(true);
+      const r = await onWaThread(c.numeroId!, c.waId!);
+      setCarregandoThread(false);
+      if (r?.ok) setThread(r.mensagens || []);
+    });
+  }
+  async function enviarResp() {
+    if (!conv || !agindoComo || !onWaResponder || !resp.trim()) return;
+    setEnviando(true);
+    const r = await onWaResponder(agindoComo.id, conv.numeroId, conv.waId, resp.trim());
+    setEnviando(false);
+    if (r?.ok) { setResp(""); const t = await onWaThread!(conv.numeroId, conv.waId); if (t?.ok) setThread(t.mensagens || []); }
+    else alert("Não enviou: " + (r?.erro || "erro"));
+  }
   useEffect(() => { const t = setInterval(() => setAgora(new Date()), 15000); return () => clearInterval(t); }, []);
   const hoje = todayYmd();
   const isHoje = dataSel === hoje;
@@ -349,23 +382,72 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                 {waNumeros.map((n) => <option key={n.id} value={n.id}>{n.nome}</option>)}
               </select>
             )}
+            {waAtivo && agindoComo && (
+              <div className="flex items-center gap-1.5 text-[11px]"><span className="text-[#6f7889]">respondendo como</span><b className="text-[#25d366]">{agindoComo.nome}</b><button onClick={() => setAgindoComo(null)} className="text-[#6f7889] underline ml-auto">trocar</button></div>
+            )}
             {data.wa.list.length === 0 ? <Vazio txt="Tudo respondido 🎉" /> : (
               <div className={listCls}>
-                {data.wa.list.map((c) => (
-                  <div key={c.key} className="rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-[13px] truncate flex-1">{c.nome || c.key}</span>
-                      <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#25d36622", color: "#25d366" }}>{c.naoLidas}</span>
-                    </div>
-                    <div className="text-[11.5px] text-[#9aa3b2] truncate mt-0.5">{c.preview || "…"}</div>
-                  </div>
-                ))}
+                {data.wa.list.map((c) => {
+                  const inner = (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-[13px] truncate flex-1">{c.nome || c.key}</span>
+                        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "#25d36622", color: "#25d366" }}>{c.naoLidas}</span>
+                      </div>
+                      <div className="text-[11.5px] text-[#9aa3b2] truncate mt-0.5">{c.preview || "…"}</div>
+                    </>
+                  );
+                  return waAtivo
+                    ? <button key={c.key} onClick={() => void abrirConversa(c)} className="rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2 text-left w-full hover:border-[#25d366]">{inner}</button>
+                    : <div key={c.key} className="rounded-xl border border-[#242a33] bg-[#1b1e25] px-3 py-2">{inner}</div>;
+                })}
               </div>
             )}
-            <button onClick={() => setGate(true)} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2.5 text-[13px] font-bold shrink-0">Abrir inbox</button>
+            {!waAtivo && <button onClick={() => setGate(true)} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2.5 text-[13px] font-bold shrink-0">Abrir inbox</button>}
           </div>
         </div>
       </div>
+
+      {/* Modal: quem está respondendo? (estação) */}
+      {identCont && (
+        <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-6" onClick={() => setIdentCont(null)}>
+          <div className="bg-[#1b1e25] border border-[#2a2f39] rounded-2xl max-w-sm w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="font-extrabold text-lg mb-1 text-center">Quem está respondendo?</div>
+            <p className="text-[12px] text-[#9aa3b2] mb-3 text-center">A ação fica registrada no seu nome.</p>
+            <div className="flex flex-col gap-1.5 max-h-72 overflow-auto">
+              {(estacaoUsuarios || []).map((u) => <button key={u.id} onClick={() => { setAgindoComo(u); const c = identCont; setIdentCont(null); c?.(u); }} className="rounded-xl border border-[#2a2f39] bg-[#15171c] py-2.5 text-sm font-bold hover:border-[#25d366]">{u.nome}</button>)}
+              {(estacaoUsuarios || []).length === 0 && <div className="text-center text-[13px] text-[#6f7889] py-4">Nenhum usuário habilitado nesta estação. Configure em Estações do Painel.</div>}
+            </div>
+            <button onClick={() => setIdentCont(null)} className="mt-3 w-full text-[12px] text-[#6f7889] underline">cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Conversa aberta (estação) */}
+      {conv && (
+        <div className="fixed inset-0 z-[60] bg-black/75 grid place-items-center p-4 sm:p-6" onClick={() => setConv(null)}>
+          <div className="bg-[#15171c] border border-[#2a2f39] rounded-2xl w-full max-w-lg flex flex-col" style={{ maxHeight: "85vh" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 p-3 border-b border-[#222730]">
+              <div className="w-8 h-8 rounded-full bg-[#25d36622] text-[#25d366] grid place-items-center shrink-0"><MessageSquare size={16} /></div>
+              <div className="min-w-0 flex-1"><div className="font-bold truncate">{conv.nome}</div><div className="text-[11px] text-[#6f7889]">respondendo como {agindoComo?.nome}</div></div>
+              <button onClick={() => setConv(null)} className="text-[#9aa3b2] shrink-0"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-3 flex flex-col gap-1.5">
+              {carregandoThread ? <div className="text-center text-[13px] text-[#6f7889] py-6">carregando conversa…</div>
+                : thread.length === 0 ? <div className="text-center text-[13px] text-[#6f7889] py-6">sem mensagens recentes</div>
+                  : thread.map((m, i) => (
+                    <div key={m.id || i} className={`max-w-[80%] rounded-2xl px-3 py-1.5 text-[13px] ${m.direcao === "out" ? "self-end bg-[#114b32] text-[#eafff3]" : "self-start bg-[#1b1e25] text-[#eef1f5]"}`}>
+                      <div className="whitespace-pre-wrap break-words">{m.texto || (m.tipo ? `[${m.tipo}]` : "")}</div>
+                    </div>
+                  ))}
+            </div>
+            <div className="p-3 border-t border-[#222730] flex items-end gap-2">
+              <textarea value={resp} onChange={(e) => setResp(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviarResp(); } }} rows={1} placeholder="escreva a resposta…" className="flex-1 resize-none rounded-xl bg-[#1b1e25] border border-[#2a2f39] px-3 py-2 text-sm outline-none max-h-28" />
+              <button onClick={() => void enviarResp()} disabled={enviando || !resp.trim()} className="w-10 h-10 grid place-items-center rounded-full bg-[#25d366] text-[#04170c] disabled:opacity-40 shrink-0"><Send size={18} /></button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Portão */}
       {gate && (

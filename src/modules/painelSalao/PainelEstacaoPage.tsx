@@ -73,6 +73,10 @@ export function PainelEstacaoPage() {
   }
 
   const data: PainelData = { nome: feed.nome, reservas: feed.reservas || [], proximaReserva: feed.proximaReserva, freelasAbertos: feed.freelasAbertos || [], freelasProgramados: feed.freelasProgramados || [], checklists: feed.checklists || [], wa: feed.wa || { list: [], total: 0 } };
+  async function painelAcao(payload: Record<string, unknown>) {
+    try { const r = await fetch("/api/painel-acao", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token, ...payload }) }); return await r.json(); }
+    catch { return { ok: false, erro: "rede" }; }
+  }
   return (
     <PainelColunas
       rid={feed.rid}
@@ -83,6 +87,10 @@ export function PainelEstacaoPage() {
       waNumeros={feed.waNumeros || []}
       waNumeroSel={feed.waNumeroSel || ""}
       onWaNumero={(id) => setWaSel(id)}
+      estacaoAcoes={feed.acoes}
+      estacaoUsuarios={feed.usuarios || []}
+      onWaThread={(numeroId, waId) => painelAcao({ acao: "wa-thread", numeroId, waId })}
+      onWaResponder={(pessoaId, numeroId, waId, texto) => painelAcao({ acao: "wa-responder", pessoaId, numeroId, waId, texto })}
     />
   );
 }

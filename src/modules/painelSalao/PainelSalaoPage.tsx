@@ -115,8 +115,8 @@ export function PainelSalaoPage() {
       if (!m.numeroId || !numIds.has(m.numeroId) || m.ehGrupo) continue;
       const k = foneKey(m.waId);
       let c = conv.get(k);
-      if (!c) { c = { key: k, nome: undefined, _ts: m.timestamp || "", preview: m.texto || (m.tipo ? `[${m.tipo}]` : ""), naoLidas: 0 }; conv.set(k, c); }
-      if ((m.timestamp || "") > c._ts) { c._ts = m.timestamp || ""; c.preview = m.texto || (m.tipo ? `[${m.tipo}]` : ""); }
+      if (!c) { c = { key: k, nome: undefined, _ts: m.timestamp || "", preview: m.texto || (m.tipo ? `[${m.tipo}]` : ""), naoLidas: 0, numeroId: m.numeroId, waId: m.waId }; conv.set(k, c); }
+      if ((m.timestamp || "") > c._ts) { c._ts = m.timestamp || ""; c.preview = m.texto || (m.tipo ? `[${m.tipo}]` : ""); c.waId = m.waId || c.waId; }
       if (m.nome && m.direcao === "in" && !c.nome) c.nome = m.nome;
       if (m.direcao === "in" && !m.lido) c.naoLidas++;
     }
