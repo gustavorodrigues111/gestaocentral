@@ -254,6 +254,40 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
     return out;
   }, [checklistsView, reservasView, data.wa.total, isHoje, nowMin]);
 
+  // "Checklist em foco": o do momento (não concluído, horário mais próximo de
+  // agora, dentro de 3h) abre os itens inline na coluna pra ir marcando direto.
+  const focoId = useMemo(() => {
+    if (!chkAtivo) return null;
+    let best: { id: string; dist: number } | null = null;
+    for (const c of checklistsView) {
+      if (c.completo || !c.hora) continue;
+      const dist = Math.abs(hhmmToMin(c.hora) - nowMin);
+      if (dist <= 180 && (!best || dist < best.dist)) best = { id: c.id, dist };
+    }
+    return best?.id || null;
+  }, [checklistsView, chkAtivo, nowMin]);
+  const [focoItens, setFocoItens] = useState<any[]>([]);
+  const [focoLoadedId, setFocoLoadedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!chkAtivo || !focoId || !onChecklistAbrir) { setFocoItens([]); setFocoLoadedId(null); return; }
+    let stop = false;
+    const carregar = async () => { const r = await onChecklistAbrir(focoId); if (!stop && r?.ok) { setFocoItens(r.itens || []); setFocoLoadedId(focoId); } };
+    if (focoLoadedId !== focoId) void carregar();
+    const iv = setInterval(() => void carregar(), 20000); // mantém em dia com quem marca em outro lugar
+    return () => { stop = true; clearInterval(iv); };
+  }, [chkAtivo, focoId, onChecklistAbrir, focoLoadedId]);
+  function marcarFocoItem(it: any) {
+    if (!focoId) return;
+    pedirIdentidade(async (p) => {
+      const feito = !it.feito;
+      let observacao: string | undefined;
+      if (feito && it.exigeObs) { const o = window.prompt(`Observação pra "${it.texto}" (obrigatória):`, it.observacao || ""); if (o == null || !o.trim()) return; observacao = o.trim(); }
+      setFocoItens((prev) => prev.map((x) => x.id === it.id ? { ...x, feito, observacao: observacao ?? x.observacao, feitoPorNome: feito ? p.nome : null } : x));
+      const r = await onChecklistItem!(p.id, focoId, it.id, feito, observacao);
+      if (!r?.ok) { setFocoItens((prev) => prev.map((x) => x.id === it.id ? { ...x, feito: !feito } : x)); alert("Não marcou: " + (r?.erro || "erro")); }
+    });
+  }
+
   const hora = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
   function relReserva(r: { status?: string; _delta: number }): { t: string; c: string } {
     if (!isHoje) return { t: "", c: "var(--pnl-sub)" };
@@ -486,6 +520,22 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
                       </div>
                     </>
                   );
+                  if (chkAtivo && c.id === focoId) {
+                    return (
+                      <div key={c.id} className="rounded-xl border px-3 py-2" style={estilo}>
+                        {inner}
+                        <div className="mt-2 flex flex-col gap-1 border-t border-[var(--pnl-border)] pt-2">
+                          {focoItens.length === 0 ? <div className="text-[11px] text-[var(--pnl-faint)] py-1">carregando itens…</div>
+                            : focoItens.map((it) => (
+                              <button key={it.id} onClick={() => marcarFocoItem(it)} className="flex items-start gap-2 text-left">
+                                <span className="w-4 h-4 rounded grid place-items-center shrink-0 mt-0.5 border" style={{ borderColor: it.feito ? "#1db954" : "var(--pnl-border)", background: it.feito ? "#1db954" : "transparent", color: "#04170c" }}>{it.feito && <Check size={11} />}</span>
+                                <span className={`text-[12px] leading-snug ${it.feito ? "line-through text-[var(--pnl-faint)]" : ""}`}>{it.texto}{it.obrigatorio && <span className="ml-1 text-[9px] font-bold text-[#f0a860]">obrig</span>}</span>
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                    );
+                  }
                   return chkAtivo
                     ? <button key={c.id} onClick={() => abrirChecklist(c)} className={`rounded-xl border px-3 py-2 text-left w-full ${c.atrasado ? "animate-pulse" : ""}`} style={estilo}>{inner}</button>
                     : <div key={c.id} className={`rounded-xl border px-3 py-2 ${c.atrasado ? "animate-pulse" : ""}`} style={estilo}>{inner}</div>;
