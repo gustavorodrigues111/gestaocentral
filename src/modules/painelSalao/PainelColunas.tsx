@@ -7,7 +7,7 @@
 // "portão" pedindo login pessoal. Usado por PainelSalaoPage (navegador) e
 // PainelEstacaoPage (parede, via feed).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight, Minus, Plus, Search, Shuffle, ListMusic } from "lucide-react";
 
 export type PReserva = { id: string; horario?: string; status?: string; nome?: string; pessoas?: number; mesas?: string };
 export type PFreelaAberto = { id: string; nome?: string; area?: string; entrada?: string };
@@ -73,6 +73,11 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
   const [vol, setVol] = useState(50);
   const [progress, setProgress] = useState(0);
   const volRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [favs, setFavs] = useState<any[]>([]);
+  const [playlists, setPlaylists] = useState<any[]>([]);
+  const [drawer, setDrawer] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [resultados, setResultados] = useState<any[]>([]);
   const faixa = player?.item;
   const tocando = !!player?.is_playing;
   const devAtivo = useMemo(() => devices.find((d) => d.is_active) || null, [devices]);
@@ -89,6 +94,22 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
   useEffect(() => { void carregarMusica(); const t = setInterval(() => void carregarMusica(), 8000); return () => clearInterval(t); }, [carregarMusica]);
   useEffect(() => { if (!tocando) return; const dur = Number(faixa?.duration_ms) || 0; const t = setInterval(() => setProgress((p) => (dur && p + 1000 > dur ? dur : p + 1000)), 1000); return () => clearInterval(t); }, [tocando, faixa?.duration_ms]);
   async function mus(action: string, extra: Record<string, unknown> = {}) { await ctrl(rid, action, extra); setTimeout(() => void carregarMusica(), 400); }
+  useEffect(() => { (async () => { const st = await ctrl(rid, "status"); if (Array.isArray(st?.playlistsPreferidas)) setFavs(st.playlistsPreferidas); })(); }, [rid]);
+  async function tocar(contextUri?: string, uris?: string[]) { await ctrl(rid, "play", { deviceId: alvo(), contextUri, uris }); setTimeout(() => void carregarMusica(), 700); }
+  async function abrirDrawer() { setDrawer((v) => !v); if (!playlists.length) { const r = await ctrl(rid, "playlists"); setPlaylists((r?.items || []).filter(Boolean)); } }
+  function mudarVol(delta: number) { const v = Math.max(0, Math.min(100, vol + delta)); setVol(v); void ctrl(rid, "volume", { volume: v, deviceId: alvo() }); }
+  function normResultados(d: any): any[] {
+    const out: any[] = [];
+    (d?.tracks?.items || []).filter(Boolean).forEach((t: any) => out.push({ tipo: "track", nome: t.name, sub: (t.artists || []).map((a: any) => a.name).join(", "), uri: t.uri, img: t.album?.images?.slice(-1)[0]?.url }));
+    (d?.playlists?.items || []).filter(Boolean).forEach((p: any) => out.push({ tipo: "playlist", nome: p.name, sub: p.owner?.display_name || "", uri: p.uri, img: p.images?.slice(-1)[0]?.url }));
+    (d?.albums?.items || []).filter(Boolean).forEach((a: any) => out.push({ tipo: "album", nome: a.name, sub: (a.artists || []).map((x: any) => x.name).join(", "), uri: a.uri, img: a.images?.slice(-1)[0]?.url }));
+    return out;
+  }
+  async function buscar() { const q = busca.trim(); if (!q) return; const r = await ctrl(rid, "search", { q, types: "track,album,playlist" }); setResultados(normResultados(r)); }
+  function tocarItem(it: any) { if (it.tipo === "track") void tocar(undefined, [it.uri]); else void tocar(it.uri); setDrawer(false); }
+  function tocarAleatorio() { const pool = resultados.length ? resultados : favs.map((f) => ({ tipo: "playlist", uri: f.uri })); if (!pool.length) return; tocarItem(pool[Math.floor(Math.random() * pool.length)]); }
+  const ctxUri = player?.context?.uri;
+  const nomePlaylist = (favs.find((f) => f.uri === ctxUri)?.name) || (playlists.find((p) => p.uri === ctxUri)?.name) || (player?.context?.type === "album" ? "Álbum" : player?.context?.type === "playlist" ? "Playlist" : null);
 
   // ── Relativos ao relógio (só quando o dia é HOJE) ──
   const nowMin = agora.getHours() * 60 + agora.getMinutes();
@@ -183,12 +204,41 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
               <button className="w-12 h-12 grid place-items-center rounded-full bg-[#1db954] text-[#04170c]" onClick={() => void mus(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvo() })}>{tocando ? <Pause size={22} /> : <Play size={22} />}</button>
               <button className="w-9 h-9 grid place-items-center rounded-full border border-[#2a2f39]" onClick={() => void mus("next")}><SkipForward size={16} /></button>
             </div>
-            <div className="flex items-center gap-2">
-              <Volume2 size={16} className="text-[#9aa3b2]" />
+            <div className="flex items-center gap-1.5">
+              <Volume2 size={15} className="text-[#9aa3b2] shrink-0" />
+              <button onClick={() => mudarVol(-5)} className="w-6 h-6 grid place-items-center rounded-md border border-[#2a2f39] shrink-0"><Minus size={13} /></button>
               <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvo() }), 250); }} className="flex-1 accent-[#1db954]" />
+              <button onClick={() => mudarVol(5)} className="w-6 h-6 grid place-items-center rounded-md border border-[#2a2f39] shrink-0"><Plus size={13} /></button>
               <b className="text-xs text-[#9aa3b2] w-9 text-right tabular-nums">{vol}%</b>
             </div>
-            {player?.context && <div className="text-[11px] text-[#1db954] truncate">▸ tocando de uma playlist</div>}
+            {nomePlaylist && <div className="text-[11px] text-[#1db954] truncate flex items-center gap-1"><ListMusic size={11} /> {nomePlaylist}</div>}
+            {favs.length > 0 && (
+              <div className="flex gap-1.5 overflow-x-auto -mx-0.5 px-0.5 pb-0.5">
+                {favs.map((f) => (
+                  <button key={f.uri} onClick={() => void tocar(f.uri)} title={f.name} className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-[#20242c] border grid place-items-center" style={{ borderColor: ctxUri === f.uri ? "#1db954" : "#2a2f39" }}>
+                    {f.image ? <img src={f.image} alt="" className="w-full h-full object-cover" /> : <ListMusic size={14} className="text-[#6f7889]" />}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => void abrirDrawer()} className="rounded-xl border border-[#2a2f39] bg-[#1b1e25] py-2 text-[12px] font-bold flex items-center justify-center gap-1.5 shrink-0"><ListMusic size={14} /> Playlists & busca</button>
+            {drawer && (
+              <div className="flex flex-col gap-2 border-t border-[#222730] pt-2 min-h-0">
+                <div className="flex gap-1.5">
+                  <input value={busca} onChange={(e) => setBusca(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void buscar(); }} placeholder="buscar música, álbum, playlist" className="flex-1 h-8 rounded-lg bg-[#1b1e25] border border-[#2a2f39] px-2 text-[12px] outline-none" />
+                  <button onClick={() => void buscar()} className="w-8 h-8 grid place-items-center rounded-lg border border-[#2a2f39] shrink-0"><Search size={14} /></button>
+                  <button onClick={tocarAleatorio} title="Tocar aleatório" className="w-8 h-8 grid place-items-center rounded-lg border border-[#2a2f39] shrink-0"><Shuffle size={14} /></button>
+                </div>
+                <div className="max-h-44 overflow-auto flex flex-col gap-1 -mr-1 pr-1">
+                  {(resultados.length ? resultados : playlists.map((p) => ({ tipo: "playlist", nome: p.name, sub: p.owner?.display_name || "", uri: p.uri, img: p.images?.slice(-1)[0]?.url }))).map((it: any, i: number) => (
+                    <button key={it.uri + i} onClick={() => tocarItem(it)} className="flex items-center gap-2 text-left rounded-lg hover:bg-[#1b1e25] px-1.5 py-1">
+                      <div className="w-8 h-8 rounded bg-[#20242c] overflow-hidden shrink-0 grid place-items-center">{it.img ? <img src={it.img} alt="" className="w-full h-full object-cover" /> : <Music size={12} className="text-[#6f7889]" />}</div>
+                      <div className="min-w-0 flex-1"><div className="text-[12px] font-semibold truncate">{it.nome}</div><div className="text-[10px] text-[#6f7889] truncate">{it.tipo} · {it.sub}</div></div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* RESERVAS */}
