@@ -202,24 +202,30 @@ export function MusicaAmbientePage() {
             )}
           </div>
 
-          {/* Player */}
+          {/* Player — 2 colunas: capa | info+controles+volume */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4">
-            <div className="flex items-center gap-3">
-              {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-14 h-14 rounded-lg object-cover" /> : <div className="w-14 h-14 rounded-lg bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400"><Music size={20} /></div>}
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-sm truncate">{faixa?.name || "Nada tocando"}</div>
-                <div className="text-xs text-gray-500 truncate">{(faixa?.artists || []).map((a: any) => a.name).join(", ") || (deviceAtivo ? deviceAtivo.name : "escolha um dispositivo")}</div>
+            <div className="grid grid-cols-2 gap-4 items-center">
+              {/* capa do que está tocando */}
+              <div className="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400">
+                {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-full h-full object-cover" /> : <Music size={40} />}
               </div>
-            </div>
-            <div className="flex items-center justify-center gap-3 mt-3">
-              <button disabled={busy} className="w-11 h-11 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700" onClick={() => void acao("previous")}><SkipBack size={18} /></button>
-              <button disabled={busy} className="w-14 h-14 grid place-items-center rounded-full bg-emerald-600 text-white" onClick={() => void acao(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvoDevice() })}>{tocando ? <Pause size={24} /> : <Play size={24} />}</button>
-              <button disabled={busy} className="w-11 h-11 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700" onClick={() => void acao("next")}><SkipForward size={18} /></button>
-            </div>
-            <div className="flex items-center gap-3 mt-4">
-              <Volume2 size={18} className="text-gray-400 shrink-0" />
-              <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="flex-1 h-2 accent-emerald-600" />
-              <span className="text-xs font-semibold tabular-nums w-10 text-right text-gray-500">{vol}%</span>
+              {/* info + controles + volume */}
+              <div className="flex flex-col gap-3 min-w-0">
+                <div className="min-w-0">
+                  <div className="font-semibold text-sm truncate">{faixa?.name || "Nada tocando"}</div>
+                  <div className="text-xs text-gray-500 truncate">{(faixa?.artists || []).map((a: any) => a.name).join(", ") || (deviceAtivo ? deviceAtivo.name : "escolha um dispositivo")}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button disabled={busy} className="w-9 h-9 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700 shrink-0" onClick={() => void acao("previous")}><SkipBack size={16} /></button>
+                  <button disabled={busy} className="w-12 h-12 grid place-items-center rounded-full bg-emerald-600 text-white shrink-0" onClick={() => void acao(tocando ? "pause" : "play", tocando ? {} : { deviceId: alvoDevice() })}>{tocando ? <Pause size={22} /> : <Play size={22} />}</button>
+                  <button disabled={busy} className="w-9 h-9 grid place-items-center rounded-full border border-gray-200 dark:border-gray-700 shrink-0" onClick={() => void acao("next")}><SkipForward size={16} /></button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Volume2 size={16} className="text-gray-400 shrink-0" />
+                  <input type="range" min={0} max={100} value={vol} onChange={(e) => { const v = Number(e.target.value); setVol(v); if (volRef.current) clearTimeout(volRef.current); volRef.current = setTimeout(() => void ctrl(rid, "volume", { volume: v, deviceId: alvoDevice() }), 250); }} className="flex-1 min-w-0 h-2 accent-emerald-600" />
+                  <span className="text-[11px] font-semibold tabular-nums w-8 text-right text-gray-500 shrink-0">{vol}%</span>
+                </div>
+              </div>
             </div>
 
             {/* Fila: próximas músicas */}
