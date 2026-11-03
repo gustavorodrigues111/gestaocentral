@@ -217,8 +217,8 @@ export function MusicaAmbientePage() {
           {/* Player — capa | (info + controles + progresso + fila) | volume vertical */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3">
             <div className="flex gap-3">
-              {/* capa do que está tocando */}
-              <div className="w-24 sm:w-28 shrink-0 self-start aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400">
+              {/* capa do que está tocando — ocupa a altura do box (quadrada) */}
+              <div className="shrink-0 self-stretch aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400">
                 {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-full h-full object-cover" /> : <Music size={34} />}
               </div>
               {/* info + controles + progresso + próximas */}
@@ -261,6 +261,11 @@ export function MusicaAmbientePage() {
                 <Volume2 size={15} className="text-gray-400" />
               </div>
             </div>
+          </div>
+
+          <div className="text-[11px] text-gray-400 flex items-start gap-1.5 px-1">
+            <Volume2 size={13} className="shrink-0 mt-0.5" />
+            <span>Volume desigual entre músicas? Ligue <b>Normalizar volume</b> no app do Spotify da conta Lobozó (Ajustes → Reprodução) — padroniza o nível de todas as faixas.</span>
           </div>
 
           {/* Busca */}
