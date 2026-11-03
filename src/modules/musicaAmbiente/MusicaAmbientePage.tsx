@@ -224,9 +224,9 @@ export function MusicaAmbientePage() {
 
           {/* Player — capa | (info + controles + progresso + fila) | volume vertical */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3">
-            <div className="flex gap-3">
-              {/* capa do que está tocando — ocupa a altura do box (quadrada) */}
-              <div className="shrink-0 self-stretch aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400">
+            <div className="flex gap-3 items-start">
+              {/* capa do que está tocando — quadrada, tamanho fixo */}
+              <div className="shrink-0 w-36 h-36 sm:w-44 sm:h-44 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-400">
                 {faixa?.album?.images?.[0]?.url ? <img src={faixa.album.images[0].url} alt="" className="w-full h-full object-cover" /> : <Music size={34} />}
               </div>
               {/* info + controles + progresso + próximas */}
