@@ -41,7 +41,7 @@ export function PainelEstacaoPage() {
       } catch { if (!stop) setErro("Sem conexão com o servidor."); }
     }
     void tick();
-    const iv = setInterval(() => void tick(), 30000);
+    const iv = setInterval(() => void tick(), 20000);
     return () => { stop = true; clearInterval(iv); };
   }, [token, dataSel, waSel]);
 

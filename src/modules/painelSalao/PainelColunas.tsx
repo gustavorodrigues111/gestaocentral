@@ -89,6 +89,12 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
       if (r?.ok) setThread(r.mensagens || []);
     });
   }
+  // Conversa aberta atualiza sozinha (quase tempo real) enquanto está aberta.
+  useEffect(() => {
+    if (!conv || !onWaThread) return;
+    const iv = setInterval(async () => { const t = await onWaThread(conv.numeroId, conv.waId); if (t?.ok) setThread(t.mensagens || []); }, 8000);
+    return () => clearInterval(iv);
+  }, [conv, onWaThread]);
   async function enviarResp() {
     if (!conv || !agindoComo || !onWaResponder || !resp.trim()) return;
     setEnviando(true);
