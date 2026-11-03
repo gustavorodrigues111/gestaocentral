@@ -91,6 +91,7 @@ export function PainelEstacaoPage() {
       estacaoUsuarios={feed.usuarios || []}
       onWaThread={(numeroId, waId) => painelAcao({ acao: "wa-thread", numeroId, waId })}
       onWaResponder={(pessoaId, numeroId, waId, texto) => painelAcao({ acao: "wa-responder", pessoaId, numeroId, waId, texto })}
+      onFreelaAbrir={(pessoaId, shiftId) => painelAcao({ acao: "freela-abrir", pessoaId, shiftId })}
     />
   );
 }

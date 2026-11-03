@@ -47,7 +47,7 @@ function labelData(d: string, hoje: string): string {
 const RESERVA_COR: Record<string, string> = { confirmada: "#1db954", pendente: "#e3a63c", chegou: "#4b9bf0" };
 const TURNO_LABEL: Record<string, string> = { abertura: "Abertura", meio: "Meio", fechamento: "Fechamento" };
 
-export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder }: {
+export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waNumeros, waNumeroSel, onWaNumero, estacaoAcoes, estacaoUsuarios, onWaThread, onWaResponder, onFreelaAbrir }: {
   rid: string;
   data: PainelData;
   atualizadoEm?: Date;
@@ -61,6 +61,7 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
   estacaoUsuarios?: PWaNumero[];         // allow-list "quem está agindo" (id+nome)
   onWaThread?: (numeroId: string, waId: string) => Promise<{ ok: boolean; mensagens?: any[]; erro?: string }>;
   onWaResponder?: (pessoaId: string, numeroId: string, waId: string, texto: string) => Promise<{ ok: boolean; erro?: string }>;
+  onFreelaAbrir?: (pessoaId: string, shiftId: string) => Promise<{ ok: boolean; erro?: string }>;
 }) {
   const [agora, setAgora] = useState(new Date());
   const [gate, setGate] = useState(false);
@@ -92,6 +93,16 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
     setEnviando(false);
     if (r?.ok) { setResp(""); const t = await onWaThread!(conv.numeroId, conv.waId); if (t?.ok) setThread(t.mensagens || []); }
     else alert("Não enviou: " + (r?.erro || "erro"));
+  }
+  const freelaAtivo = !!(estacaoAcoes?.freela && onFreelaAbrir);
+  const [abrindoId, setAbrindoId] = useState<string | null>(null);
+  function abrirTurno(shiftId: string) {
+    pedirIdentidade(async (p) => {
+      setAbrindoId(shiftId);
+      const r = await onFreelaAbrir!(p.id, shiftId);
+      setAbrindoId(null);
+      if (!r?.ok) alert("Não abriu o turno: " + (r?.erro || "erro"));
+    });
   }
   useEffect(() => { const t = setInterval(() => setAgora(new Date()), 15000); return () => clearInterval(t); }, []);
   const hoje = todayYmd();
@@ -337,6 +348,7 @@ export function PainelColunas({ rid, data, atualizadoEm, dataSel, onDataSel, waN
                     </div>
                     <div className="text-[13px] font-semibold truncate mt-0.5">{s.nome || "Freela"}</div>
                     {s.area && <div className="text-[11px] text-[#6f7889] truncate">{s.area}</div>}
+                    {freelaAtivo && <button onClick={() => abrirTurno(s.id)} disabled={abrindoId === s.id} className="mt-1.5 w-full rounded-lg bg-[#4b9bf0] text-[#04101f] py-1.5 text-[12px] font-extrabold disabled:opacity-50">{abrindoId === s.id ? "abrindo…" : "Abrir turno"}</button>}
                   </div>
                 ))}
               </div>

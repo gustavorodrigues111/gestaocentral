@@ -15,6 +15,7 @@ import { firestoreDisponivel, firestoreLer, firestoreListar, firestoreRunQuery, 
 function foneKey(waId?: string): string { let d = String(waId || "").replace(/\D/g, ""); if (d.startsWith("55")) d = d.slice(2); if (d.length >= 10) d = d.slice(0, 2) + d.slice(-8); return d; }
 function normalizarFone(raw: string): string { let d = (raw || "").replace(/\D/g, ""); if (!d) return ""; if (d.length <= 11) d = "55" + d; return d; }
 function toEvolution(waId: string): string { return waId.endsWith("@g.us") ? waId : waId.endsWith("@s.whatsapp.net") ? waId.replace(/\D/g, "") : normalizarFone(waId); }
+function hhmmAgoraSP(): string { const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })); const p = (n: number) => (n < 10 ? `0${n}` : `${n}`); return `${p(d.getHours())}:${p(d.getMinutes())}`; }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "no-store");
@@ -91,6 +92,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const thread = await carregarThread(numeroId, waId);
       await Promise.all(thread.filter((m) => m.direcao === "in" && !m.lido).map((m) => firestoreAtualizar("whatsappMensagens", String(m.id), { lido: true }).catch(() => false)));
       res.status(200).json({ ok: true, messageId: (j as any)?.key?.id || null });
+      return;
+    }
+
+    if (acao === "freela-abrir") {
+      if (!acoes.freela) { res.status(403).json({ ok: false, erro: "acao_desabilitada" }); return; }
+      const pessoa = validaPessoa(String(body.pessoaId || ""));
+      if (!pessoa) { res.status(403).json({ ok: false, erro: "pessoa_nao_autorizada" }); return; }
+      const shiftId = String(body.shiftId || "");
+      if (!shiftId) { res.status(400).json({ ok: false, erro: "bad_request" }); return; }
+      const sh = await firestoreLer("freelaShifts", shiftId).catch(() => null);
+      if (!sh || String(sh.restaurantId) !== rid) { res.status(403).json({ ok: false, erro: "shift_invalido" }); return; }
+      if (sh.status !== "agendado") { res.status(200).json({ ok: false, erro: "status", detalhe: `turno está '${sh.status}'` }); return; }
+      await firestoreAtualizar("freelaShifts", shiftId, { status: "aberto", entrada: hhmmAgoraSP(), aberturaEstacaoPor: pessoa.nome, aberturaEstacaoEm: new Date().toISOString() });
+      res.status(200).json({ ok: true });
       return;
     }
 
