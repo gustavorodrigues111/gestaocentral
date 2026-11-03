@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (action === "devices") {
       const r = await spotifyFetch(rid, "/me/player/devices");
-      res.status(200).json({ ok: r.status < 300, ...(r.data as object) });
+      res.status(200).json({ ok: r.status < 300, status: r.status, ...(r.data as object) });
       return;
     }
     if (action === "state") {

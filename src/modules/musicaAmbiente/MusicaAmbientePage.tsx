@@ -37,6 +37,7 @@ export function MusicaAmbientePage() {
   const [buscaPl, setBuscaPl] = useState<Playlist[]>([]);
   const [buscaTr, setBuscaTr] = useState<Track[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
+  const [diag, setDiag] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -46,8 +47,10 @@ export function MusicaAmbientePage() {
 
   const carregarEstado = useCallback(async () => {
     const [dv, st] = await Promise.all([ctrl(rid, "devices"), ctrl(rid, "state")]);
-    if (dv?.devices) setDevices(dv.devices as Device[]);
+    setDevices(Array.isArray(dv?.devices) ? (dv.devices as Device[]) : []);
     setPlayer(st?.player || null);
+    const errTxt = dv?.error ? ` — ${dv.error.message || dv.error.reason || JSON.stringify(dv.error)}` : "";
+    setDiag(`dispositivos: HTTP ${dv?.status ?? "?"}${errTxt} · ${(dv?.devices || []).length} na lista · player: HTTP ${st?.status ?? "?"}`);
   }, [rid]);
 
   const carregar = useCallback(async () => {
@@ -127,7 +130,7 @@ export function MusicaAmbientePage() {
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5"><Speaker size={13} /> Dispositivo</div>
             {devices.length === 0 ? (
-              <div className="text-xs text-gray-400">Nenhum dispositivo online. Ligue o AudioCast M5 e abra o Spotify nele (app AudioCast) — depois toque em atualizar.</div>
+              <div className="text-xs text-gray-400">Nenhum dispositivo online. Abra o Spotify (celular/PC, conta Lobozó), toque uma música e escolha o <b>AudioCast M5</b> no ícone de dispositivos (Spotify Connect) — depois toque em atualizar.{diag && <span className="block mt-1 text-[10px] text-gray-300 dark:text-gray-600">{diag}</span>}</div>
             ) : (
               <div className="space-y-1.5">
                 {devices.map((d) => (
