@@ -7,7 +7,7 @@
 // "portão" pedindo login pessoal. Usado por PainelSalaoPage (navegador) e
 // PainelEstacaoPage (parede, via feed).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight, Minus, Plus, Search, Shuffle, ListMusic, Send, X, Check } from "lucide-react";
+import { Music, Play, Pause, SkipForward, SkipBack, Volume2, MessageSquare, CheckSquare, Utensils, ChefHat, Lock, Users, Clock, ChevronLeft, ChevronRight, Minus, Plus, Search, Shuffle, ListMusic, Send, X, Check, Bell } from "lucide-react";
 
 export type PReserva = { id: string; horario?: string; status?: string; nome?: string; pessoas?: number; mesas?: string };
 export type PFreelaAberto = { id: string; nome?: string; area?: string; entrada?: string };
@@ -241,6 +241,18 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
       return { ...c, atrasado };
     }), [data.checklists, nowMin, isHoje, chkAreas]);
   const chkCompletos = checklistsView.filter((c) => c.completo).length;
+  // Avisos ao vivo (só hoje): checklist atrasado/próximo, reserva chegando, WhatsApp pendente.
+  const avisos = useMemo(() => {
+    if (!isHoje) return [] as { txt: string; urg: boolean }[];
+    const out: { txt: string; urg: boolean }[] = [];
+    for (const c of checklistsView) {
+      if (c.atrasado) out.push({ txt: `Checklist "${c.nome}" atrasado`, urg: true });
+      else if (!c.completo && c.hora) { const d = hhmmToMin(c.hora) - nowMin; if (d >= 0 && d <= 30) out.push({ txt: `Checklist "${c.nome}" às ${c.hora}`, urg: false }); }
+    }
+    for (const r of reservasView) { if (r._delta >= 0 && r._delta <= 30) out.push({ txt: `Reserva ${r.horario}${r.nome ? ` · ${r.nome}` : ""} (${r.pessoas || "?"}p)`, urg: r._delta <= 10 }); }
+    if (data.wa.total > 0) out.push({ txt: `${data.wa.total} no WhatsApp a responder`, urg: false });
+    return out;
+  }, [checklistsView, reservasView, data.wa.total, isHoje, nowMin]);
 
   const hora = `${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
   function relReserva(r: { status?: string; _delta: number }): { t: string; c: string } {
@@ -300,6 +312,18 @@ export function PainelColunas({ rid, data, atualizadoEm, tema, dataSel, onDataSe
             <div className="text-right pl-1"><div className="font-extrabold text-2xl tabular-nums leading-none">{hora}</div><div className="text-[11px] text-[var(--pnl-sub)] capitalize">{DIAS[agora.getDay()]}, {agora.getDate()} {MES[agora.getMonth()]}</div></div>
           </div>
         </div>
+
+        {/* Barra de avisos (ao vivo) */}
+        {avisos.length > 0 && (
+          <div className="flex items-center gap-2 rounded-2xl border px-3 py-2 overflow-x-auto" style={{ borderColor: avisos.some((a) => a.urg) ? "#5a2320" : "var(--pnl-border)", background: avisos.some((a) => a.urg) ? "#241414" : "var(--pnl-col)" }}>
+            <Bell size={15} className={`shrink-0 ${avisos.some((a) => a.urg) ? "animate-pulse text-[#f06b60]" : "text-[#e3a63c]"}`} />
+            <div className="flex items-center gap-2 flex-nowrap">
+              {avisos.map((a, i) => (
+                <span key={i} className={`shrink-0 text-[12px] font-semibold px-2.5 py-1 rounded-full ${a.urg ? "animate-pulse" : ""}`} style={{ background: a.urg ? "#f06b6022" : "var(--pnl-box)", color: a.urg ? "#f06b60" : "var(--pnl-sub)" }}>{a.txt}</span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Colunas */}
         <div className="grid gap-3 flex-1 min-h-0" style={{ gridTemplateColumns: "1.15fr 1fr 1fr 1fr 1fr" }}>
