@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
-import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown, Users, RotateCcw, Download, UserX } from "lucide-react";
+import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown, Users, RotateCcw, Download, UserX, Filter } from "lucide-react";
 import * as XLSX from "xlsx";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -186,6 +186,15 @@ export function InvestimentosPage() {
   const [verLixeira, setVerLixeira] = useState(false);
   const [verRascunhos, setVerRascunhos] = useState(false);
   const [verSemPagador, setVerSemPagador] = useState(false);
+  // Filtros da lista (categoria / pagador / estabelecimento / faixa de valor)
+  const [filtroAberto, setFiltroAberto] = useState(false);
+  const [fCat, setFCat] = useState("");
+  const [fPag, setFPag] = useState("");
+  const [fEstab, setFEstab] = useState("");
+  const [fValMin, setFValMin] = useState("");
+  const [fValMax, setFValMax] = useState("");
+  const filtroAtivo = !!(fCat || fPag || fEstab.trim() || fValMin.trim() || fValMax.trim());
+  const limparFiltros = () => { setFCat(""); setFPag(""); setFEstab(""); setFValMin(""); setFValMax(""); };
   const [editSocios, setEditSocios] = useState(false);
   const total = useMemo(() => lancAtivos.reduce((s, l) => s + (l.valor || 0), 0), [lancAtivos]);
 
@@ -317,16 +326,36 @@ export function InvestimentosPage() {
     say(`${rascunhos.length} rascunho(s) confirmado(s).`);
   }
 
+  // Opções dos filtros, derivadas dos lançamentos ativos.
+  const catOptions = useMemo(() => [...new Set(lancAtivos.map((l) => l.categoriaNome || "Sem categoria"))].sort((a, b) => a.localeCompare(b)), [lancAtivos]);
+  const pagOptions = useMemo(() => porQuemPagou.map((p) => p.label), [porQuemPagou]);
+  // Lançamentos após aplicar os filtros (categoria/pagador/estabelecimento/valor).
+  const parseNum = (s: string): number | null => { const t = (s || "").replace(/\./g, "").replace(",", ".").replace(/[^0-9.]/g, ""); const n = parseFloat(t); return isNaN(n) ? null : n; };
+  const pagadoresDe = (l: InvestLancamento): string[] =>
+    (Array.isArray(l.pagamentos) && l.pagamentos.length) ? l.pagamentos.map((p) => (p.pagador || "").trim() || "Não informado") : [(l.pagoPor || "").trim() || "Não informado"];
+  const lancFiltrados = useMemo(() => {
+    const estab = fEstab.trim().toLowerCase();
+    const vmin = parseNum(fValMin), vmax = parseNum(fValMax);
+    return lancAtivos.filter((l) => {
+      if (fCat && (l.categoriaNome || "Sem categoria") !== fCat) return false;
+      if (fPag && !pagadoresDe(l).some((n) => n.toLowerCase() === fPag.toLowerCase())) return false;
+      if (estab && !(l.estabelecimento || "").toLowerCase().includes(estab)) return false;
+      if (vmin != null && (l.valor || 0) < vmin) return false;
+      if (vmax != null && (l.valor || 0) > vmax) return false;
+      return true;
+    });
+  }, [lancAtivos, fCat, fPag, fEstab, fValMin, fValMax]);
+  const totalFiltrado = useMemo(() => lancFiltrados.reduce((s, l) => s + (l.valor || 0), 0), [lancFiltrados]);
   // Cor por categoria (bate com o donut) + lista agrupada por categoria.
   const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
   const lancPorCategoria = useMemo(() => {
     const m = new Map<string, InvestLancamento[]>();
-    for (const l of lancAtivos) { const k = l.categoriaNome || "Sem categoria"; const a = m.get(k) || []; a.push(l); m.set(k, a); }
+    for (const l of lancFiltrados) { const k = l.categoriaNome || "Sem categoria"; const a = m.get(k) || []; a.push(l); m.set(k, a); }
     return [...m.entries()].map(([cat, items]) => ({
       cat, total: items.reduce((s, l) => s + (l.valor || 0), 0),
       items: items.slice().sort((a, b) => b.data.localeCompare(a.data)),
     })).sort((a, b) => b.total - a.total);
-  }, [lancAtivos]);
+  }, [lancFiltrados]);
   // IDs com possível duplicidade (pra marcar na lista).
   const idsDuplicados = useMemo(() => {
     const s = new Set<string>();
@@ -376,9 +405,53 @@ export function InvestimentosPage() {
             : <span className="text-gray-500 text-sm">Nenhum projeto ainda</span>
         )}
         <div className="flex-1" />
+        {proj && lancAtivos.length > 0 && <button onClick={() => setFiltroAberto((v) => !v)} className={"relative w-8 h-8 grid place-items-center rounded-lg shrink-0 transition-colors " + (filtroAberto || filtroAtivo ? "text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-300" : "text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-800")} title="Filtrar lançamentos"><Filter size={16} />{filtroAtivo && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-500" />}</button>}
         {proj && lancAtivos.length > 0 && <button onClick={exportarPlanilha} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Exportar planilha (.xlsx)"><Download size={16} /></button>}
         {proj && (podeGerirProjetos || podeGerirCategorias) && <button onClick={() => setProjModal({ mode: "edit", proj })} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Configurações do projeto (pasta, categorias, formas)"><Settings size={16} /></button>}
       </div>
+
+      {/* Painel de filtros — abre pelo ícone de funil no cabeçalho */}
+      {proj && filtroAberto && lancAtivos.length > 0 && (
+        <div className="mb-4 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-3.5">
+          <div className="flex items-center gap-2 mb-3">
+            <Filter size={14} className="text-indigo-500" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Filtros</span>
+            {filtroAtivo && <button onClick={limparFiltros} className="ml-auto text-[12px] font-semibold text-gray-500 hover:text-rose-600 inline-flex items-center gap-1"><X size={12} /> Limpar</button>}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Categoria</label>
+              <select value={fCat} onChange={(e) => setFCat(e.target.value)} className="mt-1 w-full h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[13px] text-gray-700 dark:text-gray-200">
+                <option value="">Todas</option>
+                {catOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Pagador</label>
+              <select value={fPag} onChange={(e) => setFPag(e.target.value)} className="mt-1 w-full h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[13px] text-gray-700 dark:text-gray-200">
+                <option value="">Todos</option>
+                {pagOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Estabelecimento</label>
+              <input value={fEstab} onChange={(e) => setFEstab(e.target.value)} placeholder="buscar por nome…" className="mt-1 w-full h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[13px] text-gray-700 dark:text-gray-200" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Valor (R$)</label>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <input value={fValMin} onChange={(e) => setFValMin(e.target.value)} inputMode="decimal" placeholder="mín." className="h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[13px] text-gray-700 dark:text-gray-200 tabular-nums" />
+                <input value={fValMax} onChange={(e) => setFValMax(e.target.value)} inputMode="decimal" placeholder="máx." className="h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-[13px] text-gray-700 dark:text-gray-200 tabular-nums" />
+              </div>
+            </div>
+          </div>
+          {filtroAtivo && (
+            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-500">
+              Mostrando <b className="text-gray-700 dark:text-gray-200">{lancFiltrados.length}</b> de {lancAtivos.length} · total <b className="text-gray-700 dark:text-gray-200 tabular-nums">{fmtR(totalFiltrado)}</b>
+            </div>
+          )}
+        </div>
+      )}
 
       {!proj ? (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
@@ -527,6 +600,8 @@ export function InvestimentosPage() {
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
             {lancAtivos.length === 0 ? (
               <div className="px-4 py-12 text-center text-gray-400 text-sm">Nenhum lançamento ainda. Use <b className="text-gray-500 dark:text-gray-400">+ Novo lançamento</b> — dá pra arrastar/colar o comprovante que a IA preenche.</div>
+            ) : lancFiltrados.length === 0 ? (
+              <div className="px-4 py-12 text-center text-gray-400 text-sm">Nenhum lançamento bate com o filtro. <button onClick={limparFiltros} className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">Limpar filtros</button></div>
             ) : lancPorCategoria.map((g) => (
               <div key={g.cat} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
                 <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-800/40">
