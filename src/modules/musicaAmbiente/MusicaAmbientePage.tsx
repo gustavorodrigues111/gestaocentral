@@ -274,7 +274,7 @@ export function MusicaAmbientePage() {
 
           <div className="text-[11px] text-gray-400 flex items-start gap-1.5 px-1">
             <Volume2 size={13} className="shrink-0 mt-0.5" />
-            <span>Volume desigual entre músicas? Ligue <b>Normalizar volume</b> no app do Spotify da conta Lobozó (Ajustes → Reprodução) — padroniza o nível de todas as faixas.</span>
+            <span>Volume desigual entre músicas? A normalização do Spotify não se aplica quando o som sai pelo M5 (ele é só receptor). Pra padronizar de verdade seria preciso tocar por um app (celular/PC) ligado nas caixas, ou um nivelador de áudio.</span>
           </div>
 
           {/* Busca */}
