@@ -212,3 +212,20 @@ export async function firestoreCriar(colecao: string, docId: string, obj: Record
   const t = await resp.text();
   throw new Error(`Firestore ${resp.status}: ${t.slice(0, 200)}`);
 }
+
+// runQuery genérico: recebe um structuredQuery já montado (from/where/orderBy/
+// limit) e devolve os docs decodificados (com .id). Respeita as security rules
+// do usuário de serviço. Use os helpers abaixo pra montar filtros sem decorar o
+// formato do Firestore REST.
+export async function firestoreRunQuery(structuredQuery: Record<string, unknown>): Promise<Array<Record<string, unknown>>> {
+  const token = await idToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents:runQuery`;
+  const resp = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ structuredQuery }) });
+  if (!resp.ok) throw new Error(`Firestore runQuery ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  const arr = (await resp.json()) as Array<{ document?: { name?: string; fields?: Record<string, Record<string, unknown>> } }>;
+  return arr.filter((x) => x.document).map((x) => decDoc(x.document!));
+}
+export const fEq = (campo: string, valor: string) => ({ fieldFilter: { field: { fieldPath: campo }, op: "EQUAL", value: { stringValue: valor } } });
+export const fGte = (campo: string, valor: string) => ({ fieldFilter: { field: { fieldPath: campo }, op: "GREATER_THAN_OR_EQUAL", value: { stringValue: valor } } });
+export const fIn = (campo: string, valores: string[]) => ({ fieldFilter: { field: { fieldPath: campo }, op: "IN", value: { arrayValue: { values: valores.slice(0, 30).map((v) => ({ stringValue: v })) } } } });
+export const fAnd = (...filtros: unknown[]) => ({ compositeFilter: { op: "AND", filters: filtros } });

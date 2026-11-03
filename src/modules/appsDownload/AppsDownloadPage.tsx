@@ -9,6 +9,7 @@ import { PageContainer } from "../../core/ui/PageContainer";
 import type { DownloadApp, DownloadAppArquivo } from "../../core/types";
 import * as repo from "./appsDownloadRepo";
 import { uid } from "./appsDownloadRepo";
+import { EstacoesPainel } from "./EstacoesPainel";
 
 const INPUT = "w-full h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm";
 const hoje = () => new Date().toISOString();
@@ -51,6 +52,8 @@ export function AppsDownloadPage() {
           ? <Editor key={a.id} app={a} onCancel={() => { setEditId(null); if (!a.nome) setApps((p) => p.filter((x) => x.id !== a.id)); }} onSaved={() => setEditId(null)} />
           : <AppCard key={a.id} app={a} onEdit={() => setEditId(a.id)} />)}
       </div>
+
+      <EstacoesPainel />
     </PageContainer>
   );
 }

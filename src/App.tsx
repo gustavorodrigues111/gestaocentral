@@ -18,6 +18,7 @@ import { getSlugFromHost, isKnownNonSiteHost, resolveSlugFromHost } from "./modu
 import { SitePreviewPage } from "./modules/sites/SitePreviewPage";
 import { CardapioPdfPrintPage } from "./modules/sites/CardapioPdfPrintPage";
 import { HostedPagePublic } from "./modules/paginas/HostedPagePublic";
+import { PainelEstacaoPage } from "./modules/painelSalao/PainelEstacaoPage";
 
 // ProtectedShell (admin) carregado sob demanda — não vai no bundle do
 // site público. Quando o cliente final acessa lobozo.com.br, esse chunk
@@ -64,6 +65,8 @@ function App() {
           <Route path="/vagas/:rid" element={<VagasPublicaPage />} />
           <Route path="/vaga/:rid/:vagaId" element={<VagaCandidaturaPage />} />
           <Route path="/reservas/:rid" element={<ReservasPublicaPage />} />
+          {/* Painel do Salão — estação de parede, sem login (valida por código de estação) */}
+          <Route path="/painel-estacao" element={<PainelEstacaoPage />} />
           <Route path="/politica/:slug" element={<PoliticaPrivacidadePage />} />
           {/* Política de privacidade da plataforma (usada pra publicar o app do WhatsApp na Meta) */}
           <Route path="/privacidade" element={<PrivacidadePlataformaPage />} />

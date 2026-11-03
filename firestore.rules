@@ -258,6 +258,12 @@ service cloud.firestore {
     // isServico()+isMaster() quando tivermos o e-mail do usuário de serviço.
     match /spotifyContas/{id}          { allow read, write: if authed(); }
     match /downloadApps/{id}           { allow read: if authed(); allow write: if isMaster(); }  // catálogo de apps desktop (master edita)
+    // Painel do Salão — tokens de estação. O doc id É o token (aleatório). A
+    // estação de parede valida via /api/painel-feed (usuário de serviço faz
+    // GET by-id). `get` exige SABER o token (sem enumeração); `list` e escrita
+    // só master. Revogar = ativo:false. O doc não guarda nada sensível além do
+    // vínculo rid + nome do restaurante.
+    match /estacoesTokens/{token}      { allow get: if authed(); allow list, write: if isMaster(); }
     match /whatsappAgenteSessoes/{id}  { allow read, write: if authed(); }
     match /rotinaNotificacoes/{id}     { allow read, write: if authed(); }
     match /notificacaoConfigs/{id}     { allow read, write: if authed(); }
