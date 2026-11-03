@@ -307,7 +307,7 @@ export function MusicaAmbientePage() {
           {favs.length > 0 && (
             <div>
               <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 px-0.5 flex items-center gap-1.5"><Star size={12} className="text-amber-400" fill="currentColor" /> Preferidas</div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,176px))] gap-2">
                 {favs.map((p) => <PlaylistCard key={p.id} img={p.image} name={p.name} fav onPlay={() => void tocarContexto(p.uri)} onFav={() => void toggleFav(p)} />)}
               </div>
             </div>
@@ -316,7 +316,7 @@ export function MusicaAmbientePage() {
           {/* Playlists da conta */}
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 px-0.5">Suas playlists</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,176px))] gap-2">
               {playlists.map((p) => <PlaylistCard key={p.id} img={p.images?.[0]?.url} name={p.name} total={p.tracks?.total} fav={isFav(p.id)} onPlay={() => void tocarContexto(p.uri)} onFav={() => void toggleFav(p)} />)}
             </div>
             {playlists.length === 0 && <div className="text-xs text-gray-400">Nenhuma playlist na conta.</div>}
