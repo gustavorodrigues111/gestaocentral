@@ -16,12 +16,18 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // arquivos — o download atualiza sozinho. (Mac é à parte: bump APP_CAIXA_MAC_VER.)
 // O WINDOWS é lido AO VIVO do feed de update (latest.yml) pra nunca ficar velho
 // — os valores abaixo são só fallback. (Mac é buildado à parte; fica estático.)
+// IMPORTANTE: o link do download aponta DIRETO pro Storage (outra origem). Se
+// apontasse pro /pdv-update (mesma origem), o service worker do kiosk
+// interceptava a navegação e caía no index.html (voltava pra "abrir caixa").
 const APP_CAIXA_FEED = "https://comandas.planejamento.app/pdv-update";
+const APP_CAIXA_BUCKET = "gestaocentral-85b13.firebasestorage.app";
+const APP_CAIXA_TOKEN = "87522B2C-9534-4645-B0E0-F5348BB246C6";
+const storageUrl = (nome: string) => `https://firebasestorage.googleapis.com/v0/b/${APP_CAIXA_BUCKET}/o/${encodeURIComponent(`pdv-updates/${nome}`)}?alt=media&token=${APP_CAIXA_TOKEN}`;
 const APP_CAIXA_WIN_VER = "1.0.9";
 const APP_CAIXA_MAC_VER = "1.0.8";
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.8-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
-  win: `${APP_CAIXA_FEED}/${encodeURIComponent(`Planejamento PDV Setup ${APP_CAIXA_WIN_VER}.exe`)}`,
+  mac: storageUrl(`Planejamento PDV-${APP_CAIXA_MAC_VER}-arm64.dmg`),
+  win: storageUrl(`Planejamento PDV Setup ${APP_CAIXA_WIN_VER}.exe`),
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
@@ -46,7 +52,7 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
     fetch(`${APP_CAIXA_FEED}/latest.yml`, { cache: "no-store" }).then(r => r.text()).then(t => {
       const ver = t.match(/version:\s*([0-9][0-9.]*)/)?.[1];
       const path = t.match(/path:\s*(.+)/)?.[1]?.trim();
-      if (vivo && ver && path) setWinLive({ version: ver, url: `${APP_CAIXA_FEED}/${encodeURIComponent(path)}` });
+      if (vivo && ver && path) setWinLive({ version: ver, url: storageUrl(path) });
     }).catch(() => { /* fallback estático */ });
     return () => { vivo = false; };
   }, []);
@@ -201,8 +207,8 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
           {(APP_CAIXA_DOWNLOAD.mac || APP_CAIXA_DOWNLOAD.win) ? (
             <>
               <div className="flex flex-wrap gap-2 mt-2">
-                {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg) · v{APP_CAIXA_MAC_VER}</a>}
-                {winUrl && <a href={winUrl} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Windows (.exe) · v{winVer}</a>}
+                {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg) · v{APP_CAIXA_MAC_VER}</a>}
+                {winUrl && <a href={winUrl} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Windows (.exe) · v{winVer}</a>}
               </div>
               <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1.5">Versão disponível (Windows): <b>v{winVer}</b>. No caixa, confira em Aplicativos instalados se já está nessa versão.</p>
             </>
