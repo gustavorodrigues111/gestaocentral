@@ -10,3 +10,12 @@ contextBridge.exposeInMainWorld("pdvBridge", {
   config: () => ipcRenderer.invoke("pdv-config"),
   setConfig: (patch) => ipcRenderer.invoke("pdv-set-config", patch),
 });
+
+// Ponte de ETIQUETA: imprime o PNG da etiqueta SILENCIOSO numa impressora do PC
+// escolhida pelo nome (ex.: impressora USB de etiqueta 55×55 do caixa), sem o
+// diálogo do navegador. Usada pelo módulo Controles de Validades (etiqueta-local).
+contextBridge.exposeInMainWorld("etiquetaBridge", {
+  versao: 1,
+  listarImpressoras: () => ipcRenderer.invoke("etiq-listar"),
+  imprimir: (pngBase64, opts) => ipcRenderer.invoke("etiq-imprimir", { pngBase64, opts }),
+});

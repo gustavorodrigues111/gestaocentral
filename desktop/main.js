@@ -120,9 +120,11 @@ function createWindow() {
       if (mod && input.shift) win.webContents.reloadIgnoringCache(); else win.webContents.reload();
     }
   });
+  janelaPrincipal = win;
   return win;
 }
 
+let janelaPrincipal = null;   // referência da janela do caixa (pra listar impressoras)
 app.whenReady().then(() => {
   cfg = lerConfig();
   Menu.setApplicationMenu(null);
@@ -146,6 +148,46 @@ ipcMain.handle("pdv-print-test", async () => {
 });
 // Config atual (pra tela de Ajustes do PDV).
 ipcMain.handle("pdv-config", () => ({ ...cfg, bridge: true, appVersion: app.getVersion() }));
+
+// ── Ponte de ETIQUETA (Controles de Validades) ──────────────────────────────
+// Lista as impressoras do PC e imprime o PNG da etiqueta SILENCIOSO na escolhida,
+// no tamanho exato da bobina (sem o diálogo do navegador).
+ipcMain.handle("etiq-listar", async () => {
+  try {
+    const wc = janelaPrincipal && !janelaPrincipal.isDestroyed() ? janelaPrincipal.webContents : null;
+    if (!wc) return [];
+    const ps = await wc.getPrintersAsync();
+    return ps.map((p) => p.name);
+  } catch { return []; }
+});
+ipcMain.handle("etiq-imprimir", async (_e, { pngBase64, opts }) => {
+  const o = opts || {};
+  const larguraMm = Number(o.larguraMm) || 58, alturaMm = Number(o.alturaMm) || 40;
+  const copias = Math.max(1, Math.min(20, Number(o.copias) || 1));
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size: ${larguraMm}mm ${alturaMm}mm; margin: 0 }
+    html,body{margin:0;padding:0}
+    img{width:${larguraMm}mm;height:${alturaMm}mm;image-rendering:pixelated;display:block}
+  </style></head><body><img src="data:image/png;base64,${pngBase64}"></body></html>`;
+  const w = new BrowserWindow({ show: false, webPreferences: { offscreen: false } });
+  try {
+    await w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
+    await new Promise((r) => setTimeout(r, 150)); // deixa a imagem desenhar antes de imprimir
+    return await new Promise((resolve) => {
+      w.webContents.print({
+        silent: true,
+        deviceName: o.deviceName || "",
+        margins: { marginType: "none" },
+        pageSize: { width: Math.round(larguraMm * 1000), height: Math.round(alturaMm * 1000) }, // microns
+        copies,
+      }, (ok, motivo) => resolve(ok ? { ok: true } : { ok: false, erro: motivo || "falha na impressão" }));
+    });
+  } catch (err) {
+    return { ok: false, erro: String((err && err.message) || err) };
+  } finally {
+    try { if (!w.isDestroyed()) w.close(); } catch { /* ignore */ }
+  }
+});
 // Salva a config editada na tela de Ajustes (IP, caixa, etc.) — grava no userData.
 ipcMain.handle("pdv-set-config", (_e, patch) => {
   try {
