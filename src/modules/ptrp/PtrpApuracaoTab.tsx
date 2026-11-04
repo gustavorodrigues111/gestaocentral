@@ -302,7 +302,18 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const naoBatePonto = (e: Empregado) => !empregadoBatePonto(e, cargoPorId[e.cargoId]);
   // Só EQUIPE CLT ATIVA do planejamento.app (fonte da verdade de quem entra). Tira
   // demitidos/inativos e freela mensalista (não bate ponto).
-  const empVis = useMemo(() => empregados.filter(e => e.estaAtivo && !e.freelaMensalista).sort((a, b) => a.nome.localeCompare(b.nome)), [empregados]);
+  const [incluirDemitidos, setIncluirDemitidos] = useState(false);
+  const empVis = useMemo(() => {
+    const compIni = `${comp}-01`, compFim = `${comp}-31`;
+    return empregados.filter(e => {
+      if (e.freelaMensalista) return false;
+      if (e.estaAtivo) return true;
+      if (!incluirDemitidos) return false;
+      // Demitido: só aparece se o vínculo (admissão→demissão) cruza a competência.
+      const em = e as { admissao?: string; demissao?: string | null };
+      return (em.admissao || "9999") <= compFim && (!em.demissao || em.demissao >= compIni);
+    }).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [empregados, incluirDemitidos, comp]);
 
   // Nº de correções pendentes (pra o aviso no topo).
   const qtdPendentes = useMemo(() => Object.values(liveCorrigidos).reduce((s, arr) => s + arr.filter(correcaoPendente).length, 0), [liveCorrigidos]);
@@ -403,8 +414,14 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (prevContr.kind === "trabalho" && prevContr.turno) previstoContratualTxt = prevContr.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
       else if (prevContr.kind === "folga") previstoContratualTxt = "folga";
       else previstoContratualTxt = "sem cadastro";
-      if (ehFuturo) {
-        // Dia futuro: só o previsto aparece; nada de falta/exceção nem saldo.
+      // Fora do vínculo: dia antes da ADMISSÃO ou depois da DEMISSÃO. Não acusa
+      // falta nem entra no saldo — o espelho do demitido cobre só o período ativo.
+      const admiss = (emp as { admissao?: string }).admissao || "";
+      const demiss = (emp as { demissao?: string | null }).demissao || "";
+      const foraVinculo = (!!admiss && data < admiss) || (!!demiss && data > demiss);
+      if (foraVinculo) { previstoTxt = "—"; previstoContratualTxt = "—"; }
+      if (ehFuturo || foraVinculo) {
+        // Dia futuro / fora do vínculo: só o previsto aparece; nada de falta/exceção nem saldo.
         trabalhado = blocosEfetivos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       } else if (cct && prev.kind !== "implicito") {
         const ap = apurarDia({ data, blocos: blocosEfetivos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
@@ -1161,6 +1178,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           </select>
           <button type="button" onClick={() => setComp(addMes(comp, 1))} disabled={comp >= compAtual()} className="px-2 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title="Próximo mês">›</button>
         </div>
+        <label className="text-xs inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-300 cursor-pointer" title="Mostra também quem foi demitido, no período em que esteve ativo (admissão→demissão)">
+          <input type="checkbox" checked={incluirDemitidos} onChange={e => setIncluirDemitidos(e.target.checked)} className="w-3.5 h-3.5 accent-indigo-600" /> Incluir demitidos
+        </label>
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={12}/> Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
       </div>
       )}
