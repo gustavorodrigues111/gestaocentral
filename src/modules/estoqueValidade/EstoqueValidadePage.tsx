@@ -8,7 +8,7 @@
 //   • Painel  → saldo + o que vence (FEFO)
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand } from "lucide-react";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
@@ -23,6 +23,15 @@ import { type LocalEstoque, type LocalEstoqueTipo, LOCAL_ESTOQUE_TIPO_LABEL } fr
 import { type EntradaPendente } from "./entradasPendentes";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
+import { EtiquetasTab } from "./EtiquetasTab";
+import { BaixaEtiquetaModal, ResumoEtiquetas } from "./EtiquetasEmitidas";
+import { ScannerModal } from "./ScannerModal";
+import { buscarPorToken, tokenDoQr, type EtiquetaEmitida } from "./etiquetasRepo";
+import { VinculosModal } from "./VinculosModal";
+import { mesmoNome, parecidos } from "./similaridade";
+import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta } from "../../core/impressao/impressora";
+import { desenharEtiqueta } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
 // Conservação = validade APÓS ABERTO por método (dias). NÃO é a validade do
@@ -34,6 +43,7 @@ export type ProdutoEtiqueta = {
   conservacao: Conservacao; unidade: string;
   estoqueMinimo?: number | null; marcaFornecedor?: string | null; sif?: string | null;
   precoCusto?: number | null; qrTokenEstoque: string; ativo: boolean; criadoEm: string;
+  locais?: string[];  // locais onde o produto fica (só os compatíveis com a matriz)
 };
 export type EstoqueConfig = { unidades: string[]; categorias: string[]; metodos: MetodoConservacao[] };
 export type LoteEstoque = {
@@ -89,15 +99,17 @@ export function EstoqueValidadePage() {
   const podeOperar = can("estoqueValidade", "operar") || can("estoqueValidade", "editar");
   const podeEditar = can("estoqueValidade", "editar");
 
-  const [aba, setAba] = useTabPersistida<"painel" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
+  const [aba, setAba] = useTabPersistida<"painel" | "etiquetas" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
   const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases">("locais");
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
   const [lotes, setLotes] = useState<LoteEstoque[]>([]);
   const [pendentes, setPendentes] = useState<EntradaPendente[]>([]);
+  const [etiquetasAtivas, setEtiquetasAtivas] = useState<EtiquetaEmitida[]>([]);
   const [config, setConfig] = useState<EstoqueConfig>(CONFIG_PADRAO);
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
-  const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null } | null>(null);
+  const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string } | null>(null);
+  const [vinculosLocal, setVinculosLocal] = useState<LocalEstoque | null>(null);
   const [etiqModal, setEtiqModal] = useState<ProdutoEtiqueta | null>(null);
 
   useEffect(() => {
@@ -107,6 +119,7 @@ export function EstoqueValidadePage() {
       onSnapshot(query(collection(db, "produtosEtiqueta"), where("restaurantId", "==", rid)), (s) => setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ProdutoEtiqueta)), () => setProdutos([])),
       onSnapshot(query(collection(db, "lotesEstoque"), where("restaurantId", "==", rid)), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LoteEstoque)), () => setLotes([])),
       onSnapshot(query(collection(db, "entradasPendentes"), where("restaurantId", "==", rid)), (s) => setPendentes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntradaPendente).filter((p) => p.status === "pendente")), () => setPendentes([])),
+      onSnapshot(query(collection(db, "etiquetas"), where("restaurantId", "==", rid), where("status", "==", "ativa")), (s) => setEtiquetasAtivas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EtiquetaEmitida)), () => setEtiquetasAtivas([])),
       onSnapshot(doc(db, "estoqueConfig", rid), (s) => {
         const d = (s.data() || {}) as Partial<EstoqueConfig>;
         setConfig({ unidades: d.unidades?.length ? d.unidades : UNIDADES_PADRAO, categorias: d.categorias || [], metodos: d.metodos?.length ? d.metodos : METODOS_PADRAO });
@@ -115,13 +128,13 @@ export function EstoqueValidadePage() {
     return () => subs.forEach((u) => u());
   }, [rid]);
 
-  const localNome = (id?: string | null) => locais.find((l) => l.id === id)?.nome || "";
+  const localNome = (id?: string | null) => nomeCompleto(locais.find((l) => l.id === id), locais);
   const lotesAtivosDoProduto = (produtoId: string) => lotes.filter((l) => l.produtoId === produtoId && l.status === "ativo" && l.qtdRestante > 0);
 
   // ── Locais ──
   async function salvarLocal(l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) {
-    if (l.id) await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, ativo: l.ativo });
-    else await addDoc(collection(db, "locaisEstoque"), { restaurantId: rid, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, ativo: l.ativo, ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null });
+    if (l.id) await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo });
+    else await addDoc(collection(db, "locaisEstoque"), { restaurantId: rid, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo, ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null });
     setLocalModal(null);
   }
   async function excluirLocal(l: LocalEstoque) { if (confirm(`Excluir o local "${l.nome}"?`)) await deleteDoc(doc(db, "locaisEstoque", l.id)); }
@@ -135,6 +148,7 @@ export function EstoqueValidadePage() {
       nome: p.nome, categorias: p.categorias || [], conservacao: p.conservacao || {}, unidade: p.unidade || (config.unidades[0] || "UND"),
       estoqueMinimo: p.estoqueMinimo ?? null, marcaFornecedor: p.marcaFornecedor || null,
       sif: p.sif || null, precoCusto: p.precoCusto ?? null, ativo: p.ativo ?? true,
+      locais: limparVinculos(p.locais || [], p.conservacao || {}, locais),
     };
     if (p.id) await updateDoc(doc(db, "produtosEtiqueta", p.id), dados);
     else await addDoc(collection(db, "produtosEtiqueta"), { restaurantId: rid, ...dados, qrTokenEstoque: novoToken(), criadoEm: new Date().toISOString() });
@@ -175,7 +189,7 @@ export function EstoqueValidadePage() {
   if (permLoading) return null;
   if (!podeVer) return <div className="p-6 text-sm text-gray-500">Você não tem acesso à Gestão de Estoques e Validades.</div>;
 
-  const ABAS = [["painel", "Painel", BarChart3], ["baixa", "Baixa", PackageMinus], ["entrada", "Entrada", PackagePlus], ["cadastro", "Cadastro", FolderOpen]] as const;
+  const ABAS = [["painel", "Painel", BarChart3], ["etiquetas", "Etiquetas", Printer], ["baixa", "Baixa", PackageMinus], ["entrada", "Entrada", PackagePlus], ["cadastro", "Cadastro", FolderOpen]] as const;
 
   return (
     <PageContainer>
@@ -188,8 +202,9 @@ export function EstoqueValidadePage() {
         ))}
       </div>
 
-      {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} />}
-      {aba === "baixa" && <BaixaTab produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
+      {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
+      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} />}
+      {aba === "baixa" && <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
       {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
         <div>
@@ -200,22 +215,25 @@ export function EstoqueValidadePage() {
             ))}
           </div>
           {subCad === "locais"
-            ? <LocaisTab locais={locais} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} />
+            ? <LocaisTab locais={locais} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} />
             : subCad === "bases"
             ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
             : <ProdutosTab produtos={produtos} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
         </div>
       )}
 
-      {localModal && <LocalModal local={localModal.local} locais={locais} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
-      {prodModal && <ProdutoModal produto={prodModal.produto} config={config} onClose={() => setProdModal(null)} onSalvar={salvarProduto} />}
+      {localModal && <LocalModal local={localModal.local} locais={locais} config={config} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
+      {prodModal && <ProdutoModal key={prodModal.produto?.id || "novo"} produto={prodModal.produto} nomeInicial={prodModal.nomeInicial} localInicial={prodModal.localInicial} produtos={produtos} config={config} locais={locais} onClose={() => setProdModal(null)} onSalvar={salvarProduto}
+        onUsarExistente={(p) => setProdModal({ produto: p, localInicial: prodModal.localInicial })} />}
+      {vinculosLocal && <VinculosModal local={vinculosLocal} locais={locais} produtos={produtos} metodoLabel={config.metodos.find((m) => m.id === vinculosLocal.metodoConservacao)?.label || ""}
+        onClose={() => setVinculosLocal(null)} onNovoProduto={(nome) => { setProdModal({ produto: null, nomeInicial: nome, localInicial: vinculosLocal.id }); setVinculosLocal(null); }} />}
       {etiqModal && <EtiquetaFixaModal produto={etiqModal} onClose={() => setEtiqModal(null)} />}
     </PageContainer>
   );
 }
 
 // ═══ PAINEL (saldo + FEFO) ═══════════════════════════════════════════════════
-function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]; lotes: LoteEstoque[]; localNome: (id?: string | null) => string }) {
+function PainelTab({ produtos, lotes, localNome, etiquetas, onAbrirEtiquetas }: { produtos: ProdutoEtiqueta[]; lotes: LoteEstoque[]; localNome: (id?: string | null) => string; etiquetas: EtiquetaEmitida[]; onAbrirEtiquetas: () => void }) {
   const ativos = lotes.filter((l) => l.status === "ativo" && l.qtdRestante > 0);
   const grupos = useMemo(() => {
     const g = { vencido: [] as LoteEstoque[], hoje: [] as LoteEstoque[], amanha: [] as LoteEstoque[], semana: [] as LoteEstoque[] };
@@ -237,6 +255,8 @@ function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]
 
   return (
     <div className="space-y-4">
+      <ResumoEtiquetas ativas={etiquetas} onAbrir={onAbrirEtiquetas} />
+      <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Estoque por lote</div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {cards.map(([label, arr, cls]) => (
           <div key={label} className={`rounded-xl border p-3 ${cls}`}>
@@ -292,7 +312,8 @@ function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]
 }
 
 // ═══ BAIXA ═══════════════════════════════════════════════════════════════════
-function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
+function BaixaTab({ rid, usuario, etiquetas, produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
+  rid: string; usuario: { uid?: string | null; nome?: string | null }; etiquetas: EtiquetaEmitida[];
   produtos: ProdutoEtiqueta[]; lotesAtivos: (id: string) => LoteEstoque[]; localNome: (id?: string | null) => string;
   podeOperar: boolean; onBaixa: (p: ProdutoEtiqueta, qtd: number) => Promise<number>;
 }) {
@@ -302,9 +323,26 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
   const [msg, setMsg] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [scan, setScan] = useState(false);
+  const [etiquetaLida, setEtiquetaLida] = useState<EtiquetaEmitida | null>(null);
+
+  async function abrirLeitor() {
+    if (noAppSunmi()) {
+      const v = await lerQrNativo();
+      if (v) { aoLerQr(v); return; }
+    }
+    setScan(true);
+  }
 
   function aoLerQr(code: string) {
     setScan(false);
+    // QR de etiqueta de validade (pote): abre a baixa da etiqueta.
+    const token = tokenDoQr(code);
+    if (token) {
+      const e = etiquetas.find((x) => x.qrToken === token);
+      if (e) { setEtiquetaLida(e); return; }
+      void buscarPorToken(rid, token).then((x) => (x ? setEtiquetaLida(x) : setMsg("Etiqueta não encontrada nesta unidade.")), () => setMsg("Não consegui consultar a etiqueta."));
+      return;
+    }
     const p = produtos.find((x) => x.qrTokenEstoque === code && x.ativo);
     if (p) { setSel(p); setMsg(""); } else { setMsg("QR não reconhecido neste restaurante."); }
   }
@@ -328,12 +366,12 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500">Leia o QR do produto (ou busque). O sistema aponta de qual lote pegar pela regra de giro.</p>
+      <p className="text-xs text-gray-500">Leia o QR do produto (ou busque): o sistema aponta de qual lote pegar pela regra de giro. Lendo o QR de uma etiqueta de validade, abre a baixa daquele pote.</p>
       {!sel ? (
         <div>
           <div className="flex gap-2 max-w-2xl">
             <SearchInput value={busca} onChange={setBusca} placeholder="Buscar produto pra dar baixa…" autoFocus />
-            <button type="button" onClick={() => setScan(true)} className="shrink-0 h-11 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:border-indigo-400 flex items-center gap-1.5"><Camera size={16} /> <span className="hidden sm:inline">Ler QR</span></button>
+            <button type="button" onClick={() => void abrirLeitor()} className="shrink-0 h-11 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:border-indigo-400 flex items-center gap-1.5"><Camera size={16} /> <span className="hidden sm:inline">Ler QR</span></button>
           </div>
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {(busca.trim() ? achados : produtos.filter((p) => p.ativo).slice().sort((a, b) => a.nome.localeCompare(b.nome))).map((p) => {
@@ -374,6 +412,7 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
       )}
       {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"}`}>{msg}</div>}
       {scan && <ScannerModal onDetect={aoLerQr} onClose={() => setScan(false)} />}
+      {etiquetaLida && <BaixaEtiquetaModal etiqueta={etiquetaLida} usuario={usuario} onClose={() => setEtiquetaLida(null)} />}
     </div>
   );
 }
@@ -482,7 +521,7 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><label className="text-xs text-gray-500 block mb-1">Local <span className="text-gray-400">(opcional)</span></label>
-              <select value={localId} onChange={(e) => setLocalId(e.target.value)} className={inp}><option value="">—</option>{locais.filter((l) => l.ativo).map((l) => <option key={l.id} value={l.id}>{LOCAL_ESTOQUE_TIPO_LABEL[l.tipo].icon} {l.nome}</option>)}</select>
+              <select value={localId} onChange={(e) => setLocalId(e.target.value)} className={inp}><option value="">—</option>{locais.filter((l) => l.ativo && !ehAmbiente(l)).map((l) => <option key={l.id} value={l.id}>{nomeCompleto(l, locais)}</option>)}</select>
             </div>
             <div><label className="text-xs text-gray-500 block mb-1">Fornecedor <span className="text-gray-400">(opcional)</span></label><input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className={inp} /></div>
           </div>
@@ -495,39 +534,50 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
 }
 
 // ═══ CADASTRO › LOCAIS ═══════════════════════════════════════════════════════
-function LocaisTab({ locais, restauranteNome, podeEditar, onNovo, onEditar, onExcluir }: {
-  locais: LocalEstoque[]; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void;
+function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restauranteNome, podeEditar, onNovo, onEditar, onExcluir }: {
+  locais: LocalEstoque[]; contarProdutos: (localId: string) => number; onProdutos: (l: LocalEstoque) => void; metodoLabel: (id?: string | null) => string | null; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void;
 }) {
-  const porTipo = useMemo(() => {
-    const m = new Map<LocalEstoqueTipo, LocalEstoque[]>();
-    for (const l of locais.slice().sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome))) { const arr = m.get(l.tipo) || []; arr.push(l); m.set(l.tipo, arr); }
-    return m;
-  }, [locais]);
+  const grupos = useMemo(() => agruparPorAmbiente(locais, false), [locais]);
+  const acoes = (l: LocalEstoque) => podeEditar && (
+    <div className="flex items-center gap-1 shrink-0">
+      <button type="button" onClick={() => onEditar(l)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar"><Pencil size={14} /></button>
+      <button type="button" onClick={() => onExcluir(l)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir"><Trash2 size={14} /></button>
+    </div>
+  );
   return (
     <div>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <p className="text-xs text-gray-500 max-w-lg">Onde os produtos ficam estocados{restauranteNome ? ` no ${restauranteNome}` : ""} — geladeiras, câmaras, prateleiras, seco…</p>
-        {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo local</Button>}
+        <p className="text-xs text-gray-500 max-w-lg">Ambientes{restauranteNome ? ` do ${restauranteNome}` : ""} (cozinha de baixo, laje…) e, dentro de cada um, os equipamentos de estoque com a sua conservação.</p>
+        {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo ambiente ou equipamento</Button>}
       </div>
       {locais.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum local ainda. {podeEditar ? "Cadastre geladeiras, câmaras e prateleiras." : ""}</div>
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nada cadastrado. {podeEditar ? "Comece pelos ambientes e depois os equipamentos de cada um." : ""}</div>
       ) : (
-        <div className="space-y-4">
-          {TIPOS.filter((t) => (porTipo.get(t) || []).length > 0).map((t) => (
-            <div key={t}>
-              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5"><span>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon}</span> {LOCAL_ESTOQUE_TIPO_LABEL[t].label}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {(porTipo.get(t) || []).map((l) => (
-                  <div key={l.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${l.ativo ? "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" : "border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/20 opacity-70"}`}>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
-                      {l.paiId && <div className="text-[11px] text-gray-400 truncate">dentro de {locais.find((x) => x.id === l.paiId)?.nome || "—"}</div>}
-                      {!l.ativo && <div className="text-[11px] text-gray-400">inativo</div>}
-                    </div>
-                    {podeEditar && <div className="flex items-center gap-1 shrink-0"><button type="button" onClick={() => onEditar(l)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar"><Pencil size={14} /></button><button type="button" onClick={() => onExcluir(l)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir"><Trash2 size={14} /></button></div>}
-                  </div>
-                ))}
+        <div className="space-y-5">
+          {grupos.map(({ ambiente, equipamentos }) => (
+            <div key={ambiente?.id || "sem"}>
+              <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-1.5 mb-1">
+                <div className={`text-sm font-semibold ${ambiente && !ambiente.ativo ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{ambiente ? ambiente.nome : "Sem ambiente"}{ambiente && !ambiente.ativo && <span className="font-normal"> · inativo</span>}</div>
+                {ambiente && acoes(ambiente)}
               </div>
+              {equipamentos.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2">Nenhum equipamento neste ambiente.</p>
+              ) : equipamentos.map((l) => (
+                <div key={l.id} className={`flex items-center justify-between gap-2 py-2 ${l.ativo ? "" : "opacity-60"}`}>
+                  <div className="min-w-0">
+                    <div className="text-sm text-gray-900 dark:text-gray-100 truncate">{l.nome} <span className="text-gray-400">· {LOCAL_ESTOQUE_TIPO_LABEL[l.tipo]?.label || l.tipo}</span></div>
+                    <div className={`text-[11px] ${l.metodoConservacao ? "text-gray-500" : "text-amber-600"}`}>{metodoLabel(l.metodoConservacao) || "Sem conservação definida"}{!l.ativo && " · inativo"}</div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {podeEditar && l.metodoConservacao && (
+                      <button type="button" onClick={() => onProdutos(l)} className="h-8 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-xs text-gray-600 dark:text-gray-300 hover:border-indigo-300">
+                        Produtos <span className="text-gray-400">{contarProdutos(l.id)}</span>
+                      </button>
+                    )}
+                    {acoes(l)}
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -617,24 +667,36 @@ function ListaBase({ titulo, itens, podeEditar, vazio, onAdd, onRemove }: { titu
 }
 
 // ═══ MODAIS ══════════════════════════════════════════════════════════════════
-function LocalModal({ local, locais, onClose, onSalvar }: {
-  local: LocalEstoque | null; locais: LocalEstoque[]; onClose: () => void; onSalvar: (l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) => Promise<void>;
+function LocalModal({ local, locais, config, onClose, onSalvar }: {
+  local: LocalEstoque | null; locais: LocalEstoque[]; config: EstoqueConfig; onClose: () => void; onSalvar: (l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) => Promise<void>;
 }) {
   const [nome, setNome] = useState(local?.nome || "");
-  const [tipo, setTipo] = useState<LocalEstoqueTipo>(local?.tipo || "geladeira");
+  // Sem nenhum ambiente ainda, o primeiro cadastro sugerido é um ambiente.
+  const [tipo, setTipo] = useState<LocalEstoqueTipo>(local?.tipo || (locais.some(ehAmbiente) ? "geladeira" : "ambiente"));
   const [paiId, setPaiId] = useState<string>(local?.paiId || "");
+  const [metodo, setMetodo] = useState<string>(local?.metodoConservacao || METODO_POR_TIPO[tipo] || "");
+  const [metodoTocado, setMetodoTocado] = useState(!!local?.metodoConservacao);
   const [ativo, setAtivo] = useState<boolean>(local?.ativo ?? true);
   const [salvando, setSalvando] = useState(false);
-  const pais = locais.filter((l) => l.id !== local?.id);
-  async function salvar() { if (!nome.trim()) return; setSalvando(true); try { await onSalvar({ id: local?.id, restaurantId: local?.restaurantId || "", nome: nome.trim(), tipo, paiId: paiId || null, ativo }); } finally { setSalvando(false); } }
+  const ambientes = locais.filter((l) => l.id !== local?.id && ehAmbiente(l));
+  const ehAmb = tipo === "ambiente";
+  async function salvar() { if (!nome.trim()) return; setSalvando(true); try { await onSalvar({ id: local?.id, restaurantId: local?.restaurantId || "", nome: nome.trim(), tipo, paiId: ehAmb ? null : (paiId || null), metodoConservacao: ehAmb ? null : (metodo || null), ativo }); } finally { setSalvando(false); } }
   return (
-    <Modal title={local ? "Editar local" : "Novo local de estoque"} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={local ? (ehAmb ? "Editar ambiente" : "Editar equipamento") : (ehAmb ? "Novo ambiente" : "Novo equipamento")} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <div><label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Geladeira 1, Câmara de congelados…" className={inp} autoFocus /></div>
+        <div><label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder={ehAmb ? "Ex.: Cozinha de baixo, Laje" : "Ex.: Geladeira 1, Freezer horizontal"} className={inp} autoFocus /></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div><label className="text-xs text-gray-500 block mb-1">Tipo</label><select value={tipo} onChange={(e) => setTipo(e.target.value as LocalEstoqueTipo)} className={inp}>{TIPOS.map((t) => <option key={t} value={t}>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon} {LOCAL_ESTOQUE_TIPO_LABEL[t].label}</option>)}</select></div>
-          <div><label className="text-xs text-gray-500 block mb-1">Dentro de <span className="text-gray-400">(opcional)</span></label><select value={paiId} onChange={(e) => setPaiId(e.target.value)} className={inp}><option value="">— nenhum —</option>{pais.map((l) => <option key={l.id} value={l.id}>{LOCAL_ESTOQUE_TIPO_LABEL[l.tipo].icon} {l.nome}</option>)}</select></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Tipo</label><select value={tipo} onChange={(e) => { const t = e.target.value as LocalEstoqueTipo; setTipo(t); if (!metodoTocado) setMetodo(METODO_POR_TIPO[t] || ""); }} className={inp}>{TIPOS.map((t) => <option key={t} value={t}>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon} {LOCAL_ESTOQUE_TIPO_LABEL[t].label}</option>)}</select></div>
+          {!ehAmb && <div><label className="text-xs text-gray-500 block mb-1">Ambiente</label><select value={paiId} onChange={(e) => setPaiId(e.target.value)} className={inp}><option value="">Sem ambiente</option>{ambientes.map((l) => <option key={l.id} value={l.id}>{l.nome}</option>)}</select></div>}
         </div>
+        {!ehAmb && <div>
+          <label className="text-xs text-gray-500 block mb-1">Conservação deste equipamento</label>
+          <select value={metodo} onChange={(e) => { setMetodo(e.target.value); setMetodoTocado(true); }} className={inp}>
+            <option value="">Nenhuma (não emite etiqueta)</option>
+            {config.metodos.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+          <p className="text-[11px] text-gray-400 mt-1">Define a validade das etiquetas dos produtos guardados aqui.</p>
+        </div>}
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativo</label>
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando || !nome.trim()}>{salvando ? "Salvando…" : local ? "Salvar" : "Criar"}</Button></div>
       </div>
@@ -642,10 +704,11 @@ function LocalModal({ local, locais, onClose, onSalvar }: {
   );
 }
 
-function ProdutoModal({ produto, config, onClose, onSalvar }: {
-  produto: ProdutoEtiqueta | null; config: EstoqueConfig; onClose: () => void; onSalvar: (p: Partial<ProdutoEtiqueta> & { id?: string }) => Promise<void>;
+function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, locais, onClose, onSalvar, onUsarExistente }: {
+  produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string; produtos: ProdutoEtiqueta[];
+  onUsarExistente: (p: ProdutoEtiqueta) => void; config: EstoqueConfig; locais: LocalEstoque[]; onClose: () => void; onSalvar: (p: Partial<ProdutoEtiqueta> & { id?: string }) => Promise<void>;
 }) {
-  const [nome, setNome] = useState(produto?.nome || "");
+  const [nome, setNome] = useState(produto?.nome || nomeInicial || "");
   const [cats, setCats] = useState<string[]>(produto?.categorias || []);
   const [unidade, setUnidade] = useState(produto?.unidade || config.unidades[0] || "UND");
   const [cons, setCons] = useState<Conservacao>(produto?.conservacao || {});
@@ -654,7 +717,12 @@ function ProdutoModal({ produto, config, onClose, onSalvar }: {
   const [sif, setSif] = useState(produto?.sif || "");
   const [precoCusto, setPrecoCusto] = useState(produto?.precoCusto != null ? String(produto.precoCusto) : "");
   const [ativo, setAtivo] = useState<boolean>(produto?.ativo ?? true);
+  // Vindo da tela do equipamento, ele já vem marcado (vale depois de preencher o prazo).
+  const [locaisSel, setLocaisSel] = useState<string[]>(() => Array.from(new Set([...(produto?.locais || []), ...(localInicial ? [localInicial] : [])])));
+  const similares = produto ? [] : parecidos(nome, produtos);
   const [salvando, setSalvando] = useState(false);
+  const locaisAtivos = locais.filter((l) => l.ativo && !ehAmbiente(l)).sort((a, b) => nomeCompleto(a, locais).localeCompare(nomeCompleto(b, locais)));
+  const toggleLocal = (id: string) => setLocaisSel((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   const temMetodo = config.metodos.some((m) => cons[m.id] != null);
   function setDias(id: string, v: string) {
@@ -664,15 +732,32 @@ function ProdutoModal({ produto, config, onClose, onSalvar }: {
   function toggleCat(c: string) { setCats((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]); }
   async function salvar() {
     if (!nome.trim() || !temMetodo) return;
+    const igual = produtos.find((p) => p.id !== produto?.id && mesmoNome(p.nome, nome));
+    if (igual && !confirm(`Já existe o produto "${igual.nome}". Cadastrar outro com o mesmo nome?`)) return;
     setSalvando(true);
     try {
-      await onSalvar({ id: produto?.id, nome: nome.trim(), categorias: cats, unidade, conservacao: cons, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
+      await onSalvar({ id: produto?.id, nome: nome.trim(), categorias: cats, unidade, conservacao: cons, locais: locaisSel, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
     } finally { setSalvando(false); }
   }
   return (
     <Modal title={produto ? "Editar produto" : "Novo produto"} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
-        <div><label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Farinha de trigo" className={inp} autoFocus /></div>
+        <div>
+          <label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Farinha de trigo" className={inp} autoFocus />
+          {similares.length > 0 && (
+            <div className="mt-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+              <div className="text-xs text-amber-800 dark:text-amber-300 mb-1">Já existe algo parecido. Se for o mesmo produto, use o cadastro existente:</div>
+              {similares.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2 py-1">
+                  <div className="min-w-0 text-sm text-gray-900 dark:text-gray-100 truncate">{p.nome}
+                    <span className="text-xs text-gray-500"> · {(p.locais || []).length ? (p.locais || []).map((id) => nomeCompleto(locais.find((l) => l.id === id), locais)).filter(Boolean).join(", ") : "sem local"}</span>
+                  </div>
+                  <button type="button" onClick={() => onUsarExistente(p)} className="shrink-0 h-8 px-3 rounded-lg bg-white dark:bg-gray-900 border border-amber-300 dark:border-amber-800 text-xs font-medium text-amber-800 dark:text-amber-300">É este</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500 block mb-1">Unidade</label>
@@ -704,6 +789,27 @@ function ProdutoModal({ produto, config, onClose, onSalvar }: {
           </div>
           {!temMetodo && <p className="text-[11px] text-gray-400 mt-1">Preencha ao menos um método (validade após aberto).</p>}
         </div>
+        <div>
+          <label className="text-xs text-gray-500 block mb-1">Onde fica <span className="text-gray-400">(só aparecem para etiquetar nesses locais)</span></label>
+          {locaisAtivos.length === 0 ? (
+            <p className="text-[11px] text-gray-400">Nenhum local cadastrado. Cadastre em <b>Locais</b>.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {locaisAtivos.map((l) => {
+                const ok = compativel({ conservacao: cons }, l);
+                const m = config.metodos.find((x) => x.id === l.metodoConservacao)?.label;
+                const on = ok && locaisSel.includes(l.id);
+                return (
+                  <button key={l.id} type="button" disabled={!ok} onClick={() => toggleLocal(l.id)}
+                    title={ok ? "" : m ? `Preencha o prazo de ${m} para vincular` : "Local sem conservação definida"}
+                    className={`px-3 py-1.5 text-xs rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : ok ? "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300" : "border-dashed border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed"}`}>
+                    {nomeCompleto(l, locais)}{m ? <span className="opacity-60"> · {m}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div><label className="text-xs text-gray-500 block mb-1">Estoque mínimo</label><input value={estoqueMinimo} onChange={(e) => setEstoqueMinimo(e.target.value)} placeholder="—" inputMode="decimal" className={inp} /></div>
           <div><label className="text-xs text-gray-500 block mb-1">Preço custo (R$/{unidade})</label><input value={precoCusto} onChange={(e) => setPrecoCusto(e.target.value)} placeholder="—" inputMode="decimal" className={inp} /></div>
@@ -721,7 +827,19 @@ function ProdutoModal({ produto, config, onClose, onSalvar }: {
 function EtiquetaFixaModal({ produto, onClose }: { produto: ProdutoEtiqueta; onClose: () => void }) {
   const [qr, setQr] = useState("");
   useEffect(() => { QRCode.toDataURL(produto.qrTokenEstoque, { width: 320, margin: 1 }).then(setQr).catch(() => setQr("")); }, [produto.qrTokenEstoque]);
-  function imprimir() {
+  async function imprimir() {
+    if (noAppSunmi()) {
+      let bob = { larguraMm: 58, alturaMm: 40 };
+      try { const b = localStorage.getItem("etiq_bobina"); if (b) { const [l, a] = b.split("x").map(Number); if (l && a) bob = { larguraMm: l, alturaMm: a }; } } catch { /* sem storage */ }
+      const canvas = await desenharEtiqueta([
+        { tipo: "rotulo", texto: "Estoque", direita: produto.unidade },
+        { tipo: "titulo", texto: produto.nome },
+        { tipo: "rodapeQr", qr: produto.qrTokenEstoque, linhas: ["Etiqueta fixa", "Leia o QR no app para dar baixa"] },
+      ], bob);
+      const r = await imprimirEtiqueta(canvas, 1, bob);
+      if (!r.ok) alert(r.erro || "Falha ao imprimir.");
+      return;
+    }
     const w = window.open("", "_blank", "width=420,height=560");
     if (!w) return;
     const nomeSafe = produto.nome.replace(/[<>&]/g, "");
@@ -738,50 +856,9 @@ function EtiquetaFixaModal({ produto, onClose }: { produto: ProdutoEtiqueta; onC
           <div className="text-[11px] text-gray-500">Leia este QR no app pra dar baixa</div>
         </div>
         <p className="text-xs text-gray-500">Cole no local do estoque. Uma etiqueta fixa por produto — os lotes ficam no sistema.</p>
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button><Button onClick={imprimir} disabled={!qr}><span className="inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir</span></Button></div>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button><Button onClick={() => void imprimir()} disabled={!qr}><span className="inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir</span></Button></div>
       </div>
     </Modal>
   );
 }
 
-// Leitor de QR (câmera via BarcodeDetector nativo) — fallback: digitar o código.
-type BarcodeDetectorLike = { detect: (s: CanvasImageSource) => Promise<Array<{ rawValue: string }>> };
-function ScannerModal({ onDetect, onClose }: { onDetect: (code: string) => void; onClose: () => void }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [erro, setErro] = useState("");
-  const [manual, setManual] = useState("");
-  useEffect(() => {
-    let stream: MediaStream | null = null; let raf = 0; let parar = false;
-    const Ctor = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector;
-    (async () => {
-      if (!Ctor) { setErro("Leitura por câmera não suportada aqui — digite o código do QR."); return; }
-      try {
-        const det = new Ctor({ formats: ["qr_code"] });
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-        const tick = async () => {
-          if (parar || !videoRef.current) return;
-          try { const codes = await det.detect(videoRef.current); const v = codes[0]?.rawValue; if (v) { onDetect(v); return; } } catch { /* frame ruim */ }
-          raf = requestAnimationFrame(tick);
-        };
-        void tick();
-      } catch { setErro("Não consegui abrir a câmera — digite o código do QR."); }
-    })();
-    return () => { parar = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()); };
-  }, [onDetect]);
-  return (
-    <Modal title="Ler QR do produto" onClose={onClose} maxWidth="max-w-sm">
-      <div className="space-y-3">
-        {!erro ? (
-          <div className="rounded-xl overflow-hidden bg-black aspect-square"><video ref={videoRef} className="w-full h-full object-cover" muted playsInline /></div>
-        ) : (
-          <p className="text-sm text-amber-600 dark:text-amber-400">{erro}</p>
-        )}
-        <div className="flex items-end gap-2">
-          <div className="flex-1"><label className="text-xs text-gray-500 block mb-1">Ou digite o código</label><input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="qr_…" className={inp} /></div>
-          <Button onClick={() => manual.trim() && onDetect(manual.trim())} disabled={!manual.trim()}>OK</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}

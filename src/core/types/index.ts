@@ -7525,19 +7525,24 @@ export type PrazoOcorrenciaHist = {
 // Local físico onde os produtos ficam estocados (a etiqueta fixa de estoque mora
 // aqui). Hierarquia leve: um local pode ter um "pai" (ex.: prateleira dentro de
 // uma câmara). Por loja.
-export type LocalEstoqueTipo = "geladeira" | "freezer" | "camara" | "prateleira" | "seco" | "bancada" | "outro";
+// "ambiente" = sala física (Cozinha de baixo, Laje) que contém os equipamentos (paiId).
+export type LocalEstoqueTipo = "ambiente" | "geladeira" | "freezer" | "camara" | "prateleira" | "seco" | "bancada" | "outro";
 export type LocalEstoque = {
   id: string;
   restaurantId: string;
   nome: string;
   tipo: LocalEstoqueTipo;
   paiId?: string | null;                // local pai (ex.: prateleira dentro da câmara)
+  // Método de conservação do local (refrigerado, congelado…). Define a validade
+  // das etiquetas emitidas para os produtos vinculados a ele.
+  metodoConservacao?: string | null;
   ordem?: number;
   ativo: boolean;
   criadoEm: string;
   criadoPor?: string | null;
 };
 export const LOCAL_ESTOQUE_TIPO_LABEL: Record<LocalEstoqueTipo, { label: string; icon: string }> = {
+  ambiente:   { label: "Ambiente",   icon: "🏠" },
   geladeira:  { label: "Geladeira",  icon: "🧊" },
   freezer:    { label: "Freezer",    icon: "❄️" },
   camara:     { label: "Câmara fria",icon: "🚪" },
