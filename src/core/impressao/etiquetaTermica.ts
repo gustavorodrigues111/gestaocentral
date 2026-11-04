@@ -84,18 +84,18 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
 
   for (const b of blocos) {
     if (b.tipo === "rotulo") {
-      fonte(14, 600, 1.5);
+      fonte(16, 700, 1.2);
       ctx.fillText(b.texto.toUpperCase(), 0, y);
       if (b.direita) {
         const t = b.direita.toUpperCase();
         ctx.fillText(t, W - ctx.measureText(t).width, y);
       }
-      y += 22;
+      y += 26;
     } else if (b.tipo === "titulo") {
       // Nome inteiro em até 2 linhas: reduz a fonte antes de cortar.
-      let px = 28;
+      let px = 31;
       let linhas: string[] = [];
-      for (px of [28, 25, 22, 19]) {
+      for (px of [31, 28, 24, 20]) {
         fonte(px, 700, -0.3);
         linhas = quebrar(ctx, b.texto, W);
         if (linhas.length <= 2) break;
@@ -118,10 +118,10 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
       b.colunas.forEach((c, i) => {
         const w = (W * pesos[i]) / total;
         let yy = y;
-        fonte(13, 600, 1.5); ctx.fillText(c.rotulo.toUpperCase(), x, yy); yy += 20;
-        const pv = c.destaque ? 44 : 24;
-        fonte(pv, c.destaque ? 800 : 600, c.destaque ? -1 : 0); ctx.fillText(c.valor, x, yy); yy += Math.round(pv * 1.08);
-        if (c.sub) { fonte(15, 600); ctx.fillText(c.sub, x, yy); yy += 20; }
+        fonte(15, 700, 1.2); ctx.fillText(c.rotulo.toUpperCase(), x, yy); yy += 23;
+        const pv = c.destaque ? 46 : 28;
+        fonte(pv, c.destaque ? 800 : 700, c.destaque ? -1 : 0); ctx.fillText(c.valor, x, yy); yy += Math.round(pv * 1.1);
+        if (c.sub) { fonte(18, 600); ctx.fillText(c.sub, x, yy); yy += 24; }
         alturaMax = Math.max(alturaMax, yy - y);
         if (i > 0) ctx.fillRect(x - 12, y + 2, FIO, alturaMax - 4); // fio vertical entre colunas
         x += w;
@@ -129,8 +129,8 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
       y += alturaMax + 6;
     } else if (b.tipo === "rodapeQr") {
       // Rodapé ancorado no fim da etiqueta; QR com respiro, textos à esquerda.
-      const lado = Math.round(Math.max(72, Math.min(112, H * 0.32)));
-      const topo = Math.max(y, H - lado);
+      const lado = Math.round(Math.max(88, Math.min(132, H * 0.34)));
+      const topo = Math.max(y, H - lado - 8);   // respiro do fundo: o QR não cola na borda
       fio(topo - 10);
       const qrUrl = await QRCode.toDataURL(b.qr, { margin: 0, width: lado, errorCorrectionLevel: "M" });
       const img = await carregarImagem(qrUrl);
@@ -139,8 +139,8 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
       const larguraTexto = W - lado - 14;
       let yy = topo + 2;
       b.linhas.filter(Boolean).forEach((t, i) => {
-        if (i === 0) fonte(17, 700); else fonte(14, 600);
-        for (const l of quebrar(ctx, t, larguraTexto).slice(0, 2)) { ctx.fillText(l, 0, yy); yy += i === 0 ? 22 : 18; }
+        if (i === 0) fonte(19, 700); else fonte(16, 600);
+        for (const l of quebrar(ctx, t, larguraTexto).slice(0, 2)) { ctx.fillText(l, 0, yy); yy += i === 0 ? 25 : 20; }
       });
       y = H;
     }
