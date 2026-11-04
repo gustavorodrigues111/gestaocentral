@@ -160,7 +160,7 @@ export function EtiquetasTab(props: Props) {
     </div>
   );
   const avisoMsg = msg && <div className={`mb-3 text-sm ${msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600"}`}>{msg.texto}</div>;
-  const btnGrande = "w-full text-left rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-4 active:bg-gray-50 dark:active:bg-gray-800 hover:border-gray-300";
+  const btnGrande = "w-full text-left rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-5 py-5 active:bg-gray-50 dark:active:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors shadow-sm";
 
   // ── INÍCIO ──
   if (passo === "inicio") {
@@ -190,7 +190,7 @@ export function EtiquetasTab(props: Props) {
   // ── DAR BAIXA ──
   if (passo === "baixa") {
     return (
-      <div className="max-w-xl">
+      <div className="max-w-2xl mx-auto">
         {cabecalho("Dar baixa")}
         <EtiquetasEmitidas rid={rid} ativas={ativas} locais={equipamentos.map((l) => ({ id: l.id, nome: nomeCompleto(l, locais) }))} usuario={{ uid: responsavelUid, nome: responsavel }} podeOperar={podeOperar} />
       </div>
@@ -200,7 +200,7 @@ export function EtiquetasTab(props: Props) {
   // ── EMITIR 1: AMBIENTE ──
   if (passo === "ambiente") {
     return (
-      <div className="max-w-xl">
+      <div className="max-w-2xl mx-auto">
         {cabecalho("Onde vai guardar?", "Escolha o ambiente")}
         {avisoMsg}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -219,7 +219,7 @@ export function EtiquetasTab(props: Props) {
   if (passo === "local") {
     const lista = grupoAtual?.equipamentos || [];
     return (
-      <div className="max-w-xl">
+      <div className="max-w-2xl mx-auto">
         {cabecalho(nomeAmbiente || "Onde vai guardar?", "Escolha o equipamento")}
         {avisoMsg}
         {lista.length === 0 ? (
@@ -247,7 +247,7 @@ export function EtiquetasTab(props: Props) {
     const termo = busca.trim().toLowerCase();
     const lista = termo ? produtosLocal.filter((p) => p.nome.toLowerCase().includes(termo)) : produtosLocal;
     return (
-      <div className="max-w-xl">
+      <div className="max-w-2xl mx-auto">
         {cabecalho(local.nome, [nomeAmbiente, metodoLabel(local.metodoConservacao)].filter(Boolean).join(" · "))}
         {avisoMsg}
         {produtosLocal.length > 8 && (
@@ -277,7 +277,7 @@ export function EtiquetasTab(props: Props) {
   if (passo === "confirmar" && local && produto && dias != null) {
     const validade = validadeDe(new Date(), dias);
     return (
-      <div className="max-w-xl">
+      <div className="max-w-2xl mx-auto">
         {cabecalho(produto.nome, `${nomeCompleto(local, locais)} · ${metodoLabel(local.metodoConservacao)}`)}
         {avisoMsg}
         {aviso && <div className="mb-3 text-sm text-amber-700 dark:text-amber-300">{aviso}</div>}
@@ -338,7 +338,7 @@ export function EtiquetasTab(props: Props) {
 
   // Estado inconsistente (ex.: produto desvinculado enquanto a tela estava aberta)
   return (
-    <div className="max-w-xl">
+    <div className="max-w-2xl mx-auto">
       <button type="button" onClick={() => { setLocal(null); setProduto(null); ir("inicio"); }} className="text-sm text-indigo-600">Voltar ao início</button>
     </div>
   );
