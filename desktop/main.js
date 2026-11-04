@@ -179,7 +179,7 @@ ipcMain.handle("etiq-imprimir", async (_e, { pngBase64, opts }) => {
         deviceName: o.deviceName || "",
         margins: { marginType: "none" },
         pageSize: { width: Math.round(larguraMm * 1000), height: Math.round(alturaMm * 1000) }, // microns
-        copies,
+        copies: copias,
       }, (ok, motivo) => resolve(ok ? { ok: true } : { ok: false, erro: motivo || "falha na impressão" }));
     });
   } catch (err) {
