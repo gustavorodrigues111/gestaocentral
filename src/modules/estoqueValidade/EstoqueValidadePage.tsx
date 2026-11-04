@@ -9,7 +9,8 @@
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand } from "lucide-react";
+import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, ChevronDown } from "lucide-react";
+import { isComandasKioskHost } from "../../core/restaurant/subdomain";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
@@ -101,6 +102,11 @@ export function EstoqueValidadePage() {
 
   const [aba, setAba] = useTabPersistida<"painel" | "etiquetas" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
   const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases">("locais");
+  // No app do caixa (kiosk), a navegação vira um MENU (como o Comandas) e abre
+  // direto nas Etiquetas (emitir/dar baixa), em vez da barra de abas do admin.
+  const naKiosk = isComandasKioskHost();
+  const [menuAberto, setMenuAberto] = useState(false);
+  useEffect(() => { if (naKiosk) setAba("etiquetas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
   const [lotes, setLotes] = useState<LoteEstoque[]>([]);
@@ -193,14 +199,34 @@ export function EstoqueValidadePage() {
 
   return (
     <PageContainer>
-      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        {ABAS.map(([k, l, Ico]) => (
-          <button key={k} type="button" onClick={() => setAba(k)}
-            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium -mb-px border-b-2 whitespace-nowrap ${aba === k ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
-            <Ico size={15} /> {l}
+      {naKiosk ? (
+        <div className="relative mb-4 inline-block">
+          <button type="button" onClick={() => setMenuAberto((v) => !v)} className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 font-semibold text-sm shadow-sm">
+            <Menu size={16} /> {ABAS.find(([k]) => k === aba)?.[1]} <ChevronDown size={14} className="text-gray-400" />
           </button>
-        ))}
-      </div>
+          {menuAberto && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuAberto(false)} />
+              <div className="absolute z-20 mt-1 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg overflow-hidden">
+                {ABAS.map(([k, l, Ico]) => (
+                  <button key={k} type="button" onClick={() => { setAba(k); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left ${aba === k ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                    <Ico size={16} /> {l}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
+          {ABAS.map(([k, l, Ico]) => (
+            <button key={k} type="button" onClick={() => setAba(k)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium -mb-px border-b-2 whitespace-nowrap ${aba === k ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+              <Ico size={15} /> {l}
+            </button>
+          ))}
+        </div>
+      )}
 
       {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
       {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} />}

@@ -164,22 +164,24 @@ export function EtiquetasTab(props: Props) {
 
   // ── INÍCIO ──
   if (passo === "inicio") {
+    const avencer = ativas.filter((e) => diasAteValidade(e.validade, hoje) === 1).length; // vence amanhã
     return (
-      <div className="max-w-xl space-y-3">
+      <div className="max-w-md mx-auto space-y-4 py-2">
         <button type="button" onClick={comecarEmissao}
-          className="w-full rounded-2xl bg-indigo-600 text-white px-5 py-7 text-left active:bg-indigo-700">
-          <Printer size={26} className="mb-3 opacity-90" />
-          <div className="text-xl font-semibold">Emitir etiqueta</div>
-          <div className="text-sm opacity-80">Ambiente, equipamento e produto</div>
+          className="w-full rounded-3xl bg-indigo-600 text-white px-6 py-8 flex flex-col items-center text-center active:bg-indigo-700 shadow-sm">
+          <Printer size={34} className="mb-3 opacity-90" />
+          <div className="text-2xl font-bold">Emitir etiqueta</div>
+          <div className="text-sm opacity-80 mt-1">Ambiente, equipamento e produto</div>
         </button>
         <button type="button" onClick={() => ir("baixa")}
-          className="w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-5 py-7 text-left active:bg-gray-50">
-          <div className="flex items-start justify-between">
-            <ClipboardCheck size={26} className="mb-3 text-gray-700 dark:text-gray-200" />
-            {urgentes > 0 && <span className="text-xs font-semibold text-rose-600">{urgentes} vencida{urgentes > 1 ? "s" : ""} ou vencendo hoje</span>}
+          className={`w-full rounded-3xl px-6 py-8 flex flex-col items-center text-center shadow-sm border-2 ${urgentes > 0 ? "bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800 active:bg-rose-100 dark:active:bg-rose-950/50" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 active:bg-gray-50"}`}>
+          <ClipboardCheck size={34} className={`mb-3 ${urgentes > 0 ? "text-rose-600 dark:text-rose-400" : "text-gray-700 dark:text-gray-200"}`} />
+          <div className={`text-2xl font-bold ${urgentes > 0 ? "text-rose-700 dark:text-rose-300" : "text-gray-900 dark:text-gray-100"}`}>Dar baixa</div>
+          <div className="flex items-center gap-1.5 mt-2.5 flex-wrap justify-center">
+            {urgentes > 0 && <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-rose-600 text-white">{urgentes} vencida{urgentes > 1 ? "s" : ""} / hoje</span>}
+            {avencer > 0 && <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{avencer} vence amanhã</span>}
+            <span className="text-xs text-gray-500 px-1">{ativas.length} ativa{ativas.length === 1 ? "" : "s"}</span>
           </div>
-          <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">Dar baixa</div>
-          <div className="text-sm text-gray-500">{ativas.length} etiqueta{ativas.length === 1 ? "" : "s"} ativa{ativas.length === 1 ? "" : "s"}</div>
         </button>
       </div>
     );
