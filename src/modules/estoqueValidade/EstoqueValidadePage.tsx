@@ -9,8 +9,39 @@
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, ChevronDown } from "lucide-react";
+import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu } from "lucide-react";
 import { isComandasKioskHost } from "../../core/restaurant/subdomain";
+import { APP_VERSION_LABEL } from "../../core/version";
+import { destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
+
+const BOBINAS_ETIQ: [string, string][] = [["58x40", "58 × 40 mm"], ["55x55", "55 × 55 mm"], ["58x60", "58 × 60 mm"], ["60x40", "60 × 40 mm"], ["60x60", "60 × 60 mm"], ["100x50", "100 × 50 mm"], ["100x100", "100 × 100 mm"]];
+
+// Config da impressora de etiqueta no cabeçalho (igual ao "Imprimir aqui" do
+// Comandas). Grava em localStorage e avisa a EtiquetasTab (evento etiq-impressora).
+function PrinterCfgModal({ onClose }: { onClose: () => void }) {
+  const [destino, setDestino] = useState<Destino>(() => destinoSalvo());
+  const [impressora, setImpressora] = useState(() => impressoraSalva());
+  const [bobina, setBobina] = useState(() => { try { return localStorage.getItem("etiq_bobina") || "58x40"; } catch { return "58x40"; } });
+  const [impressoras, setImpressoras] = useState<string[]>([]);
+  const destinos = destinosDisponiveis();
+  useEffect(() => { if (destino !== "etiqueta-local") return; let v = true; void listarImpressoras().then((l) => { if (v) setImpressoras(l); }); return () => { v = false; }; }, [destino]);
+  const avisar = () => { try { window.dispatchEvent(new Event("etiq-impressora")); } catch { /* */ } };
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 grid place-items-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-sm w-full p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-1"><Printer size={18} className="text-emerald-600" /><div className="font-bold text-lg">Impressora de etiqueta</div></div>
+        <p className="text-xs text-gray-500 mb-3">Deste computador. A escolha fica salva aqui.</p>
+        <div className="flex flex-col gap-2.5">
+          {destinos.length > 1 && (<div><label className="text-[11px] text-gray-500">Destino</label><select value={destino} onChange={(e) => { const d = e.target.value as Destino; setDestino(d); salvarDestino(d); avisar(); }} className="w-full h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">{destinos.map((d) => <option key={d} value={d}>{DESTINO_LABEL[d]}</option>)}</select></div>)}
+          {destino === "etiqueta-local" && (<div><label className="text-[11px] text-gray-500">Impressora</label><select value={impressora} onChange={(e) => { setImpressora(e.target.value); salvarImpressora(e.target.value); avisar(); }} className="w-full h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"><option value="">Impressora padrão do PC</option>{impressoras.map((n) => <option key={n} value={n}>{n}</option>)}</select></div>)}
+          <div><label className="text-[11px] text-gray-500">Tamanho da etiqueta</label><select value={bobina} onChange={(e) => { setBobina(e.target.value); try { localStorage.setItem("etiq_bobina", e.target.value); } catch { /* */ } avisar(); }} className="w-full h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">{BOBINAS_ETIQ.map(([id, l]) => <option key={id} value={id}>{l}</option>)}</select></div>
+          {destino === "navegador" && <p className="text-[11px] text-gray-500">Na janela de impressão, escolha a impressora de etiquetas e margens "nenhuma".</p>}
+        </div>
+        <button onClick={onClose} className="mt-4 w-full h-10 rounded-xl bg-indigo-600 text-white font-semibold text-sm">Pronto</button>
+      </div>
+    </div>
+  );
+}
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
@@ -106,6 +137,7 @@ export function EstoqueValidadePage() {
   // direto nas Etiquetas (emitir/dar baixa), em vez da barra de abas do admin.
   const naKiosk = isComandasKioskHost();
   const [menuAberto, setMenuAberto] = useState(false);
+  const [printerCfg, setPrinterCfg] = useState(false);
   useEffect(() => { if (naKiosk) setAba("etiquetas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
@@ -200,22 +232,35 @@ export function EstoqueValidadePage() {
   return (
     <PageContainer>
       {naKiosk ? (
-        <div className="relative mb-4 inline-block">
-          <button type="button" onClick={() => setMenuAberto((v) => !v)} className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 font-semibold text-sm shadow-sm">
-            <Menu size={16} /> {ABAS.find(([k]) => k === aba)?.[1]} <ChevronDown size={14} className="text-gray-400" />
-          </button>
-          {menuAberto && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuAberto(false)} />
-              <div className="absolute z-20 mt-1 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg overflow-hidden">
-                {ABAS.map(([k, l, Ico]) => (
-                  <button key={k} type="button" onClick={() => { setAba(k); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm text-left ${aba === k ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                    <Ico size={16} /> {l}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+        <div className="flex items-start justify-between gap-2 flex-wrap mb-4">
+          <div>
+            <h1 className="text-lg font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Tag size={20} className="text-indigo-500" /> Etiquetas</h1>
+            <p className="text-[12px] text-gray-500">{restaurante?.nome || ""}</p>
+            <p className="text-[10px] text-gray-400">planejamento.app · {APP_VERSION_LABEL}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setPrinterCfg(true)} title="Impressora de etiqueta deste computador"
+              className="h-9 px-2.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300 text-sm font-semibold inline-flex items-center gap-1.5">
+              <Printer size={15} /> Imprimir aqui <span className="text-[10px] font-bold px-1 py-0.5 rounded bg-emerald-600 text-white max-w-[110px] truncate">{impressoraSalva() || "padrão"}</span>
+            </button>
+            <div className="relative">
+              <button type="button" onClick={() => setMenuAberto((v) => !v)} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50" title="Menu"><Menu size={17} /> Menu</button>
+              {menuAberto && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(false)} />
+                  <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
+                    {ABAS.map(([k, l, Ico]) => (
+                      <button key={k} type="button" onClick={() => { setAba(k); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${aba === k ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        <Ico size={16} /> {l}
+                      </button>
+                    ))}
+                    <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                    <button type="button" onClick={() => { setMenuAberto(false); setPrinterCfg(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Impressora de etiqueta</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
@@ -254,6 +299,7 @@ export function EstoqueValidadePage() {
       {vinculosLocal && <VinculosModal local={vinculosLocal} locais={locais} produtos={produtos} metodoLabel={config.metodos.find((m) => m.id === vinculosLocal.metodoConservacao)?.label || ""}
         onClose={() => setVinculosLocal(null)} onNovoProduto={(nome) => { setProdModal({ produto: null, nomeInicial: nome, localInicial: vinculosLocal.id }); setVinculosLocal(null); }} />}
       {etiqModal && <EtiquetaFixaModal produto={etiqModal} onClose={() => setEtiqModal(null)} />}
+      {printerCfg && <PrinterCfgModal onClose={() => setPrinterCfg(false)} />}
     </PageContainer>
   );
 }

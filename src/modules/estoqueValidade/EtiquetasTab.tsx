@@ -70,6 +70,12 @@ export function EtiquetasTab(props: Props) {
   const [impressoras, setImpressoras] = useState<string[]>([]);
   const [impressora, setImpressora] = useState(() => impressoraSalva());
   useEffect(() => { if (destino !== "etiqueta-local") return; let v = true; void listarImpressoras().then((l) => { if (v) setImpressoras(l); }); return () => { v = false; }; }, [destino]);
+  // O cabeçalho (Imprimir aqui) também muda a impressora/tamanho — re-lê quando avisa.
+  useEffect(() => {
+    const h = () => { setDestino(destinoSalvo()); setBobinaId(lerLS("etiq_bobina") || "58x40"); setImpressora(impressoraSalva()); };
+    window.addEventListener("etiq-impressora", h);
+    return () => window.removeEventListener("etiq-impressora", h);
+  }, []);
 
   const metodoLabel = (id?: string | null) => config.metodos.find((m) => m.id === id)?.label || "";
   // Ambientes com os equipamentos que emitem etiqueta (têm conservação definida).
