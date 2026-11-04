@@ -265,7 +265,7 @@ function ComandasKioskShell() {
 
   // Fila central de etiquetas: no app do caixa (Electron), escuta os pedidos de
   // impressão vindos de outros dispositivos e imprime na impressora daqui.
-  useFilaEtiquetasCaixa(rid);
+  const fila = useFilaEtiquetasCaixa(rid);
 
   const escolher = (id: string) => { try { localStorage.setItem("comandas_kiosk_rid", id); } catch { /* */ } setEscolhido(id); setActiveId(id); nav(`/r/${id}/comandas`, { replace: true }); };
   const trocar = () => { try { localStorage.removeItem("comandas_kiosk_rid"); } catch { /* */ } setEscolhido(null); nav("/", { replace: true }); };
@@ -321,6 +321,16 @@ function ComandasKioskShell() {
           <div className="flex gap-2 mb-3">
             <button onClick={() => nav(`/r/${rid}/comandas`)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${!naValidade ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}><Store size={15} /> Comandas</button>
             <button onClick={() => nav(`/r/${rid}/estoqueValidade`)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${naValidade ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}><Tag size={15} /> Etiquetas</button>
+          </div>
+        )}
+        {fila.ativo && (fila.imprimindo || fila.pendentes > 0 || fila.ultimoErro) && (
+          <div className={`mb-3 text-xs rounded-lg px-3 py-2 flex items-center gap-2 ${fila.ultimoErro ? "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"}`}>
+            <Tag size={14} className="shrink-0" />
+            {fila.ultimoErro
+              ? <span>Fila de etiquetas: {fila.ultimoErro}</span>
+              : fila.imprimindo
+              ? <span>Imprimindo etiqueta da fila…</span>
+              : <span>{fila.pendentes} etiqueta{fila.pendentes > 1 ? "s" : ""} na fila pra imprimir.</span>}
           </div>
         )}
         <Routes>

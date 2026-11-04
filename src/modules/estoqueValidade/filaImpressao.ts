@@ -10,7 +10,7 @@
 //  etiqueta no tamanho da bobina DELE e imprime. Assim o doc fica pequeno e o
 //  formato físico é o configurado no caixa.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, runTransaction, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { desenharEtiqueta, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
@@ -85,25 +85,34 @@ async function imprimirJob(j: FilaDoc): Promise<{ ok: boolean; erro?: string }> 
   } catch (e) { return { ok: false, erro: String((e as Error)?.message || e) }; }
 }
 
+export type FilaStatus = { ativo: boolean; pendentes: number; imprimindo: boolean; ultimoErro: string | null; ultimoOkEm: string | null };
+
 /**
  * No app do caixa (Electron com a ponte de etiqueta), escuta a fila e imprime
  * cada pedido pendente na impressora de etiqueta do caixa. Fora do caixa (sem a
- * ponte), o hook não faz nada — o dispositivo só enfileira.
+ * ponte), o hook não imprime — o dispositivo só enfileira. Retorna o estado da
+ * fila pra mostrar um indicador no caixa (pendentes, imprimindo, erro).
  */
-export function useFilaEtiquetasCaixa(rid: string | null | undefined) {
+export function useFilaEtiquetasCaixa(rid: string | null | undefined): FilaStatus {
+  const ativo = typeof window !== "undefined" && noAppEtiqueta();
+  const [status, setStatus] = useState<FilaStatus>({ ativo, pendentes: 0, imprimindo: false, ultimoErro: null, ultimoOkEm: null });
   const processando = useRef(false);
   useEffect(() => {
-    if (!rid || !noAppEtiqueta()) return;
-    const qy = query(collection(db, COL), where("restaurantId", "==", rid), where("status", "==", "pendente"));
+    if (!rid || !ativo) { setStatus((s) => ({ ...s, ativo })); return; }
+    // Query por um campo só (sempre indexado) e filtra status no cliente — evita
+    // depender de índice composto, que falharia calado e nada imprimiria.
+    const qy = query(collection(db, COL), where("restaurantId", "==", rid));
     const un = onSnapshot(qy, (snap) => {
-      const jobs: FilaDoc[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FilaDoc, "id">) }));
-      void processar(jobs);
-    }, () => { /* sem permissão / offline: ignora */ });
+      const pend = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FilaDoc, "id">) })).filter((j) => j.status === "pendente");
+      setStatus((s) => ({ ...s, ativo: true, pendentes: pend.length }));
+      void processar(pend);
+    }, (e) => { console.error("[fila-etiquetas] erro ao ouvir a fila:", e); setStatus((s) => ({ ...s, ultimoErro: String((e as Error)?.message || e) })); });
     return () => un();
 
     async function processar(jobs: FilaDoc[]) {
       if (processando.current) return;          // uma rodada por vez (evita corrida local)
       processando.current = true;
+      setStatus((s) => ({ ...s, imprimindo: true }));
       try {
         for (const j of jobs.sort((a, b) => String(a.criadoEm).localeCompare(String(b.criadoEm)))) {
           const velho = Date.now() - new Date(j.criadoEm || 0).getTime() > FRESCOR_MS;
@@ -119,9 +128,11 @@ export function useFilaEtiquetasCaixa(rid: string | null | undefined) {
               tx.update(ref, { status: "imprimindo", claimedBy: deviceId(), claimedAt: new Date().toISOString() });
               meu = true;
             });
-          } catch { meu = false; }
+          } catch (e) { console.error("[fila-etiquetas] claim falhou:", e); meu = false; }
           if (!meu) continue;
           const res = await imprimirJob(j);
+          if (res.ok) setStatus((s) => ({ ...s, ultimoErro: null, ultimoOkEm: new Date().toISOString() }));
+          else { console.error("[fila-etiquetas] impressão falhou:", res.erro); setStatus((s) => ({ ...s, ultimoErro: res.erro || "Falha na impressão." })); }
           try {
             await runTransaction(db, async (tx) => {
               const ref = doc(db, COL, j.id);
@@ -131,7 +142,8 @@ export function useFilaEtiquetasCaixa(rid: string | null | undefined) {
             });
           } catch { /* status não gravou: o próximo snapshot reavalia */ }
         }
-      } finally { processando.current = false; }
+      } finally { processando.current = false; setStatus((s) => ({ ...s, imprimindo: false })); }
     }
-  }, [rid]);
+  }, [rid, ativo]);
+  return status;
 }
