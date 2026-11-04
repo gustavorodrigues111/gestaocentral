@@ -104,7 +104,7 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
       y += 10;
     } else if (b.tipo === "linha") {
       const px = b.tam ?? 18;
-      fonte(px, b.negrito ? 700 : 400);
+      fonte(px, b.negrito ? 700 : 600); // térmica: 400 sai falhada, 600 fica cheio
       for (const l of quebrar(ctx, b.texto, W)) { ctx.fillText(l, 0, y); y += px + 4; }
     } else if (b.tipo === "fio") {
       fio(y);
@@ -121,7 +121,7 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
         fonte(13, 600, 1.5); ctx.fillText(c.rotulo.toUpperCase(), x, yy); yy += 20;
         const pv = c.destaque ? 44 : 24;
         fonte(pv, c.destaque ? 800 : 600, c.destaque ? -1 : 0); ctx.fillText(c.valor, x, yy); yy += Math.round(pv * 1.08);
-        if (c.sub) { fonte(15, 400); ctx.fillText(c.sub, x, yy); yy += 20; }
+        if (c.sub) { fonte(15, 600); ctx.fillText(c.sub, x, yy); yy += 20; }
         alturaMax = Math.max(alturaMax, yy - y);
         if (i > 0) ctx.fillRect(x - 12, y + 2, FIO, alturaMax - 4); // fio vertical entre colunas
         x += w;
@@ -139,7 +139,7 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
       const larguraTexto = W - lado - 14;
       let yy = topo + 2;
       b.linhas.filter(Boolean).forEach((t, i) => {
-        if (i === 0) fonte(17, 700); else fonte(14, 400);
+        if (i === 0) fonte(17, 700); else fonte(14, 600);
         for (const l of quebrar(ctx, t, larguraTexto).slice(0, 2)) { ctx.fillText(l, 0, yy); yy += i === 0 ? 22 : 18; }
       });
       y = H;
