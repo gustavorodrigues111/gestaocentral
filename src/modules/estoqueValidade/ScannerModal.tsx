@@ -1,6 +1,9 @@
-// Leitor de QR pela câmera (BarcodeDetector nativo). Fallback: digitar o código.
-// Na maquininha Sunmi, quem chama tenta antes o leitor nativo (lerQrNativo).
+// Leitor de QR pela câmera. Usa o BarcodeDetector nativo (Chrome/Android) e,
+// quando ele não existe (ex.: Safari no iPhone), cai pro jsQR decodificando os
+// frames do vídeo num canvas. A câmera (getUserMedia) funciona no iOS via HTTPS;
+// só a decodificação precisava da lib. Fallback final: digitar o código.
 import { useEffect, useRef, useState } from "react";
+import jsQR from "jsqr";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 
@@ -16,20 +19,49 @@ export function ScannerModal({ onDetect, onClose, titulo = "Ler QR do produto", 
     let stream: MediaStream | null = null; let raf = 0; let parar = false;
     const Ctor = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector;
     (async () => {
-      if (!Ctor) { setErro("Leitura por câmera não suportada aqui. Digite o código do QR."); return; }
+      // 1) Abre a câmera primeiro — funciona em todo navegador com HTTPS (inclui iPhone).
       try {
-        const det = new Ctor({ formats: ["qr_code"] });
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-        const tick = async () => {
-          if (parar || !videoRef.current) return;
-          try { const codes = await det.detect(videoRef.current); const v = codes[0]?.rawValue; if (v) { onDetect(v); return; } } catch { /* frame ruim */ }
-          raf = requestAnimationFrame(tick);
-        };
-        void tick();
-      } catch { setErro("Não consegui abrir a câmera. Digite o código do QR."); }
+      } catch {
+        setErro("Não consegui abrir a câmera. Permita o acesso ou digite o código do QR.");
+        return;
+      }
+      // 2) Decodificação: BarcodeDetector nativo quando existe; senão jsQR no canvas.
+      const det = Ctor ? new Ctor({ formats: ["qr_code"] }) : null;
+      let canvas: HTMLCanvasElement | null = null;
+      let ctx: CanvasRenderingContext2D | null = null;
+      const tick = async () => {
+        if (parar) return;
+        const vid = videoRef.current;
+        if (!vid) return;
+        try {
+          if (det) {
+            const codes = await det.detect(vid);
+            const v = codes[0]?.rawValue;
+            if (v) { onDetect(v); return; }
+          } else if (vid.videoWidth) {
+            // jsQR (iPhone/Safari): reduz o frame p/ no máx. 480px e decodifica.
+            const esc = Math.min(1, 480 / vid.videoWidth);
+            const w = Math.round(vid.videoWidth * esc);
+            const h = Math.round(vid.videoHeight * esc);
+            if (!canvas) { canvas = document.createElement("canvas"); ctx = canvas.getContext("2d", { willReadFrequently: true }); }
+            if (canvas && ctx) {
+              canvas.width = w; canvas.height = h;
+              ctx.drawImage(vid, 0, 0, w, h);
+              const img = ctx.getImageData(0, 0, w, h);
+              const r = jsQR(img.data, w, h, { inversionAttempts: "dontInvert" });
+              if (r?.data) { onDetect(r.data); return; }
+            }
+          }
+        } catch { /* frame ruim */ }
+        // jsQR é mais pesado: espaça os frames pra não travar o celular.
+        if (det) raf = requestAnimationFrame(tick);
+        else raf = window.setTimeout(() => { void tick(); }, 120) as unknown as number;
+      };
+      void tick();
     })();
-    return () => { parar = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()); };
+    return () => { parar = true; if (raf) { cancelAnimationFrame(raf); clearTimeout(raf); } if (stream) stream.getTracks().forEach((t) => t.stop()); };
   }, [onDetect]);
   return (
     <Modal title={titulo} onClose={onClose} maxWidth="max-w-sm">

@@ -170,25 +170,71 @@ export function EtiquetasTab(props: Props) {
 
   // ── INÍCIO ──
   if (passo === "inicio") {
+    const vencidas = ativas.filter((e) => diasAteValidade(e.validade, hoje) < 0).length;
+    const venceHoje = ativas.filter((e) => diasAteValidade(e.validade, hoje) === 0).length;
     const avencer = ativas.filter((e) => diasAteValidade(e.validade, hoje) === 1).length; // vence amanhã
+    const stats: [string, number, string][] = [
+      ["Vencidas", vencidas, "text-rose-600 dark:text-rose-400"],
+      ["Vencem hoje", venceHoje, "text-amber-600 dark:text-amber-400"],
+      ["Amanhã", avencer, "text-orange-600 dark:text-orange-400"],
+      ["Ativas", ativas.length, "text-gray-900 dark:text-gray-100"],
+    ];
+    // Lista curta do que precisa de atenção (vencidas e vencendo) — a cozinha
+    // vê de relance o que dar baixa antes de escolher uma ação.
+    const atencao = ativas
+      .map((e) => ({ e, d: diasAteValidade(e.validade, hoje) }))
+      .filter((x) => x.d <= 1)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, 6);
     return (
-      <div className="max-w-md mx-auto space-y-4 py-2">
-        <button type="button" onClick={comecarEmissao}
-          className="w-full rounded-3xl bg-indigo-600 text-white px-6 py-8 flex flex-col items-center text-center active:bg-indigo-700 shadow-sm">
-          <Printer size={34} className="mb-3 opacity-90" />
-          <div className="text-2xl font-bold">Emitir etiqueta</div>
-          <div className="text-sm opacity-80 mt-1">Ambiente, equipamento e produto</div>
-        </button>
+      <div className="max-w-3xl mx-auto space-y-5 py-2">
+        {/* Painel: informações das etiquetas em cima */}
         <button type="button" onClick={() => ir("baixa")}
-          className={`w-full rounded-3xl px-6 py-8 flex flex-col items-center text-center shadow-sm border-2 ${urgentes > 0 ? "bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800 active:bg-rose-100 dark:active:bg-rose-950/50" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 active:bg-gray-50"}`}>
-          <ClipboardCheck size={34} className={`mb-3 ${urgentes > 0 ? "text-rose-600 dark:text-rose-400" : "text-gray-700 dark:text-gray-200"}`} />
-          <div className={`text-2xl font-bold ${urgentes > 0 ? "text-rose-700 dark:text-rose-300" : "text-gray-900 dark:text-gray-100"}`}>Dar baixa</div>
-          <div className="flex items-center gap-1.5 mt-2.5 flex-wrap justify-center">
-            {urgentes > 0 && <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-rose-600 text-white">{urgentes} vencida{urgentes > 1 ? "s" : ""} / hoje</span>}
-            {avencer > 0 && <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{avencer} vence amanhã</span>}
-            <span className="text-xs text-gray-500 px-1">{ativas.length} ativa{ativas.length === 1 ? "" : "s"}</span>
+          className="w-full text-left rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Etiquetas da cozinha</span>
+            <span className="text-xs text-indigo-600 dark:text-indigo-400">Ver e dar baixa →</span>
           </div>
+          <div className="grid grid-cols-4 gap-2">
+            {stats.map(([l, n, cls]) => (
+              <div key={l}>
+                <div className={`text-3xl font-bold tabular-nums ${n > 0 ? cls : "text-gray-300 dark:text-gray-600"}`}>{n}</div>
+                <div className="text-[11px] text-gray-500">{l}</div>
+              </div>
+            ))}
+          </div>
+          {atencao.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex flex-wrap gap-1.5">
+              {atencao.map(({ e, d }) => (
+                <span key={e.id} className={`text-[11px] px-2 py-0.5 rounded-full ${d < 0 ? "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" : d === 0 ? "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" : "bg-orange-100 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300"}`}>
+                  {e.produtoNome} · {d < 0 ? "vencida" : d === 0 ? "hoje" : "amanhã"}
+                </span>
+              ))}
+            </div>
+          )}
         </button>
+
+        {/* Ações: emitir e dar baixa lado a lado */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <button type="button" onClick={comecarEmissao}
+            className="rounded-3xl bg-indigo-600 text-white px-6 py-8 flex flex-col items-center text-center active:bg-indigo-700 shadow-sm">
+            <Printer size={34} className="mb-3 opacity-90" />
+            <div className="text-2xl font-bold">Emitir etiqueta</div>
+            <div className="text-sm opacity-80 mt-1">Ambiente, equipamento e produto</div>
+          </button>
+          <button type="button" onClick={() => ir("baixa")}
+            className={`rounded-3xl px-6 py-8 flex flex-col items-center text-center shadow-sm border-2 ${urgentes > 0 ? "bg-rose-100 dark:bg-rose-950/40 border-rose-400 dark:border-rose-700 active:bg-rose-200 dark:active:bg-rose-950/60" : "bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900 active:bg-rose-100 dark:active:bg-rose-950/40"}`}>
+            <ClipboardCheck size={34} className="mb-3 text-rose-600 dark:text-rose-400" />
+            <div className="text-2xl font-bold text-rose-700 dark:text-rose-300">Dar baixa</div>
+            <div className="flex items-center gap-1.5 mt-2.5 flex-wrap justify-center">
+              {urgentes > 0 ? (
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-rose-600 text-white">{urgentes} vencida{urgentes > 1 ? "s" : ""} / hoje</span>
+              ) : (
+                <span className="text-sm text-rose-600/80 dark:text-rose-400/80">Baixa por QR ou da lista</span>
+              )}
+            </div>
+          </button>
+        </div>
       </div>
     );
   }
