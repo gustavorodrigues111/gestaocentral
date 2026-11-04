@@ -9,8 +9,8 @@
 // Suspense e o usuário vê o splash bege por ~200-400ms até carregar.
 
 import { useEffect, useState } from "react";
-import { Lock, CircleHelp, Store } from "lucide-react";
-import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
+import { Lock, CircleHelp, Store, Tag } from "lucide-react";
+import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
 import { RestaurantProvider, useRestaurant } from "../restaurant/RestaurantContext";
@@ -251,8 +251,9 @@ export function ProtectedShell() {
 // /r/<rid>/comandas que o ComandasPage espera (ele lê o rid do param).
 function ComandasKioskShell() {
   const { restaurants, activeId, setActiveId, loading } = useRestaurant();
-  const { signOut } = useAuth();
+  const { signOut, pessoa } = useAuth();
   const nav = useNavigate();
+  const loc = useLocation();
   // Restaurante escolhido pro PDV (lembrado por dispositivo). Com 1 só, usa direto.
   const [escolhido, setEscolhido] = useState<string | null>(() => { try { return localStorage.getItem("comandas_kiosk_rid"); } catch { return null; } });
   const escolhidoValido = escolhido && restaurants.some((r) => r.id === escolhido) ? escolhido : null;
@@ -302,12 +303,24 @@ function ComandasKioskShell() {
     );
   }
 
+  // No caixa, além do Comandas, dá acesso às Etiquetas de Validade (mesmo login/
+  // estação, mesma origem) — assim o app do caixa emite e gerencia etiquetas e,
+  // no app Electron, imprime direto na impressora USB (ponte de etiqueta).
+  const podeValidade = !!rid && canUse(pessoa, rid, "estoqueValidade");
+  const naValidade = loc.pathname.includes("/estoqueValidade");
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Moldura central (o kiosk não tem o <main> do AppShell que dá margem) */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
+        {podeValidade && (
+          <div className="flex gap-2 mb-3">
+            <button onClick={() => nav(`/r/${rid}/comandas`)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${!naValidade ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}><Store size={15} /> Comandas</button>
+            <button onClick={() => nav(`/r/${rid}/estoqueValidade`)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${naValidade ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}><Tag size={15} /> Etiquetas</button>
+          </div>
+        )}
         <Routes>
           <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} onSwitchRestaurant={restaurants.length > 1 ? trocar : undefined} />} />
+          {podeValidade && <Route path="/r/:rid/estoqueValidade" element={<EstoqueValidadePage />} />}
           <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
         </Routes>
       </div>

@@ -13,7 +13,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Printer, Minus, Plus, ChevronLeft, ClipboardCheck, Settings2 } from "lucide-react";
 import { desenharEtiqueta, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
-import { imprimirEtiquetas, statusSunmi, avisoStatus, destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, type Destino } from "../../core/impressao/impressora";
+import { imprimirEtiquetas, statusSunmi, avisoStatus, destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
 import type { LocalEstoque } from "../../core/types";
 import { blocosValidade, dataBR, diaSemana, novoCodigoLote, validadeDe, ymd } from "./etiquetaValidade";
 import { diasAteValidade, gravarEmissao, hojeSP, urlEtiqueta, type EtiquetaEmitida } from "./etiquetasRepo";
@@ -66,6 +66,10 @@ export function EtiquetasTab(props: Props) {
   const bobina = bobinaAtual.b;
   const largura = larguraPx(bobina, naSunmi);
   const aviso = naSunmi ? avisoStatus(statusSunmi()) : null;
+  // Impressora local (app do caixa): lista as impressoras do PC e lembra a escolhida.
+  const [impressoras, setImpressoras] = useState<string[]>([]);
+  const [impressora, setImpressora] = useState(() => impressoraSalva());
+  useEffect(() => { if (destino !== "etiqueta-local") return; let v = true; void listarImpressoras().then((l) => { if (v) setImpressoras(l); }); return () => { v = false; }; }, [destino]);
 
   const metodoLabel = (id?: string | null) => config.metodos.find((m) => m.id === id)?.label || "";
   // Ambientes com os equipamentos que emitem etiqueta (têm conservação definida).
@@ -315,7 +319,15 @@ export function EtiquetasTab(props: Props) {
               className="h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
               {opcoesBobina.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
             </select>
-            {!naSunmi && <p className="sm:col-span-2 text-xs text-gray-500">Na janela de impressão escolha a impressora de etiquetas, papel {bobina.larguraMm} × {bobina.alturaMm} mm e margens "nenhuma".</p>}
+            {destino === "etiqueta-local" && (
+              <select value={impressora} onChange={(e) => { setImpressora(e.target.value); salvarImpressora(e.target.value); }}
+                className="sm:col-span-2 h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <option value="">Impressora padrão do PC</option>
+                {impressoras.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
+            {destino === "navegador" && <p className="sm:col-span-2 text-xs text-gray-500">Na janela de impressão escolha a impressora de etiquetas, papel {bobina.larguraMm} × {bobina.alturaMm} mm e margens "nenhuma".</p>}
+            {destino === "etiqueta-local" && <p className="sm:col-span-2 text-xs text-gray-500">Imprime direto na impressora escolhida, sem janela. Deixe no tamanho certo da etiqueta ({bobina.larguraMm} × {bobina.alturaMm} mm).</p>}
           </div>
         )}
       </div>

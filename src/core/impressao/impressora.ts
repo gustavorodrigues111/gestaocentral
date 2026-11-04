@@ -18,15 +18,26 @@ type SunmiBridge = {
   lerQr: (id: string) => void;
 };
 
+// Ponte exposta pelo app Electron do CAIXA (desktop/): imprime o PNG da etiqueta
+// SILENCIOSO numa impressora do PC escolhida pelo nome (ex.: impressora de
+// etiqueta USB 55×55 do caixa), sem o diálogo do navegador. Métodos retornam
+// Promise (ipcRenderer.invoke).
+type EtiquetaBridge = {
+  versao?: number;
+  listarImpressoras: () => Promise<string[]>;
+  imprimir: (pngBase64: string, opts: { larguraMm: number; alturaMm: number; deviceName?: string; copias?: number }) => Promise<{ ok: boolean; erro?: string }>;
+};
+
 declare global {
   interface Window {
     SunmiBridge?: SunmiBridge;
     __sunmiRetorno?: (id: string, json: string) => void;
+    etiquetaBridge?: EtiquetaBridge;
   }
 }
 
 export type StatusSunmi = { conectada: boolean; estado?: number; modo?: number; modelo?: string; erro?: string };
-export type ResultadoImpressao = { ok: boolean; via: "sunmi" | "navegador"; erro?: string };
+export type ResultadoImpressao = { ok: boolean; via: Destino; erro?: string };
 
 const pendentes = new Map<string, (r: { ok: boolean; valor?: string; erro?: string }) => void>();
 let seq = 0;
@@ -55,6 +66,18 @@ export function noAppSunmi(): boolean {
   return typeof window !== "undefined" && !!window.SunmiBridge;
 }
 
+/** Roda dentro do app do caixa (Electron) com a ponte de etiqueta local? */
+export function noAppEtiqueta(): boolean {
+  return typeof window !== "undefined" && !!window.etiquetaBridge;
+}
+/** Nomes das impressoras do PC (via ponte do caixa). [] fora do app. */
+export async function listarImpressoras(): Promise<string[]> {
+  try { return (await window.etiquetaBridge?.listarImpressoras()) || []; } catch { return []; }
+}
+const CHAVE_IMPRESSORA = "etiq_impressora";
+export function impressoraSalva(): string { try { return localStorage.getItem(CHAVE_IMPRESSORA) || ""; } catch { return ""; } }
+export function salvarImpressora(nome: string) { try { localStorage.setItem(CHAVE_IMPRESSORA, nome); } catch { /* sem storage */ } }
+
 export function statusSunmi(): StatusSunmi | null {
   if (!window.SunmiBridge) return null;
   try { return JSON.parse(window.SunmiBridge.status()) as StatusSunmi; }
@@ -81,15 +104,21 @@ export function avisoStatus(s: StatusSunmi | null): string | null {
 // "sunmi": impressora interna da maquininha (só dentro do app android-v2s).
 // "navegador": abre a janela de impressão do sistema, onde o operador escolhe a
 // impressora (o Chrome lembra a última usada). Etiqueta sai no tamanho da bobina.
-export type Destino = "sunmi" | "navegador";
+// "etiqueta-local": impressora USB do PC, impressão SILENCIOSA pela ponte do app
+// do caixa (Electron) — sem o diálogo do navegador.
+export type Destino = "sunmi" | "navegador" | "etiqueta-local";
 export const DESTINO_LABEL: Record<Destino, string> = {
   sunmi: "Maquininha (impressora interna)",
   navegador: "Impressora do computador (escolher na janela de impressão)",
+  "etiqueta-local": "Impressora de etiqueta do caixa (direto, sem janela)",
 };
 
 export function destinosDisponiveis(): Destino[] {
   // No WebView da maquininha a janela de impressão do navegador não existe.
-  return noAppSunmi() ? ["sunmi"] : ["navegador"];
+  if (noAppSunmi()) return ["sunmi"];
+  // No app do caixa (Electron): impressão direta na USB + o diálogo como alternativa.
+  if (noAppEtiqueta()) return ["etiqueta-local", "navegador"];
+  return ["navegador"];
 }
 
 const CHAVE_DESTINO = "etiq_destino";
@@ -117,6 +146,16 @@ export async function imprimirEtiquetas(canvases: HTMLCanvasElement[], bobina: B
       if (!r.ok) return { ok: false, via: "sunmi", erro: `Etiqueta ${i + 1} de ${canvases.length}: ${r.erro || "falhou"}` };
     }
     return { ok: true, via: "sunmi" };
+  }
+  if (destino === "etiqueta-local") {
+    if (!window.etiquetaBridge) return { ok: false, via: "etiqueta-local", erro: "Ponte de etiqueta não detectada. Abra pelo app do caixa." };
+    const deviceName = impressoraSalva() || undefined;
+    for (let i = 0; i < canvases.length; i++) {
+      const png = canvasParaBase64(canvases[i]);
+      const r = await window.etiquetaBridge.imprimir(png, { larguraMm: bobina.larguraMm, alturaMm: bobina.alturaMm, deviceName, copias: 1 });
+      if (!r?.ok) return { ok: false, via: "etiqueta-local", erro: `Etiqueta ${i + 1} de ${canvases.length}: ${r?.erro || "falhou"}` };
+    }
+    return { ok: true, via: "etiqueta-local" };
   }
   return imprimirNoNavegador(canvases, bobina);
 }
