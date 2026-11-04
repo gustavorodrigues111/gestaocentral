@@ -15,6 +15,7 @@ import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
 import { RestaurantProvider, useRestaurant } from "../restaurant/RestaurantContext";
 import { isComandasKioskHost } from "../restaurant/subdomain";
+import { useFilaEtiquetasCaixa } from "../../modules/estoqueValidade/filaImpressao";
 import { PessoasProvider } from "../pessoas/PessoasContext";
 import { LoginScreen } from "./LoginScreen";
 import { AppShell } from "../layout/AppShell";
@@ -261,6 +262,10 @@ function ComandasKioskShell() {
 
   // Mantém o contexto (nome/logo) alinhado com o restaurante do kiosk.
   useEffect(() => { if (rid && activeId !== rid) setActiveId(rid); }, [rid, activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fila central de etiquetas: no app do caixa (Electron), escuta os pedidos de
+  // impressão vindos de outros dispositivos e imprime na impressora daqui.
+  useFilaEtiquetasCaixa(rid);
 
   const escolher = (id: string) => { try { localStorage.setItem("comandas_kiosk_rid", id); } catch { /* */ } setEscolhido(id); setActiveId(id); nav(`/r/${id}/comandas`, { replace: true }); };
   const trocar = () => { try { localStorage.removeItem("comandas_kiosk_rid"); } catch { /* */ } setEscolhido(null); nav("/", { replace: true }); };

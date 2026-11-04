@@ -19,6 +19,7 @@ import { blocosValidade, dataBR, diaSemana, novoCodigoLote, validadeDe, ymd } fr
 import { diasAteValidade, gravarEmissao, hojeSP, urlEtiqueta, type EtiquetaEmitida } from "./etiquetasRepo";
 import { agruparPorAmbiente, diasNoLocal, nomeCompleto, produtosDoLocal } from "./compatibilidade";
 import { EtiquetasEmitidas } from "./EtiquetasEmitidas";
+import { enfileirarEtiqueta } from "./filaImpressao";
 import type { ProdutoEtiqueta, EstoqueConfig } from "./EstoqueValidadePage";
 
 // Medidas comuns. Na maquininha só cabem as de até 58 mm de largura.
@@ -56,11 +57,26 @@ export function EtiquetasTab(props: Props) {
   const [previa, setPrevia] = useState<{ chave: string; url: string } | null>(null);
   const [ajustes, setAjustes] = useState(false);
 
-  // Impressora e bobina (lembradas por aparelho)
-  const [destino, setDestino] = useState<Destino>(() => destinoSalvo());
+  // Destino da impressão. No caixa (Electron) imprime direto na USB; na
+  // maquininha vai pra interna; em QUALQUER OUTRO dispositivo o padrão é a FILA
+  // do caixa — a etiqueta sai na impressora do CAIXA, não neste aparelho (igual
+  // ao Comandas). "navegador" fica como alternativa.
+  type DestinoTab = Destino | "fila-caixa";
+  const destinosReais = destinosDisponiveis();
+  const noCaixa = destinosReais.includes("etiqueta-local");
+  const naMaquininha = destinosReais.includes("sunmi");
+  const opcoesDestino: DestinoTab[] = naMaquininha ? ["sunmi"] : noCaixa ? destinosReais : ["fila-caixa", "navegador"];
+  const LABEL_TAB: Record<DestinoTab, string> = { ...DESTINO_LABEL, "fila-caixa": "Impressora do caixa (sai no caixa)" };
+  const [destino, setDestino] = useState<DestinoTab>(() => {
+    if (naMaquininha) return "sunmi";
+    if (noCaixa) return destinoSalvo();
+    const d = lerLS("etiq_destino_tab");
+    return d === "navegador" || d === "fila-caixa" ? d : "fila-caixa";
+  });
+  const escolherDestino = (d: DestinoTab) => { setDestino(d); if (noCaixa && d !== "fila-caixa") salvarDestino(d as Destino); else gravarLS("etiq_destino_tab", d); };
   const [bobinaId, setBobinaId] = useState(() => lerLS("etiq_bobina") || "58x40");
-  const destinos = destinosDisponiveis();
   const naSunmi = destino === "sunmi";
+  const naFila = destino === "fila-caixa";
   const opcoesBobina = naSunmi ? BOBINAS.filter((x) => x.b.larguraMm <= 58) : BOBINAS;
   const bobinaAtual = opcoesBobina.find((x) => x.id === bobinaId) || opcoesBobina[0];
   const bobina = bobinaAtual.b;
@@ -71,8 +87,9 @@ export function EtiquetasTab(props: Props) {
   const [impressora, setImpressora] = useState(() => impressoraSalva());
   useEffect(() => { if (destino !== "etiqueta-local") return; let v = true; void listarImpressoras().then((l) => { if (v) setImpressoras(l); }); return () => { v = false; }; }, [destino]);
   // O cabeçalho (Imprimir aqui) também muda a impressora/tamanho — re-lê quando avisa.
+  // Só faz sentido no caixa (é lá que esse cabeçalho existe).
   useEffect(() => {
-    const h = () => { setDestino(destinoSalvo()); setBobinaId(lerLS("etiq_bobina") || "58x40"); setImpressora(impressoraSalva()); };
+    const h = () => { if (destinosDisponiveis().includes("etiqueta-local")) setDestino(destinoSalvo()); setBobinaId(lerLS("etiq_bobina") || "58x40"); setImpressora(impressoraSalva()); };
     window.addEventListener("etiq-impressora", h);
     return () => window.removeEventListener("etiq-impressora", h);
   }, []);
@@ -135,20 +152,36 @@ export function EtiquetasTab(props: Props) {
         localId: local.id, localNome: nomeCompleto(local, locais),
         manipuladorUid: responsavelUid || null, manipuladorNome: responsavel,
         impressaoTs: agora.toISOString(), validade: ymd(validade), lote, totalCopias: copias,
-        via: naSunmi ? "sunmi" : "navegador",
+        via: naSunmi ? "sunmi" : naFila ? "fila-caixa" : "navegador",
       });
       // Não trava a cozinha esperando a rede: até 5 s; depois imprime e o registro sobe sozinho.
       const r0 = await Promise.race([
         confirmacao.then(() => "ok" as const, () => "erro" as const),
         new Promise<"lento">((res) => window.setTimeout(() => res("lento"), 5000)),
       ]);
+      const extra = r0 === "erro" ? " Não consegui registrar no sistema: a baixa por QR não vai funcionar para estas."
+        : r0 === "lento" ? " O registro sobe quando a internet voltar." : "";
+
+      // Fila central: não imprime aqui — manda o pedido pro caixa imprimir.
+      if (naFila) {
+        try {
+          await enfileirarEtiqueta({
+            restaurantId: rid, produtoNome: produto.nome, metodoLabel: metodo, dias,
+            manipulacaoIso: agora.toISOString(), validadeYmd: ymd(validade), responsavel,
+            lote, empresa, cnpj: cnpj ?? null, qrTokens: docs.map((d) => d.qrToken),
+            criadoPorUid: responsavelUid ?? null, criadoPorNome: responsavel,
+          });
+        } catch { setMsg({ ok: false, texto: "Não consegui enviar pra impressora do caixa. Verifique a internet e tente de novo." }); return; }
+        setProduto(null); setCopias(1); setPasso("produto"); setBusca("");
+        setMsg({ ok: r0 !== "erro", texto: `${copias > 1 ? `${copias} etiquetas` : "Etiqueta"} de ${produto.nome} enviada${copias > 1 ? "s" : ""} pra impressora do caixa.${extra}` });
+        return;
+      }
+
       const canvases = await Promise.all(docs.map((d) => desenharEtiqueta(blocosValidade({
         produto: produto.nome, metodo, dias, manipulacao: agora, validade, responsavel, lote, empresa, cnpj, qr: urlEtiqueta(d.qrToken),
       }), bobina, largura)));
-      const r = await imprimirEtiquetas(canvases, bobina, destino);
+      const r = await imprimirEtiquetas(canvases, bobina, destino as Destino);
       if (!r.ok) { setMsg({ ok: false, texto: r.erro || "Falha ao imprimir." }); return; }
-      const extra = r0 === "erro" ? " Não consegui registrar no sistema: a baixa por QR não vai funcionar para estas."
-        : r0 === "lento" ? " O registro sobe quando a internet voltar." : "";
       // Volta para a lista do mesmo local: o normal é etiquetar vários itens seguidos.
       setProduto(null); setCopias(1); setPasso("produto"); setBusca("");
       setMsg({ ok: r0 !== "erro", texto: `${copias > 1 ? `${copias} etiquetas` : "Etiqueta"} de ${produto.nome} impressa${copias > 1 ? "s" : ""}. Validade ${dataBR(validade)}.${extra}` });
@@ -353,20 +386,23 @@ export function EtiquetasTab(props: Props) {
           </div>
         )}
 
+        {naFila && (
+          <p className="mb-3 text-center text-xs text-gray-500">Vai imprimir na <b>impressora do caixa</b> (não neste aparelho), no tamanho configurado lá.</p>
+        )}
         <button type="button" onClick={() => void imprimir()} disabled={imprimindo}
           className="w-full h-16 rounded-2xl bg-indigo-600 text-white text-lg font-semibold inline-flex items-center justify-center gap-2 disabled:opacity-60 active:bg-indigo-700">
-          <Printer size={20} /> {imprimindo ? "Imprimindo…" : copias > 1 ? `Imprimir ${copias} etiquetas` : "Imprimir etiqueta"}
+          <Printer size={20} /> {imprimindo ? (naFila ? "Enviando…" : "Imprimindo…") : naFila ? (copias > 1 ? `Enviar ${copias} pro caixa` : "Enviar pro caixa") : copias > 1 ? `Imprimir ${copias} etiquetas` : "Imprimir etiqueta"}
         </button>
 
         <button type="button" onClick={() => setAjustes(!ajustes)} className="mt-4 w-full text-xs text-gray-400 inline-flex items-center justify-center gap-1.5">
-          <Settings2 size={13} /> {DESTINO_LABEL[destino].split(" (")[0]} · {bobinaAtual.label}
+          <Settings2 size={13} /> {LABEL_TAB[destino].split(" (")[0]} · {bobinaAtual.label}
         </button>
         {ajustes && (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-            {destinos.length > 1 && (
-              <select value={destino} onChange={(e) => { const d = e.target.value as Destino; setDestino(d); salvarDestino(d); }}
+            {opcoesDestino.length > 1 && (
+              <select value={destino} onChange={(e) => escolherDestino(e.target.value as DestinoTab)}
                 className="h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                {destinos.map((d) => <option key={d} value={d}>{DESTINO_LABEL[d]}</option>)}
+                {opcoesDestino.map((d) => <option key={d} value={d}>{LABEL_TAB[d]}</option>)}
               </select>
             )}
             <select value={bobinaAtual.id} onChange={(e) => { setBobinaId(e.target.value); gravarLS("etiq_bobina", e.target.value); }}
@@ -380,6 +416,7 @@ export function EtiquetasTab(props: Props) {
                 {impressoras.map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             )}
+            {naFila && <p className="sm:col-span-2 text-xs text-gray-500">A etiqueta é enviada pro app do caixa, que imprime sozinho na impressora de etiqueta dele. O tamanho acima é só da prévia — quem manda é o tamanho configurado no caixa.</p>}
             {destino === "navegador" && <p className="sm:col-span-2 text-xs text-gray-500">Na janela de impressão escolha a impressora de etiquetas, papel {bobina.larguraMm} × {bobina.alturaMm} mm e margens "nenhuma".</p>}
             {destino === "etiqueta-local" && <p className="sm:col-span-2 text-xs text-gray-500">Imprime direto na impressora escolhida, sem janela. Deixe no tamanho certo da etiqueta ({bobina.larguraMm} × {bobina.alturaMm} mm).</p>}
           </div>

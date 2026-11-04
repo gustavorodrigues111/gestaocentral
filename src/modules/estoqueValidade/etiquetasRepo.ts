@@ -22,7 +22,7 @@ export type EtiquetaEmitida = {
   qrToken: string;              // único por etiqueta
   status: StatusEtiqueta;
   baixaTs?: string | null; baixaDia?: string | null; baixaPorUid?: string | null; baixaPorNome?: string | null; baixaMotivo?: string | null;
-  via?: "sunmi" | "navegador";
+  via?: "sunmi" | "navegador" | "fila-caixa";
   criadoEm: string;
 };
 
