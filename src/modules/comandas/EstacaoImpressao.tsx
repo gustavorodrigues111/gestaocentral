@@ -11,12 +11,17 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // URLs dos instaladores do App de Caixa (hospedar no Firebase Storage e colar
 // aqui). Vazio → mostra "em breve". Quando preenchido, viram botões de download.
 // Mesmos arquivos do feed de auto-update (pdv-updates/, token compartilhado) —
-// 1 upload serve download + update. Ao publicar nova versão: subir os arquivos,
-// atualizar APP_CAIXA_VERSION e os nomes nos links abaixo.
-const APP_CAIXA_VERSION = "1.0.8";
+// 1 upload serve download + update. O botão de WINDOWS puxa a versão/arquivo do
+// próprio feed (latest.yml), então ao publicar nova versão basta subir os
+// arquivos — o download atualiza sozinho. (Mac é à parte: bump APP_CAIXA_MAC_VER.)
+// O WINDOWS é lido AO VIVO do feed de update (latest.yml) pra nunca ficar velho
+// — os valores abaixo são só fallback. (Mac é buildado à parte; fica estático.)
+const APP_CAIXA_FEED = "https://comandas.planejamento.app/pdv-update";
+const APP_CAIXA_WIN_VER = "1.0.9";
+const APP_CAIXA_MAC_VER = "1.0.8";
 const APP_CAIXA_DOWNLOAD = {
   mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.8-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
-  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.8.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  win: `${APP_CAIXA_FEED}/${encodeURIComponent(`Planejamento PDV Setup ${APP_CAIXA_WIN_VER}.exe`)}`,
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
@@ -34,6 +39,19 @@ const PRINT_CSS = `
 export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, embedded }: { rid: string; nomeRest: string; estacaoId: string | null; estacoes: ComandaEstacao[]; logoUrl: string | null; embedded?: boolean }) {
   const [todosJobs, setTodosJobs] = useState<ComandaPrintJob[]>([]);
   const [atual, setAtual] = useState<ComandaPrintJob | null>(null);
+  // Versão/link do app do caixa (Windows) ao vivo do feed de update.
+  const [winLive, setWinLive] = useState<{ version: string; url: string } | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    fetch(`${APP_CAIXA_FEED}/latest.yml`, { cache: "no-store" }).then(r => r.text()).then(t => {
+      const ver = t.match(/version:\s*([0-9][0-9.]*)/)?.[1];
+      const path = t.match(/path:\s*(.+)/)?.[1]?.trim();
+      if (vivo && ver && path) setWinLive({ version: ver, url: `${APP_CAIXA_FEED}/${encodeURIComponent(path)}` });
+    }).catch(() => { /* fallback estático */ });
+    return () => { vivo = false; };
+  }, []);
+  const winVer = winLive?.version || APP_CAIXA_WIN_VER;
+  const winUrl = winLive?.url || APP_CAIXA_DOWNLOAD.win;
   const [log, setLog] = useState<{ id: string; titulo: string; em: string; ok: boolean }[]>([]);
   const [auto, setAuto] = useState(true);
   const [teste, setTeste] = useState<ComandaPrintJob | null>(null);
@@ -183,10 +201,10 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
           {(APP_CAIXA_DOWNLOAD.mac || APP_CAIXA_DOWNLOAD.win) ? (
             <>
               <div className="flex flex-wrap gap-2 mt-2">
-                {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg) · v{APP_CAIXA_VERSION}</a>}
-                {APP_CAIXA_DOWNLOAD.win && <a href={APP_CAIXA_DOWNLOAD.win} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Windows (.exe) · v{APP_CAIXA_VERSION}</a>}
+                {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg) · v{APP_CAIXA_MAC_VER}</a>}
+                {winUrl && <a href={winUrl} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Windows (.exe) · v{winVer}</a>}
               </div>
-              <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1.5">Versão disponível: <b>v{APP_CAIXA_VERSION}</b>. No caixa, confira em Aplicativos instalados se já está nessa versão.</p>
+              <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1.5">Versão disponível (Windows): <b>v{winVer}</b>. No caixa, confira em Aplicativos instalados se já está nessa versão.</p>
             </>
           ) : (
             <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1.5">Instaladores em breve. Enquanto isso, use a configuração do Chrome abaixo.</p>
