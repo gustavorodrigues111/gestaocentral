@@ -329,7 +329,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; statusPrevisto?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean; reorgPares?: { in: string; out: string }[]; bsVirada?: BatidaDoc[] };
+  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; previstoContratualTxt: string; statusEscala?: ScheduleStatus; statusPrevisto?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean; reorgPares?: { in: string; out: string }[]; bsVirada?: BatidaDoc[] };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -395,6 +395,14 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (prev.kind === "trabalho" && prev.turno) previstoTxt = prev.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
       else if (prev.kind === "folga") previstoTxt = "folga";
       else previstoTxt = "sem cadastro";
+      // Jornada CONTRATUAL do dia: usa SÓ o previsto (statusPrevisto), nunca a
+      // escala real. Assim um dia de FALTA (real=falta_i vira "folga" no previsto)
+      // continua mostrando a jornada contratada no espelho, em vez de "Folga".
+      const prevContr = turnoPrevisto(emp, data, statusPrevisto);
+      let previstoContratualTxt = "—";
+      if (prevContr.kind === "trabalho" && prevContr.turno) previstoContratualTxt = prevContr.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
+      else if (prevContr.kind === "folga") previstoContratualTxt = "folga";
+      else previstoContratualTxt = "sem cadastro";
       if (ehFuturo) {
         // Dia futuro: só o previsto aparece; nada de falta/exceção nem saldo.
         trabalhado = blocosEfetivos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
@@ -433,7 +441,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (!ehHoje && !pendenteCorrecao && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
         abonadoMin += atrasoMin; saldoMes += atrasoMin; excecoes = excecoes.filter(e => e !== "atraso"); atrasoMin = 0;
       }
-      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, statusPrevisto: statusPrevisto as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao, reorgPares: reorg?.pares, bsVirada });
+      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, previstoContratualTxt, statusEscala: statusEscala as ScheduleStatus | undefined, statusPrevisto: statusPrevisto as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao, reorgPares: reorg?.pares, bsVirada });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -513,8 +521,18 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // desconsiderada) distinguidas — como a Portaria 671 exige. Aprovação de
   // correção pendente vira "incluída" (não duplica com a batida pendente).
   function montarMarcacoes(l: Linha): PtrpApuracaoDia["marcacoes"] {
+    // Reorganização manual SUBSTITUI as batidas do dia (igual a blocosEfetivos =
+    // reorg ? [] : blocos na apuração). A tela mostra os pares reorganizados
+    // (renderBatidas); o espelho precisa refletir o MESMO, não a batida crua —
+    // senão sai "10:26–11:09 18:07——" (par ímpar) com as horas já tratadas.
+    if (l.reorgPares && l.reorgPares.length) {
+      return [...l.reorgPares].sort((a, b) => (hhmmToMin(a.in) || 0) - (hhmmToMin(b.in) || 0)).map(p => ({ in: p.in, out: p.out, origem: "reorg" as const }));
+    }
     const inclusaoPunch = new Set(l.ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string));
-    const punchIdsBatida = new Set(l.bs.map(b => b.punchId).filter(Boolean) as string[]);
+    // Só batidas NÃO-excluídas contam como "já tem batida": uma inclusão cujo
+    // punchId casa com uma batida EXCLUÍDA (que não é emitida) deve aparecer —
+    // senão o dia fica "—" nas marcações mesmo com horas tratadas (motor conta).
+    const punchIdsBatida = new Set(l.bs.filter(b => !b.excluded).map(b => b.punchId).filter(Boolean) as string[]);
     const out: PtrpApuracaoDia["marcacoes"] = [];
     for (const b of l.bs) {
       if (b.excluded) continue;
@@ -554,7 +572,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       excecoes: l.excecoes,
       marcacoes: montarMarcacoes(l),
       ajustes: l.ajustesDia.map(a => ({ tipo: a.tipo, in: a.in || null, out: a.out || null, motivo: a.motivo || null })),
-      previstoTxt: l.previstoTxt, statusEscala: l.statusEscala || null, feriado: l.ehFeriado,
+      previstoTxt: l.previstoTxt, previstoContratualTxt: l.previstoContratualTxt, statusPraticado: statusPraticado(l), statusEscala: l.statusEscala || null, feriado: l.ehFeriado,
     }));
     return {
       id: `${shortCode}_${comp}_${emp.id}`, empresaKey: shortCode, competencia: comp, colaboradorId: emp.id,

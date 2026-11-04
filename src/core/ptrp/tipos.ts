@@ -126,7 +126,7 @@ export type PtrpBancoMov = {
 // origem: "rep" = marcação do registrador (Sólides) · "incluida" = tratamento
 // (inclusão) · "preassinalada" = intervalo pré-assinalado. desconsiderada = batida
 // tratada/desprezada. A Portaria 671 exige mostrar original × tratada no espelho.
-export type PtrpMarcacaoSnap = { in: string | null; out: string | null; status?: string | null; pendente?: boolean; desconsiderada?: boolean; origem?: "rep" | "incluida" | "preassinalada"; punchId?: string | null };
+export type PtrpMarcacaoSnap = { in: string | null; out: string | null; status?: string | null; pendente?: boolean; desconsiderada?: boolean; origem?: "rep" | "incluida" | "preassinalada" | "reorg"; punchId?: string | null };
 export type PtrpAjusteSnap = { tipo: string; in?: string | null; out?: string | null; motivo?: string | null };
 export type PtrpApuracaoDia = {
   data: string;                 // YYYY-MM-DD
@@ -141,7 +141,9 @@ export type PtrpApuracaoDia = {
   excecoes: string[];
   marcacoes: PtrpMarcacaoSnap[]; // batidas efetivas (in/out HH:MM)
   ajustes: PtrpAjusteSnap[];
-  previstoTxt: string;
+  previstoTxt: string;                 // jornada derivada da ESCALA REAL (pode virar folga qdo há falta) — legado
+  previstoContratualTxt?: string;      // jornada CONTRATUAL (só o previsto) — não colapsa falta em folga
+  statusPraticado?: string | null;     // status praticado do dia (trabalho/falta_i/folga…) p/ o espelho distinguir falta de folga
   statusEscala?: string | null;
   feriado?: boolean;
 };

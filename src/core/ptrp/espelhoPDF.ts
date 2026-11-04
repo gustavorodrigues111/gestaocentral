@@ -59,16 +59,22 @@ export async function gerarEspelhoPDF(colabs: PtrpApuracaoColab[], meta: Espelho
       const t = `${m.in || "—"}–${m.out || "—"}`;
       if (m.desconsiderada) return `${t} (desconsiderada)`;
       if (m.origem === "incluida") return `${t} (incluída)`;
+      if (m.origem === "reorg") return `${t} (reorganizada)`;
       if (m.pendente) return `${t} (correção pendente)`;
       return t;
     };
     const body = c.dias.map(d => {
-      const marc = d.marcacoes.length ? d.marcacoes.map(marcTxt).join("   ") : "—";
+      // Falta é um status PRATICADO, não "folga": o espelho precisa distinguir
+      // (um dia de trabalho sem batida vira falta, não folga).
+      const faltaLabel = d.statusPraticado === "falta_i" ? "Falta injustificada" : d.statusPraticado === "falta_j" ? "Falta justificada" : null;
+      const marc = d.marcacoes.length ? d.marcacoes.map(marcTxt).join("   ") : (faltaLabel || "—");
       const aus = d.ajustes.filter(a => AUS[a.tipo]).map(a => AUS[a.tipo]);
+      // Jornada CONTRATUAL (só o previsto) — não colapsa falta em folga.
+      const jorn = d.previstoContratualTxt ?? d.previstoTxt;
       return [
         `${d.data.slice(-2)}/${d.data.slice(5, 7)}`,
         dow(d.data),
-        d.feriado ? "Feriado" : d.previstoTxt === "folga" ? "Folga" : (d.previstoTxt.includes("–") ? d.previstoTxt : (d.previstoMin ? hm(d.previstoMin) : "—")),
+        d.feriado ? "Feriado" : jorn === "folga" ? "Folga" : (jorn.includes("–") ? jorn : (d.previstoMin ? hm(d.previstoMin) : "—")),
         [marc, ...(aus.length ? [aus.join(", ")] : [])].join("\n"),
         d.trabalhadoMin ? hm(d.trabalhadoMin) : "—",
         d.noturnoMin ? hm(d.noturnoMin) : "",
