@@ -25,7 +25,7 @@ type SunmiBridge = {
 type EtiquetaBridge = {
   versao?: number;
   listarImpressoras: () => Promise<string[]>;
-  imprimir: (pngBase64: string, opts: { larguraMm: number; alturaMm: number; deviceName?: string; copias?: number }) => Promise<{ ok: boolean; erro?: string }>;
+  imprimir: (pngBase64: string, opts: { larguraMm: number; alturaMm: number; larguraImgMm?: number; deviceName?: string; copias?: number }) => Promise<{ ok: boolean; erro?: string }>;
 };
 
 declare global {
@@ -152,7 +152,7 @@ export async function imprimirEtiquetas(canvases: HTMLCanvasElement[], bobina: B
     const deviceName = impressoraSalva() || undefined;
     for (let i = 0; i < canvases.length; i++) {
       const png = canvasParaBase64(canvases[i]);
-      const r = await window.etiquetaBridge.imprimir(png, { larguraMm: bobina.larguraMm, alturaMm: bobina.alturaMm, deviceName, copias: 1 });
+      const r = await window.etiquetaBridge.imprimir(png, { larguraMm: bobina.larguraMm, alturaMm: bobina.alturaMm, larguraImgMm: canvases[i].width / 8, deviceName, copias: 1 });
       if (!r?.ok) return { ok: false, via: "etiqueta-local", erro: `Etiqueta ${i + 1} de ${canvases.length}: ${r?.erro || "falhou"}` };
     }
     return { ok: true, via: "etiqueta-local" };

@@ -164,11 +164,16 @@ ipcMain.handle("etiq-imprimir", async (_e, { pngBase64, opts }) => {
   const o = opts || {};
   const larguraMm = Number(o.larguraMm) || 58, alturaMm = Number(o.alturaMm) || 40;
   const copias = Math.max(1, Math.min(20, Number(o.copias) || 1));
+  // A imagem é desenhada com margem de segurança (≈ bobina − 4mm). Centraliza no
+  // tamanho REAL (larguraImgMm), em vez de esticar pra bobina cheia — senão
+  // amplia e corta as bordas (R de REFRIGERADO, V de VALIDADE, QR…).
+  const imgW = Number(o.larguraImgMm) || larguraMm;
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     @page { size: ${larguraMm}mm ${alturaMm}mm; margin: 0 }
     html,body{margin:0;padding:0}
-    img{width:${larguraMm}mm;height:${alturaMm}mm;image-rendering:pixelated;display:block}
-  </style></head><body><img src="data:image/png;base64,${pngBase64}"></body></html>`;
+    .pg{width:${larguraMm}mm;height:${alturaMm}mm;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    img{width:${imgW}mm;image-rendering:pixelated;display:block}
+  </style></head><body><div class="pg"><img src="data:image/png;base64,${pngBase64}"></div></body></html>`;
   const w = new BrowserWindow({ show: false, webPreferences: { offscreen: false } });
   try {
     await w.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html));
