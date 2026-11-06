@@ -309,9 +309,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (e.freelaMensalista) return false;
       if (e.estaAtivo) return true;
       if (!incluirDemitidos) return false;
-      // Demitido: só aparece se o vínculo (admissão→demissão) cruza a competência.
-      const em = e as { admissao?: string; demissao?: string | null };
-      return (em.admissao || "9999") <= compFim && (!em.demissao || em.demissao >= compIni);
+      // Demitido: só aparece se ALGUM período (admissão→demissão) cruza a
+      // competência. demissao = 1º dia FORA, então o período cobre [adm, dem):
+      // intersecta o mês se adm ≤ fim E (sem demissão OU demissão > início).
+      return (e.periodos || []).some(p => p.admissao <= compFim && (!p.demissao || p.demissao > compIni));
     }).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [empregados, incluirDemitidos, comp]);
 
@@ -414,11 +415,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (prevContr.kind === "trabalho" && prevContr.turno) previstoContratualTxt = prevContr.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
       else if (prevContr.kind === "folga") previstoContratualTxt = "folga";
       else previstoContratualTxt = "sem cadastro";
-      // Fora do vínculo: dia antes da ADMISSÃO ou depois da DEMISSÃO. Não acusa
-      // falta nem entra no saldo — o espelho do demitido cobre só o período ativo.
-      const admiss = (emp as { admissao?: string }).admissao || "";
-      const demiss = (emp as { demissao?: string | null }).demissao || "";
-      const foraVinculo = (!!admiss && data < admiss) || (!!demiss && data > demiss);
+      // Fora do vínculo: dia antes da ADMISSÃO, depois da DEMISSÃO ou num intervalo
+      // entre períodos (readmissão). Usa os `periodos` — não acusa falta nem entra
+      // no saldo; o espelho do demitido cobre só o período ativo.
+      const foraVinculo = !empregadoAtivoEm(emp, data);
       if (foraVinculo) { previstoTxt = "—"; previstoContratualTxt = "—"; }
       if (ehFuturo || foraVinculo) {
         // Dia futuro / fora do vínculo: só o previsto aparece; nada de falta/exceção nem saldo.
@@ -594,7 +594,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return {
       id: `${shortCode}_${comp}_${emp.id}`, empresaKey: shortCode, competencia: comp, colaboradorId: emp.id,
       cpf: soDig(emp.cpf), nome: emp.nome, cargo: (cargoPorId[emp.cargoId] as { nome?: string })?.nome || null, area: x.area,
-      admissao: (emp as { admissao?: string }).admissao || null, dias,
+      admissao: emp.admissaoAtual || emp.periodos?.[emp.periodos.length - 1]?.admissao || null, dias,
       totalPrevistoMin: dias.reduce((s, d) => s + d.previstoMin, 0), totalTrabalhadoMin: x.r.totTrab, totalExtraMin: x.r.totExtra,
       totalNoturnoMin: x.r.totNot, totalAtrasoMin: dias.reduce((s, d) => s + (d.atrasoMin || 0), 0), saldoMin: x.r.saldoMes,
       geradoEm: new Date().toISOString(),
