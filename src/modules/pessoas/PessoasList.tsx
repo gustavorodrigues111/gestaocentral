@@ -28,6 +28,7 @@ import type { Area, Cargo, Empregado, Pessoa } from "../../core/types";
 import { AREAS, TIPO_VINCULO_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
 
+const AREA_DOT: Record<string, string> = { Bar: "bg-violet-500", Cozinha: "bg-orange-500", "Salão": "bg-blue-500", Limpeza: "bg-teal-500" };
 type FiltroStatus = "ativas" | "inativas" | "todas";
 type FiltroEquipe = "todos" | "equipe" | "naoEquipe";
 type FiltroArea = "todas" | Area;
@@ -270,12 +271,13 @@ export function PessoasList({ restaurantId }: Props) {
       ) : (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse" style={{ minWidth: 720 }}>
+            <table className="w-full border-collapse" style={{ minWidth: 820 }}>
               <thead className="bg-gray-50 dark:bg-gray-900/60">
                 <tr>
                   <Th k="nome" label="Pessoa" />
                   <Th k="vinculo" label="Vínculo" />
                   <Th k="cargo" label="Cargo" />
+                  <th className="px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 text-left border-b border-gray-200 dark:border-gray-800 whitespace-nowrap">Área</th>
                   <th className="px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 text-left border-b border-gray-200 dark:border-gray-800 whitespace-nowrap">Acesso</th>
                   <th className="border-b border-gray-200 dark:border-gray-800 w-6" aria-hidden="true"></th>
                 </tr>
@@ -327,6 +329,13 @@ export function PessoasList({ restaurantId }: Props) {
                             <div className="text-sm text-gray-800 dark:text-gray-100 truncate inline-flex items-center gap-1.5"><Users size={13} className="text-gray-400 shrink-0" /> {cargo.nome}</div>
                             <div className="text-[11px] text-gray-400">{TIPO_VINCULO_LABEL[cargo.tipoVinculo]}</div>
                           </div>
+                        ) : <span className="text-gray-400 text-sm">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 align-middle">
+                        {cargo ? (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200 whitespace-nowrap">
+                            <span className={`w-2 h-2 rounded ${AREA_DOT[cargo.area] || "bg-gray-400"}`} />{cargo.area}
+                          </span>
                         ) : <span className="text-gray-400 text-sm">—</span>}
                       </td>
                       <td className="px-3 py-2.5 align-middle">
