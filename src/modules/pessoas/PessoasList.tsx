@@ -167,6 +167,26 @@ export function PessoasList({ restaurantId }: Props) {
   const limparFiltros = () => { setFiltroStatus("ativas"); setFiltroEquipe("todos"); setFiltroAcesso("todos"); setFiltroVinculo("todos"); setFiltroArea("todas"); };
   const chipsAtivos = (Object.keys(PESSOA_DEF) as Dim[]).filter((d) => facet[d] !== PESSOA_DEF[d] && (d !== "area" || filtroEquipe === "equipe"));
 
+  // Ordenação da tabela (mesma lógica do Cargos)
+  const [sortK, setSortK] = useState<"nome" | "vinculo" | "cargo">("nome");
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
+  const ordenados = useMemo(() => {
+    const val = (p: Pessoa): string => {
+      if (sortK === "nome") return (p.nome || "").toLowerCase();
+      const e = empPorPessoa[p.id];
+      const c = e ? cargoMap[e.cargoId] : null;
+      if (sortK === "cargo") return (c?.nome || "~~~").toLowerCase();
+      return (resolverVinculo(p, restaurantId, e, c) || "~~~") as string;
+    };
+    return [...filtered].sort((a, b) => (val(a).localeCompare(val(b)) * sortDir) || (a.nome || "").localeCompare(b.nome || ""));
+  }, [filtered, sortK, sortDir, empPorPessoa, cargoMap, restaurantId]);
+  const sortBy = (k: "nome" | "vinculo" | "cargo") => { if (sortK === k) setSortDir((d) => (d === 1 ? -1 : 1)); else { setSortK(k); setSortDir(1); } };
+  const Th = ({ k, label }: { k: "nome" | "vinculo" | "cargo"; label: string }) => (
+    <th onClick={() => sortBy(k)} className={`px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold cursor-pointer select-none border-b border-gray-200 dark:border-gray-800 text-left whitespace-nowrap ${sortK === k ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}`}>
+      {label}<span className="ml-1 text-[10px] text-indigo-500">{sortK === k ? (sortDir === 1 ? "▲" : "▼") : ""}</span>
+    </th>
+  );
+
   return (
     <div>
       {/* Toolbar em uma linha só: contagem + Filtro + busca (esq) · Vincular/Nova pessoa (dir) */}
@@ -225,93 +245,82 @@ export function PessoasList({ restaurantId }: Props) {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          {filtered.map((p, i) => {
-            const emp = empPorPessoa[p.id];
-            const cargo = emp ? cargoMap[emp.cargoId] : null;
-            const acessoBadges = statusAcesso(p, restaurantId, emp, perfis, cargo);
-            const vinculo = resolverVinculo(p, restaurantId, emp, cargo);
-            // Sombreamento por ACESSO: âmbar = tem pendência (precisa de ação);
-            // branco = Pronto ou Sem login (freela) ou Master; apagado = inativa.
-            const precisaAtencaoAcesso = p.ativa !== false &&
-              !acessoBadges.some(b => b.status === "pronto" || b.status === "master" || b.status === "sem_login");
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => podeConfig && setEditing(p)}
-                disabled={!podeConfig}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
-                  i > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""
-                } ${p.ativa === false ? "opacity-60" : ""} ${
-                  // Sombreamento por ACESSO: âmbar destaca quem tem pendência de
-                  // acesso (precisa de ação). Pronto/Sem login/Master = sem fundo.
-                  // O que a pessoa É (equipe/freela/cargo) já aparece nos badges.
-                  precisaAtencaoAcesso ? "bg-amber-50/70 dark:bg-amber-900/15" : ""
-                } ${
-                  podeConfig ? "hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" : "cursor-default"
-                }`}
-              >
-                <div className="w-9 h-9 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-semibold flex-shrink-0">
-                  {(p.nome || "?")[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
-                    <span>{p.nome}</span>
-                    {p.ativa === false && (
-                      <span className="text-xs text-gray-400">
-                        (inativa{emp?.demitidoEm ? ` · demitido em ${fmtBR(emp.demitidoEm)}` : ""})
-                      </span>
-                    )}
-                    {vinculo && (
-                      <span
-                        className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${VINCULO_LOGICO_CLASSES[vinculo]}`}
-                        title={`Vínculo: ${VINCULO_LOGICO_LABEL[vinculo]}`}
-                      >
-                        {VINCULO_LOGICO_ICONE[vinculo]} {VINCULO_LOGICO_LABEL[vinculo].split(" ")[0]}
-                      </span>
-                    )}
-                    {!vinculo && p.ativa !== false && (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
-                        title="Sem vínculo definido — abra e defina o vínculo desta pessoa">
-                        <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> sem vínculo</span>
-                      </span>
-                    )}
-                    {acessoBadges.map(b => (
-                      <span
-                        key={b.status}
-                        className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${b.classes}`}
-                        title={b.tooltip}
-                      >
-                        {b.label}
-                      </span>
-                    ))}
-                    {emp && cargo && (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold">
-                        <span className="inline-flex items-center gap-1"><Users size={11} /> {cargo.nome}</span>
-                      </span>
-                    )}
-                    {emp && cargo && (() => {
-                      const badge = horarioBadgeProps(statusHorarioEmpregado(emp, restaurant));
-                      if (!badge) return null;
-                      return (
-                        <span
-                          className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${badge.classes}`}
-                          title={badge.tooltip}
-                        >
-                          {badge.texto}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {p.email || <span className="italic">sem email</span>}
-                    {emp && cargo && <> · {TIPO_VINCULO_LABEL[cargo.tipoVinculo]}</>}
-                  </div>
-                </div>
-                {podeConfig && <span className="text-gray-400 text-sm">›</span>}
-              </button>
-            );
-          })}
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse" style={{ minWidth: 720 }}>
+              <thead className="bg-gray-50 dark:bg-gray-900/60">
+                <tr>
+                  <Th k="nome" label="Pessoa" />
+                  <Th k="vinculo" label="Vínculo" />
+                  <Th k="cargo" label="Cargo" />
+                  <th className="px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 text-left border-b border-gray-200 dark:border-gray-800 whitespace-nowrap">Acesso</th>
+                  <th className="border-b border-gray-200 dark:border-gray-800 w-6" aria-hidden="true"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {ordenados.map((p) => {
+                  const emp = empPorPessoa[p.id];
+                  const cargo = emp ? cargoMap[emp.cargoId] : null;
+                  const acessoBadges = statusAcesso(p, restaurantId, emp, perfis, cargo);
+                  const vinculo = resolverVinculo(p, restaurantId, emp, cargo);
+                  // Sombreamento por ACESSO: âmbar = tem pendência (precisa de ação).
+                  const precisaAtencaoAcesso = p.ativa !== false &&
+                    !acessoBadges.some(b => b.status === "pronto" || b.status === "master" || b.status === "sem_login");
+                  const horario = emp && cargo ? horarioBadgeProps(statusHorarioEmpregado(emp, restaurant)) : null;
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => podeConfig && setEditing(p)}
+                      className={`border-b border-gray-100 dark:border-gray-800 transition-colors ${p.ativa === false ? "opacity-60" : ""} ${precisaAtencaoAcesso ? "bg-amber-50/70 dark:bg-amber-900/15" : ""} ${podeConfig ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50" : "cursor-default"}`}
+                    >
+                      <td className="px-3 py-2.5 align-middle">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center font-semibold text-sm flex-shrink-0">
+                            {(p.nome || "?")[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-1.5">
+                              {p.nome}
+                              {p.ativa === false && <span className="text-[10px] text-gray-400 whitespace-nowrap">(inativa{emp?.demitidoEm ? ` · ${fmtBR(emp.demitidoEm)}` : ""})</span>}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{p.email || <span className="italic">sem email</span>}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 align-middle">
+                        {vinculo ? (
+                          <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${VINCULO_LOGICO_CLASSES[vinculo]}`} title={`Vínculo: ${VINCULO_LOGICO_LABEL[vinculo]}`}>
+                            {VINCULO_LOGICO_ICONE[vinculo]} {VINCULO_LOGICO_LABEL[vinculo].split(" ")[0]}
+                          </span>
+                        ) : p.ativa !== false ? (
+                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" title="Sem vínculo definido — abra e defina o vínculo desta pessoa">
+                            <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> sem vínculo</span>
+                          </span>
+                        ) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 align-middle">
+                        {emp && cargo ? (
+                          <div className="min-w-0">
+                            <div className="text-sm text-gray-800 dark:text-gray-100 truncate inline-flex items-center gap-1.5"><Users size={13} className="text-gray-400 shrink-0" /> {cargo.nome}</div>
+                            <div className="text-[11px] text-gray-400">{TIPO_VINCULO_LABEL[cargo.tipoVinculo]}</div>
+                          </div>
+                        ) : <span className="text-gray-400 text-sm">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 align-middle">
+                        <div className="flex flex-wrap items-center gap-1">
+                          {acessoBadges.map(b => (
+                            <span key={b.status} className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${b.classes}`} title={b.tooltip}>{b.label}</span>
+                          ))}
+                          {horario && <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${horario.classes}`} title={horario.tooltip}>{horario.texto}</span>}
+                          {acessoBadges.length === 0 && !horario && <span className="text-gray-300 dark:text-gray-600">—</span>}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 align-middle text-right text-gray-400">{podeConfig ? "›" : ""}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
