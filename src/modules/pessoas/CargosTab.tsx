@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
-import { Inbox, Tag, History, Mail, IdCard, Crown, TriangleAlert, Ban } from "lucide-react";
+import { Inbox, Tag, History, Mail, IdCard, Crown, TriangleAlert, Ban, X, Check, Filter, Pencil, Users, Download } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar } from "../../core/auth/permissions";
+import { exportarCargosXLSX, exportarCargosPDF } from "./exportCargos";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
@@ -19,105 +21,190 @@ import { HistoricoCargoModal } from "./HistoricoCargoModal";
 
 type Props = { restaurantId: string };
 
+// ─── Helpers / identidade visual ────────────────────────────────────────────
+
+// Cargo de confiança = NÃO bate ponto (CLT Art. 62 II). Cascata: override do
+// cargo > default por vínculo.
+const ehConfianca = (c: Cargo) => !(c.batePonto ?? defaultBatePontoPorVinculo(c.tipoVinculo));
+const brl = (v?: number | null) =>
+  v == null ? "—" : "R$ " + Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+const iniciais = (n: string) =>
+  n.split(" ").filter((w) => w.length > 2).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || n.slice(0, 2).toUpperCase();
+
+// Cor por área: ponto, linha (sombra + faixa à esquerda, com dark mode) e texto.
+// Classes literais (não concatenadas) pra o Tailwind não purgar.
+const AREA_UI: Record<Area, { dot: string; row: string; text: string }> = {
+  Bar:      { dot: "bg-violet-500", text: "text-violet-700 dark:text-violet-300", row: "border-l-violet-400 bg-violet-50/50 dark:bg-violet-950/20 hover:bg-violet-100/70 dark:hover:bg-violet-900/25" },
+  Cozinha:  { dot: "bg-orange-500", text: "text-orange-700 dark:text-orange-300", row: "border-l-orange-400 bg-orange-50/50 dark:bg-orange-950/20 hover:bg-orange-100/70 dark:hover:bg-orange-900/25" },
+  "Salão":  { dot: "bg-blue-500",   text: "text-blue-700 dark:text-blue-300",     row: "border-l-blue-400 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100/70 dark:hover:bg-blue-900/25" },
+  Limpeza:  { dot: "bg-teal-500",   text: "text-teal-700 dark:text-teal-300",     row: "border-l-teal-400 bg-teal-50/50 dark:bg-teal-950/20 hover:bg-teal-100/70 dark:hover:bg-teal-900/25" },
+};
+
+// ─── Filtro faceteado ───────────────────────────────────────────────────────
+type Facet = "area" | "producao" | "gorjeta" | "confianca" | "ocupacao" | "vinculo" | "situacao";
+type FilterItem = { f: Facet; v: string; l: string };
+const keyOf = (i: FilterItem) => `${i.f}:${i.v}`;
+
+const MENU_GROUPS: { g: string; items: FilterItem[] }[] = [
+  { g: "Área", items: AREAS.map((a) => ({ f: "area", v: a, l: a })) },
+  { g: "Gorjeta", items: [
+    { f: "producao", v: "1", l: "Recebe produção" },
+    { f: "gorjeta", v: "com", l: "Recebe gorjeta" },
+    { f: "gorjeta", v: "sem", l: "Sem gorjeta" },
+  ] },
+  { g: "Registro de ponto", items: [{ f: "confianca", v: "1", l: "Cargo de confiança" }] },
+  { g: "Ocupação", items: [
+    { f: "ocupacao", v: "com", l: "Com empregados" },
+    { f: "ocupacao", v: "vago", l: "Sem ocupante" },
+  ] },
+  { g: "Vínculo", items: TIPOS_VINCULO.map((t) => ({ f: "vinculo", v: t, l: TIPO_VINCULO_LABEL[t].split(" ")[0] })) },
+  { g: "Situação", items: [
+    { f: "situacao", v: "ativo", l: "Ativos" },
+    { f: "situacao", v: "inativo", l: "Inativos" },
+  ] },
+];
+const dotClass = (i: FilterItem) =>
+  i.f === "area" ? AREA_UI[i.v as Area].dot : i.f === "producao" ? "bg-amber-500" : i.f === "confianca" ? "bg-indigo-500" : "";
+
+function testaItem(c: Cargo, nAtivos: number, f: Facet, v: string): boolean {
+  switch (f) {
+    case "area": return c.area === v;
+    case "producao": return !!c.recebeProducao;
+    case "confianca": return ehConfianca(c);
+    case "gorjeta": return v === "sem" ? !!c.semGorjeta : !c.semGorjeta;
+    case "ocupacao": return v === "com" ? nAtivos > 0 : nAtivos === 0;
+    case "vinculo": return c.tipoVinculo === v;
+    case "situacao": return v === "ativo" ? c.ativo : !c.ativo;
+  }
+}
+
+// ─── Tab ────────────────────────────────────────────────────────────────────
 export function CargosTab({ restaurantId }: Props) {
   const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
+  const restauranteNome = restaurants.find((r) => r.id === restaurantId)?.nome || "Restaurante";
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Cargo | "new" | null>(null);
+  const [detail, setDetail] = useState<Cargo | null>(null);
   const [showHistory, setShowHistory] = useState<Cargo | null>(null);
-  const [filtroAtivos, setFiltroAtivos] = useState<"ativos" | "inativos" | "todos">("ativos");
   const [importing, setImporting] = useState(false);
+  const [active, setActive] = useState<FilterItem[]>([]);
+  const [busca, setBusca] = useState("");
+  const [sortK, setSortK] = useState<string>("area");
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
   const podeConfig = canConfigurar(me, restaurantId, "pessoas");
 
-  // Carrega cargos
   useEffect(() => {
     if (!restaurantId) return;
     setLoading(true);
     const q = query(collection(db, "cargos"), where("restaurantId", "==", restaurantId));
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo);
-      setCargos(list);
+      setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo));
       setLoading(false);
     });
     return () => unsub();
   }, [restaurantId]);
 
-  // Carrega empregados (pra validação de inativação)
   useEffect(() => {
     if (!restaurantId) return;
     const q = query(collection(db, "empregados"), where("restaurantId", "==", restaurantId));
     const unsub = onSnapshot(q, (snap) => {
-      setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado));
+      setEmpregados(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado));
     });
     return () => unsub();
   }, [restaurantId]);
 
-  // Index reverso: cargoId → empregados ativos com esse cargo
-  const empregadosAtivosPorCargo = useMemo(() => {
-    const m: Record<string, Empregado[]> = {};
+  // cargoId → nomes dos empregados ativos
+  const ativosPorCargo = useMemo(() => {
+    const m: Record<string, string[]> = {};
     for (const e of empregados) {
       if (!e.estaAtivo) continue;
-      if (!m[e.cargoId]) m[e.cargoId] = [];
-      m[e.cargoId].push(e);
+      (m[e.cargoId] = m[e.cargoId] || []).push(e.nome);
     }
+    Object.values(m).forEach((arr) => arr.sort((a, b) => a.localeCompare(b)));
     return m;
   }, [empregados]);
+  const nAtivosDe = (c: Cargo) => ativosPorCargo[c.id]?.length || 0;
 
-  // Filtro + agrupa por área
-  const filtered = useMemo(() => {
-    return cargos.filter(c => {
-      if (filtroAtivos === "ativos"  && !c.ativo) return false;
-      if (filtroAtivos === "inativos" && c.ativo) return false;
+  // Filtro: mesmo facet = OU, facets diferentes = E. Sem filtro de situação →
+  // mostra só ativos por padrão.
+  const filtrados = useMemo(() => {
+    const porFacet = active.reduce<Record<string, string[]>>((acc, i) => {
+      (acc[i.f] = acc[i.f] || []).push(i.v);
+      return acc;
+    }, {});
+    const termo = busca.trim().toLowerCase();
+    return cargos.filter((c) => {
+      const n = nAtivosDe(c);
+      for (const [f, vals] of Object.entries(porFacet)) {
+        if (!vals.some((v) => testaItem(c, n, f as Facet, v))) return false;
+      }
+      if (!porFacet.situacao && !c.ativo) return false; // default: só ativos
+      if (termo && !c.nome.toLowerCase().includes(termo)) return false;
       return true;
     });
-  }, [cargos, filtroAtivos]);
+  }, [cargos, active, busca, ativosPorCargo]);
 
-  const byArea = useMemo(() => {
-    const m: Record<string, Cargo[]> = {};
-    AREAS.forEach(a => { m[a] = []; });
-    filtered.forEach(c => {
-      if (!m[c.area]) m[c.area] = [];
-      m[c.area].push(c);
+  const ordenados = useMemo(() => {
+    const val = (c: Cargo): string | number => {
+      switch (sortK) {
+        case "nome": return c.nome.toLowerCase();
+        case "area": return `${c.area}`;
+        case "pontos": return c.semGorjeta ? -1 : (c.pontos ?? 0);
+        case "recebeProducao": return c.recebeProducao ? 1 : 0;
+        case "confianca": return ehConfianca(c) ? 1 : 0;
+        case "salarioBase": return c.salarioBase ?? -1;
+        case "nAtivos": return nAtivosDe(c);
+        default: return 0;
+      }
+    };
+    return [...filtrados].sort((a, b) => {
+      const x = val(a), y = val(b);
+      const base = typeof x === "string" ? x.localeCompare(y as string)
+        : (x as number) - (y as number);
+      // desempate estável por área+ordem+nome
+      return base * sortDir || a.area.localeCompare(b.area) || (a.ordem ?? 999) - (b.ordem ?? 999) || a.nome.localeCompare(b.nome);
     });
-    Object.keys(m).forEach(a => {
-      m[a].sort((x, y) => (x.ordem ?? 999) - (y.ordem ?? 999) || x.nome.localeCompare(y.nome));
-    });
-    return m;
-  }, [filtered]);
+  }, [filtrados, sortK, sortDir, ativosPorCargo]);
+
+  const toggleFiltro = (it: FilterItem) =>
+    setActive((prev) => prev.some((a) => keyOf(a) === keyOf(it)) ? prev.filter((a) => keyOf(a) !== keyOf(it)) : [...prev, it]);
+  const sortBy = (k: string) => { if (sortK === k) setSortDir((d) => (d === 1 ? -1 : 1)); else { setSortK(k); setSortDir(1); } };
+
+  const Th = ({ k, label, num }: { k: string; label: string; num?: boolean }) => (
+    <th
+      onClick={() => sortBy(k)}
+      className={`px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold cursor-pointer select-none border-b border-gray-200 dark:border-gray-800 whitespace-nowrap ${num ? "text-right" : "text-left"} ${sortK === k ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}`}
+    >
+      {label}<span className="ml-1 text-[10px] text-indigo-500">{sortK === k ? (sortDir === 1 ? "▲" : "▼") : ""}</span>
+    </th>
+  );
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {filtered.length} cargo(s)
+          {ordenados.length}{ordenados.length !== cargos.length ? ` de ${cargos.length}` : ""} cargo(s)
         </p>
-        {podeConfig && (
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setImporting(true)} title="Importar cargos via CSV (migração do AppTip)">
-              <span className="inline-flex items-center gap-1.5"><Inbox size={14} /> Importar CSV</span>
-            </Button>
-            <Button onClick={() => setEditing("new")}>+ Novo cargo</Button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <ExportMenu
+            onXlsx={() => exportarCargosXLSX(ordenados, ativosPorCargo, restauranteNome)}
+            onPdf={() => exportarCargosPDF(ordenados, ativosPorCargo, restauranteNome)}
+          />
+          {podeConfig && (
+            <>
+              <Button variant="secondary" onClick={() => setImporting(true)} title="Importar cargos via CSV (migração do AppTip)">
+                <span className="inline-flex items-center gap-1.5"><Inbox size={14} /> Importar CSV</span>
+              </Button>
+              <Button onClick={() => setEditing("new")}>+ Novo cargo</Button>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2 mb-4">
-        {(["ativos", "inativos", "todos"] as const).map(f => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFiltroAtivos(f)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              filtroAtivos === f
-                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-            }`}
-          >
-            {f === "ativos" ? "✓ Ativos" : f === "inativos" ? "○ Inativos" : "Todos"}
-          </button>
-        ))}
-      </div>
+      <FacetFilter active={active} onToggle={toggleFiltro} onClear={() => setActive([])} busca={busca} onBusca={setBusca} />
 
       {loading ? (
         <div className="text-sm text-gray-500">Carregando...</div>
@@ -132,39 +219,93 @@ export function CargosTab({ restaurantId }: Props) {
           )}
         </div>
       ) : (
-        <div className="space-y-5">
-          {AREAS.map(area => {
-            const lista = byArea[area];
-            if (!lista || lista.length === 0) return null;
-            return (
-              <div key={area}>
-                <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                  {area}
-                </div>
-                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-                  {lista.map((c, i) => (
-                    <CargoRow
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse" style={{ minWidth: 720 }}>
+              <thead className="bg-gray-50 dark:bg-gray-900/60">
+                <tr>
+                  <Th k="nome" label="Cargo" />
+                  <Th k="area" label="Área" />
+                  <Th k="pontos" label="Pontos" num />
+                  <Th k="recebeProducao" label="Produção" />
+                  <Th k="confianca" label="Confiança" />
+                  <Th k="salarioBase" label="Salário" num />
+                  <Th k="nAtivos" label="Empregados" num />
+                </tr>
+              </thead>
+              <tbody>
+                {ordenados.map((c) => {
+                  const nomes = ativosPorCargo[c.id] || [];
+                  const n = nomes.length;
+                  return (
+                    <tr
                       key={c.id}
-                      cargo={c}
-                      isFirst={i === 0}
-                      empregadosAtivos={empregadosAtivosPorCargo[c.id]?.length || 0}
-                      podeConfig={podeConfig}
-                      onEdit={() => setEditing(c)}
-                      onShowHistory={() => setShowHistory(c)}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+                      onClick={() => setDetail(c)}
+                      className={`cursor-pointer border-l-[3px] transition-colors ${AREA_UI[c.area].row} ${!c.ativo ? "opacity-55" : ""}`}
+                    >
+                      <td className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{c.nome}</span>
+                          <TipoVinculoBadge tipo={c.tipoVinculo} />
+                          {!c.ativo && <span className="text-[10px] text-gray-400">(inativo)</span>}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
+                        <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${AREA_UI[c.area].text}`}>
+                          <span className={`w-2 h-2 rounded ${AREA_UI[c.area].dot}`} />{c.area}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800 text-right tabular-nums">
+                        {c.semGorjeta ? <span className="text-gray-400">—</span> : <span className="font-semibold text-gray-800 dark:text-gray-100">{c.pontos}</span>}
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800 text-sm">
+                        {c.recebeProducao ? <span className="text-amber-600 dark:text-amber-400 font-medium">● Sim</span> : <span className="text-gray-400">Não</span>}
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800 text-sm">
+                        {ehConfianca(c) ? <span className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-medium"><Crown size={13} /> Sim</span> : <span className="text-gray-400">Não</span>}
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800 text-right tabular-nums text-gray-700 dark:text-gray-200">
+                        {c.salarioBase != null ? brl(c.salarioBase) : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 border-b border-gray-100 dark:border-gray-800 text-right">
+                        {n === 0 ? <span className="text-gray-400">—</span> : (
+                          <span className="relative inline-flex group">
+                            <span className="inline-flex items-center justify-center min-w-[26px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[13px] font-semibold tabular-nums">{n}</span>
+                            <span className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:block z-20 w-max max-w-[260px] rounded-lg bg-gray-900 text-white text-xs px-3 py-2 shadow-lg text-left whitespace-normal leading-relaxed">
+                              <span className="block text-[10px] uppercase tracking-wide opacity-60 mb-1">No cargo</span>
+                              {nomes.join(" · ")}
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {ordenados.length === 0 && (
+                  <tr><td colSpan={7} className="px-3 py-10 text-center text-sm text-gray-400">Nenhum cargo com esses filtros.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+      )}
+
+      {detail && (
+        <CargoDetailModal
+          cargo={detail}
+          empregados={ativosPorCargo[detail.id] || []}
+          podeConfig={podeConfig}
+          onEdit={() => { setEditing(detail); setDetail(null); }}
+          onHistory={() => { setShowHistory(detail); setDetail(null); }}
+          onClose={() => setDetail(null)}
+        />
       )}
 
       {editing && (
         <CargoModal
           cargo={editing === "new" ? null : editing}
           restaurantId={restaurantId}
-          empregadosAtivos={editing === "new" ? 0 : (empregadosAtivosPorCargo[editing.id]?.length || 0)}
+          empregadosAtivos={editing === "new" ? 0 : (ativosPorCargo[editing.id]?.length || 0)}
           onClose={() => setEditing(null)}
         />
       )}
@@ -188,43 +329,181 @@ export function CargosTab({ restaurantId }: Props) {
   );
 }
 
-function CargoRow({
-  cargo, isFirst, empregadosAtivos, podeConfig, onEdit, onShowHistory,
-}: {
+// ─── Menu de exportação ─────────────────────────────────────────────────────
+function ExportMenu({ onXlsx, onPdf }: { onXlsx: () => void; onPdf: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const pick = (fn: () => void) => { setOpen(false); void fn(); };
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="secondary" onClick={() => setOpen((o) => !o)}>
+        <span className="inline-flex items-center gap-1.5"><Download size={14} /> Exportar ▾</span>
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-30 w-44 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl p-1.5">
+          <button type="button" onClick={() => pick(onXlsx)} className="w-full text-left text-sm px-2.5 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">Planilha Excel (.xlsx)</button>
+          <button type="button" onClick={() => pick(onPdf)} className="w-full text-left text-sm px-2.5 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">Documento PDF</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Barra de filtro faceteado ──────────────────────────────────────────────
+function FacetFilter({ active, onToggle, onClear, busca, onBusca }: {
+  active: FilterItem[];
+  onToggle: (i: FilterItem) => void;
+  onClear: () => void;
+  busca: string;
+  onBusca: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  return (
+    <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+      <div className="flex items-center gap-2 flex-wrap flex-1">
+        <div className="relative" ref={wrapRef}>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            <Filter size={14} /> Filtro
+          </button>
+          {open && (
+            <div className="absolute left-0 top-full mt-1.5 z-30 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl p-1.5">
+              {MENU_GROUPS.map((g) => (
+                <div key={g.g}>
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 px-2.5 pt-2 pb-1">{g.g}</div>
+                  {g.items.map((it) => {
+                    const on = active.some((a) => keyOf(a) === keyOf(it));
+                    const dc = dotClass(it);
+                    return (
+                      <button
+                        key={keyOf(it)}
+                        type="button"
+                        onClick={() => onToggle(it)}
+                        className={`w-full flex items-center gap-2 text-sm text-left px-2.5 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${on ? "font-semibold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}
+                      >
+                        {dc && <span className={`w-2 h-2 rounded ${dc}`} />}
+                        <span className="flex-1">{it.l}</span>
+                        {on && <Check size={14} className="text-indigo-500" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {active.map((a) => {
+          const dc = dotClass(a);
+          return (
+            <span key={keyOf(a)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold pl-2.5 pr-1.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+              {dc && <span className={`w-2 h-2 rounded ${dc}`} />}
+              {a.l}
+              <button type="button" onClick={() => onToggle(a)} className="w-4 h-4 inline-flex items-center justify-center rounded-full hover:bg-indigo-200/60 dark:hover:bg-indigo-800/60" aria-label={`Remover ${a.l}`}>
+                <X size={12} />
+              </button>
+            </span>
+          );
+        })}
+        {active.length > 0 && (
+          <button type="button" onClick={onClear} className="text-[13px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 underline">limpar tudo</button>
+        )}
+      </div>
+
+      <div className="relative flex-1 min-w-[180px] max-w-[260px]">
+        <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" /></svg>
+        <input
+          value={busca}
+          onChange={(e) => onBusca(e.target.value)}
+          placeholder="Buscar cargo…"
+          className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal de DETALHE (read-only; Editar/Histórico só aqui dentro) ───────────
+function CargoDetailModal({ cargo, empregados, podeConfig, onEdit, onHistory, onClose }: {
   cargo: Cargo;
-  isFirst: boolean;
-  empregadosAtivos: number;
+  empregados: string[];
   podeConfig: boolean;
   onEdit: () => void;
-  onShowHistory: () => void;
+  onHistory: () => void;
+  onClose: () => void;
 }) {
+  const attr = (k: string, v: ReactNode) => (
+    <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2.5">
+      <div className="text-[11px] uppercase tracking-wider font-bold text-gray-400 mb-0.5">{k}</div>
+      <div className="text-[15px] font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">{v}</div>
+    </div>
+  );
   return (
-    <div className={`flex items-center justify-between gap-3 px-4 py-3 ${isFirst ? "" : "border-t border-gray-100 dark:border-gray-800"} ${!cargo.ativo ? "opacity-60" : ""}`}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-gray-900 dark:text-gray-100">{cargo.nome}</span>
-          <TipoVinculoBadge tipo={cargo.tipoVinculo} />
-          {!cargo.ativo && <span className="text-xs text-gray-400">(inativo)</span>}
+    <Modal
+      title={<span className="inline-flex items-center gap-2 flex-wrap">{cargo.nome}<TipoVinculoBadge tipo={cargo.tipoVinculo} /><span className={`inline-flex items-center gap-1.5 text-[13px] font-medium ${AREA_UI[cargo.area].text}`}><span className={`w-2 h-2 rounded ${AREA_UI[cargo.area].dot}`} />{cargo.area}</span></span>}
+      onClose={onClose}
+      maxWidth="max-w-lg"
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-2.5">
+          {attr("Pontos de gorjeta", cargo.semGorjeta ? <span className="text-gray-400">Sem gorjeta</span> : `${cargo.pontos} pts`)}
+          {attr("Salário base", cargo.salarioBase != null ? brl(cargo.salarioBase) : <span className="text-gray-400">Não cadastrado</span>)}
+          {attr("Recebe produção", cargo.recebeProducao ? <span className="text-amber-600 dark:text-amber-400">● Sim, todo dia</span> : <span className="text-gray-400">Não</span>)}
+          {attr("Cargo de confiança", ehConfianca(cargo) ? <span className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400"><Crown size={14} /> Sim (não bate ponto)</span> : <span className="text-gray-400">Não</span>)}
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
-          {cargo.semGorjeta
-            ? <span>Sem gorjeta</span>
-            : <span>{cargo.pontos} ponto(s)</span>}
-          {cargo.recebeProducao && <span className="text-amber-600 dark:text-amber-400">· recebe produção (todo dia)</span>}
-          {empregadosAtivos > 0 && (
-            <span className="text-indigo-600 dark:text-indigo-400">· {empregadosAtivos} empregado(s) ativo(s)</span>
+
+        <div>
+          <div className="text-[11px] uppercase tracking-wider font-bold text-gray-400 mb-1.5">Descrição do cargo</div>
+          <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2.5">
+            {cargo.descricao ? cargo.descricao : <span className="text-gray-400">Sem descrição cadastrada.</span>}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[11px] uppercase tracking-wider font-bold text-gray-400 mb-1.5 inline-flex items-center gap-1.5"><Users size={13} /> Empregados ativos ({empregados.length})</div>
+          {empregados.length === 0 ? (
+            <div className="text-sm text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2.5">Nenhum empregado ativo neste cargo.</div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {empregados.map((n) => (
+                <div key={n} className="flex items-center gap-2.5 text-sm text-gray-700 dark:text-gray-200">
+                  <span className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 text-[11px] font-bold flex items-center justify-center shrink-0">{iniciais(n)}</span>
+                  {n}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="secondary" onClick={onHistory}>
+            <span className="inline-flex items-center gap-1.5"><History size={14} /> Histórico</span>
+          </Button>
+          {podeConfig && (
+            <Button onClick={onEdit}>
+              <span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar cargo</span>
+            </Button>
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <Button variant="secondary" size="sm" onClick={onShowHistory} title="Histórico de alterações deste cargo">
-          <span className="inline-flex items-center gap-1.5"><History size={14} /> Histórico</span>
-        </Button>
-        {podeConfig && (
-          <Button variant="secondary" size="sm" onClick={onEdit}>Editar</Button>
-        )}
-      </div>
-    </div>
+    </Modal>
   );
 }
 
