@@ -29,6 +29,7 @@ import { AREAS, TIPO_VINCULO_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
 
 const AREA_DOT: Record<string, string> = { Bar: "bg-violet-500", Cozinha: "bg-orange-500", "Salão": "bg-blue-500", Limpeza: "bg-teal-500" };
+type SortK = "nome" | "vinculo" | "cargo" | "area";
 type FiltroStatus = "ativas" | "inativas" | "todas";
 type FiltroEquipe = "todos" | "equipe" | "naoEquipe";
 type FiltroArea = "todas" | Area;
@@ -170,7 +171,7 @@ export function PessoasList({ restaurantId }: Props) {
   const chipsAtivos = (Object.keys(PESSOA_DEF) as Dim[]).filter((d) => facet[d] !== PESSOA_DEF[d] && (d !== "area" || filtroEquipe === "equipe"));
 
   // Ordenação da tabela (mesma lógica do Cargos)
-  const [sortK, setSortK] = useState<"nome" | "vinculo" | "cargo">("nome");
+  const [sortK, setSortK] = useState<SortK>("nome");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
   const ordenados = useMemo(() => {
     const val = (p: Pessoa): string => {
@@ -178,11 +179,17 @@ export function PessoasList({ restaurantId }: Props) {
       const e = empPorPessoa[p.id];
       const c = e ? cargoMap[e.cargoId] : null;
       if (sortK === "cargo") return (c?.nome || "~~~").toLowerCase();
+      if (sortK === "area") return (c?.area || "~~~").toLowerCase();
       return (resolverVinculo(p, restaurantId, e, c) || "~~~") as string;
     };
-    return [...filtered].sort((a, b) => (val(a).localeCompare(val(b)) * sortDir) || (a.nome || "").localeCompare(b.nome || ""));
+    // Ao ordenar por Área, agrupa por área e, dentro dela, por cargo e nome.
+    const cargoDe = (p: Pessoa) => { const e = empPorPessoa[p.id]; return (e ? cargoMap[e.cargoId]?.nome : "") || ""; };
+    return [...filtered].sort((a, b) =>
+      (val(a).localeCompare(val(b)) * sortDir)
+      || (sortK === "area" ? cargoDe(a).localeCompare(cargoDe(b)) : 0)
+      || (a.nome || "").localeCompare(b.nome || ""));
   }, [filtered, sortK, sortDir, empPorPessoa, cargoMap, restaurantId]);
-  const sortBy = (k: "nome" | "vinculo" | "cargo") => { if (sortK === k) setSortDir((d) => (d === 1 ? -1 : 1)); else { setSortK(k); setSortDir(1); } };
+  const sortBy = (k: SortK) => { if (sortK === k) setSortDir((d) => (d === 1 ? -1 : 1)); else { setSortK(k); setSortDir(1); } };
 
   // Linhas pra export (respeita filtro + ordenação atuais)
   const buildExportRows = (): PessoaExportRow[] => ordenados.map((p) => {
@@ -202,7 +209,7 @@ export function PessoasList({ restaurantId }: Props) {
     };
   });
   const restauranteNome = restaurant?.nome || "Restaurante";
-  const Th = ({ k, label }: { k: "nome" | "vinculo" | "cargo"; label: string }) => (
+  const Th = ({ k, label }: { k: SortK; label: string }) => (
     <th onClick={() => sortBy(k)} className={`px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold cursor-pointer select-none border-b border-gray-200 dark:border-gray-800 text-left whitespace-nowrap ${sortK === k ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}`}>
       {label}<span className="ml-1 text-[10px] text-indigo-500">{sortK === k ? (sortDir === 1 ? "▲" : "▼") : ""}</span>
     </th>
@@ -277,7 +284,7 @@ export function PessoasList({ restaurantId }: Props) {
                   <Th k="nome" label="Pessoa" />
                   <Th k="vinculo" label="Vínculo" />
                   <Th k="cargo" label="Cargo" />
-                  <th className="px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 text-left border-b border-gray-200 dark:border-gray-800 whitespace-nowrap">Área</th>
+                  <Th k="area" label="Área" />
                   <th className="px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 text-left border-b border-gray-200 dark:border-gray-800 whitespace-nowrap">Acesso</th>
                   <th className="border-b border-gray-200 dark:border-gray-800 w-6" aria-hidden="true"></th>
                 </tr>
