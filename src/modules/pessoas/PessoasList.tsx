@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { Link, Users, User, TriangleAlert, Wine, ChefHat, UtensilsCrossed, SprayCan, CircleAlert, CircleCheck, Sparkles, Inbox, Filter, Check, X } from "lucide-react";
+import { Link, Users, User, TriangleAlert, Wine, ChefHat, UtensilsCrossed, SprayCan, CircleAlert, CircleCheck, Sparkles, Inbox, Filter, Check, X, Download } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -19,6 +19,7 @@ import {
 type FiltroVinculo = "todos" | VinculoLogico | "semVinculo";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
+import { exportarPessoasXLSX, exportarPessoasPDF, type PessoaExportRow } from "./exportPessoas";
 import { PessoaModal } from "./PessoaModal";
 import { VincularPessoaModal } from "./VincularPessoaModal";
 import { VincularAdmissaoModal } from "./VincularAdmissaoModal";
@@ -181,6 +182,25 @@ export function PessoasList({ restaurantId }: Props) {
     return [...filtered].sort((a, b) => (val(a).localeCompare(val(b)) * sortDir) || (a.nome || "").localeCompare(b.nome || ""));
   }, [filtered, sortK, sortDir, empPorPessoa, cargoMap, restaurantId]);
   const sortBy = (k: "nome" | "vinculo" | "cargo") => { if (sortK === k) setSortDir((d) => (d === 1 ? -1 : 1)); else { setSortK(k); setSortDir(1); } };
+
+  // Linhas pra export (respeita filtro + ordenação atuais)
+  const buildExportRows = (): PessoaExportRow[] => ordenados.map((p) => {
+    const emp = empPorPessoa[p.id];
+    const cargo = emp ? cargoMap[emp.cargoId] : null;
+    const vinc = resolverVinculo(p, restaurantId, emp, cargo);
+    const badges = statusAcesso(p, restaurantId, emp, perfis, cargo);
+    return {
+      nome: p.nome || "",
+      vinculo: vinc ? VINCULO_LOGICO_LABEL[vinc] : "Sem vínculo",
+      cargo: cargo?.nome || "—",
+      area: cargo?.area || "—",
+      email: p.email || "",
+      cpf: p.cpf || "",
+      acesso: badges.map((b) => b.label).join(" / ") || "—",
+      situacao: p.ativa === false ? "Inativa" : "Ativa",
+    };
+  });
+  const restauranteNome = restaurant?.nome || "Restaurante";
   const Th = ({ k, label }: { k: "nome" | "vinculo" | "cargo"; label: string }) => (
     <th onClick={() => sortBy(k)} className={`px-3 py-2.5 text-[11px] uppercase tracking-wider font-bold cursor-pointer select-none border-b border-gray-200 dark:border-gray-800 text-left whitespace-nowrap ${sortK === k ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}`}>
       {label}<span className="ml-1 text-[10px] text-indigo-500">{sortK === k ? (sortDir === 1 ? "▲" : "▼") : ""}</span>
@@ -204,6 +224,10 @@ export function PessoasList({ restaurantId }: Props) {
         </div>
         {(podeCriar || podeVincular) && (
           <div className="flex gap-2 ml-auto">
+            <ExportMenuPessoas
+              onXlsx={() => exportarPessoasXLSX(buildExportRows(), restauranteNome)}
+              onPdf={() => exportarPessoasPDF(buildExportRows(), restauranteNome)}
+            />
             {podeVincular && (
               <Button variant="secondary" onClick={() => setVincularModo("chooser")} title="Vincular de uma admissão ou de pessoa já cadastrada em outro restaurante">
                 <span className="inline-flex items-center gap-1.5"><Link size={14} /> Vincular</span>
@@ -414,6 +438,31 @@ const GRUPO_AREA: { dim: Dim; g: string; items: { v: string; node: ReactNode }[]
     ...AREAS.map((a) => ({ v: a, node: a === "Bar" ? ic(Wine, "Bar") : a === "Cozinha" ? ic(ChefHat, "Cozinha") : a === "Salão" ? ic(UtensilsCrossed, "Salão") : ic(SprayCan, "Limpeza") })),
   ],
 };
+
+function ExportMenuPessoas({ onXlsx, onPdf }: { onXlsx: () => void; onPdf: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const pick = (fn: () => void) => { setOpen(false); void fn(); };
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="secondary" onClick={() => setOpen((o) => !o)}>
+        <span className="inline-flex items-center gap-1.5"><Download size={14} /> Exportar ▾</span>
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-30 w-44 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl p-1.5">
+          <button type="button" onClick={() => pick(onXlsx)} className="w-full text-left text-sm px-2.5 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">Planilha Excel (.xlsx)</button>
+          <button type="button" onClick={() => pick(onPdf)} className="w-full text-left text-sm px-2.5 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">Documento PDF</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PessoasFiltro({ value, onPick, mostrarArea }: { value: Record<Dim, string>; onPick: (d: Dim, v: string) => void; mostrarArea: boolean }) {
   const [open, setOpen] = useState(false);
