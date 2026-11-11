@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { Link, Users, User, TriangleAlert, Wine, ChefHat, UtensilsCrossed, SprayCan, CircleAlert, CircleCheck, Sparkles, Inbox } from "lucide-react";
+import { Link, Users, User, TriangleAlert, Wine, ChefHat, UtensilsCrossed, SprayCan, CircleAlert, CircleCheck, Sparkles, Inbox, Filter, Check, X } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -18,7 +18,6 @@ import {
 
 type FiltroVinculo = "todos" | VinculoLogico | "semVinculo";
 import { Button } from "../../core/ui/Button";
-import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import { PessoaModal } from "./PessoaModal";
 import { VincularPessoaModal } from "./VincularPessoaModal";
@@ -155,87 +154,60 @@ export function PessoasList({ restaurantId }: Props) {
     }).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
   }, [pessoas, empPorPessoa, cargoMap, filtroStatus, filtroEquipe, filtroArea, filtroAcesso, filtroVinculo, perfis, restaurantId, search]);
 
+  // Filtro faceteado (mesma lógica do Cargos): single-select por dimensão, chips
+  // removíveis. Remover um chip = volta a dimensão pro default.
+  const facet: Record<Dim, string> = { status: filtroStatus, tipo: filtroEquipe, acesso: filtroAcesso, vinculo: filtroVinculo, area: filtroArea };
+  const setFacet = (d: Dim, v: string) => {
+    if (d === "status") setFiltroStatus(v as FiltroStatus);
+    else if (d === "tipo") { setFiltroEquipe(v as FiltroEquipe); if (v !== "equipe") setFiltroArea("todas"); }
+    else if (d === "acesso") setFiltroAcesso(v as FiltroAcesso);
+    else if (d === "vinculo") setFiltroVinculo(v as FiltroVinculo);
+    else setFiltroArea(v as FiltroArea);
+  };
+  const limparFiltros = () => { setFiltroStatus("ativas"); setFiltroEquipe("todos"); setFiltroAcesso("todos"); setFiltroVinculo("todos"); setFiltroArea("todas"); };
+  const chipsAtivos = (Object.keys(PESSOA_DEF) as Dim[]).filter((d) => facet[d] !== PESSOA_DEF[d] && (d !== "area" || filtroEquipe === "equipe"));
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} pessoa(s)</p>
+      {/* Toolbar em uma linha só: contagem + Filtro + busca (esq) · Vincular/Nova pessoa (dir) */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{filtered.length} pessoa(s)</span>
+        <PessoasFiltro value={facet} onPick={setFacet} mostrarArea={filtroEquipe === "equipe"} />
+        <div className="relative flex-1 min-w-[180px] max-w-[340px]">
+          <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" /></svg>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome, email ou CPF…"
+            className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+          />
+        </div>
         {(podeCriar || podeVincular) && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 ml-auto">
             {podeVincular && (
               <Button variant="secondary" onClick={() => setVincularModo("chooser")} title="Vincular de uma admissão ou de pessoa já cadastrada em outro restaurante">
                 <span className="inline-flex items-center gap-1.5"><Link size={14} /> Vincular</span>
               </Button>
             )}
-            {podeCriar && (
-              <Button onClick={() => setEditing("new")}>+ Nova pessoa</Button>
-            )}
+            {podeCriar && <Button onClick={() => setEditing("new")}>+ Nova pessoa</Button>}
           </div>
         )}
       </div>
 
-      <Input
-        placeholder="🔍 Buscar por nome, email ou CPF..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-3"
-      />
-
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Status:</span>
-        {(["ativas", "inativas", "todas"] as FiltroStatus[]).map(f => (
-          <FilterChip key={f} active={filtroStatus === f} onClick={() => setFiltroStatus(f)}>
-            {f === "ativas" ? "✓ Ativas" : f === "inativas" ? "○ Inativas" : "Todas"}
-          </FilterChip>
-        ))}
-        <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Tipo:</span>
-        {(["todos", "equipe", "naoEquipe"] as FiltroEquipe[]).map(f => (
-          <FilterChip key={f} active={filtroEquipe === f} onClick={() => {
-            setFiltroEquipe(f);
-            // Sair de "equipe" → reseta filtro de área (deixa de fazer sentido)
-            if (f !== "equipe") setFiltroArea("todas");
-          }}>
-            {f === "todos" ? "Todos" : f === "equipe" ? <span className="inline-flex items-center gap-1"><Users size={13} /> Equipe</span> : <span className="inline-flex items-center gap-1"><User size={13} /> Só usuários</span>}
-          </FilterChip>
-        ))}
-
-        <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Acesso:</span>
-        {(["todos", "comPendencia", "pronto", "nuncaLogou"] as FiltroAcesso[]).map(f => (
-          <FilterChip key={f} active={filtroAcesso === f} onClick={() => setFiltroAcesso(f)}>
-            {f === "todos" ? "Todos"
-              : f === "comPendencia" ? <span className="inline-flex items-center gap-1"><CircleAlert size={13} /> Com pendência</span>
-              : f === "pronto" ? <span className="inline-flex items-center gap-1"><CircleCheck size={13} /> Pronto</span>
-              : <span className="inline-flex items-center gap-1"><Sparkles size={13} /> Nunca logou</span>}
-          </FilterChip>
-        ))}
-
-        <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Vínculo:</span>
-        <FilterChip active={filtroVinculo === "todos"} onClick={() => setFiltroVinculo("todos")}>
-          Todos
-        </FilterChip>
-        {VINCULOS_LOGICOS.map(v => (
-          <FilterChip key={v} active={filtroVinculo === v} onClick={() => setFiltroVinculo(v)}>
-            {VINCULO_LOGICO_ICONE[v]} {VINCULO_LOGICO_LABEL[v]}
-          </FilterChip>
-        ))}
-        <FilterChip active={filtroVinculo === "semVinculo"} onClick={() => setFiltroVinculo("semVinculo")}>
-          <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> Sem vínculo</span>
-        </FilterChip>
-
-        {/* Filtro de área — só aparece quando filtrando por Equipe */}
-        {filtroEquipe === "equipe" && (
-          <>
-            <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Área:</span>
-            <FilterChip active={filtroArea === "todas"} onClick={() => setFiltroArea("todas")}>
-              Todas
-            </FilterChip>
-            {AREAS.map(a => (
-              <FilterChip key={a} active={filtroArea === a} onClick={() => setFiltroArea(a)}>
-                {a === "Bar" ? <span className="inline-flex items-center gap-1"><Wine size={13} /> Bar</span> : a === "Cozinha" ? <span className="inline-flex items-center gap-1"><ChefHat size={13} /> Cozinha</span> : a === "Salão" ? <span className="inline-flex items-center gap-1"><UtensilsCrossed size={13} /> Salão</span> : <span className="inline-flex items-center gap-1"><SprayCan size={13} /> Limpeza</span>}
-              </FilterChip>
-            ))}
-          </>
-        )}
-      </div>
+      {/* Chips dos filtros ativos — só aparecem quando há filtro */}
+      {chipsAtivos.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          {chipsAtivos.map((d) => (
+            <span key={d} className="inline-flex items-center gap-1.5 text-[13px] font-semibold pl-2.5 pr-1.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+              {labelDe(d, facet[d])}
+              <button type="button" onClick={() => setFacet(d, PESSOA_DEF[d])} className="w-4 h-4 inline-flex items-center justify-center rounded-full hover:bg-indigo-200/60 dark:hover:bg-indigo-800/60" aria-label="Remover filtro">
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          <button type="button" onClick={limparFiltros} className="text-[13px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 underline">limpar tudo</button>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-sm text-gray-500">Carregando...</div>
@@ -403,22 +375,80 @@ export function PessoasList({ restaurantId }: Props) {
   );
 }
 
-function FilterChip({ active, onClick, children }: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+// ─── Filtro faceteado de Pessoas (mesma lógica do Cargos) ───────────────────
+type Dim = "status" | "tipo" | "acesso" | "vinculo" | "area";
+const PESSOA_DEF: Record<Dim, string> = { status: "ativas", tipo: "todos", acesso: "todos", vinculo: "todos", area: "todas" };
+const LABEL_SIMPLES: Record<"status" | "tipo" | "acesso", Record<string, string>> = {
+  status: { ativas: "Ativas", inativas: "Inativas", todas: "Todas" },
+  tipo: { todos: "Todos", equipe: "Equipe", naoEquipe: "Só usuários" },
+  acesso: { todos: "Todos", comPendencia: "Com pendência", pronto: "Pronto", nuncaLogou: "Nunca logou" },
+};
+function labelDe(d: Dim, v: string): string {
+  if (d === "vinculo") return v === "todos" ? "Todos" : v === "semVinculo" ? "Sem vínculo" : VINCULO_LOGICO_LABEL[v as VinculoLogico];
+  if (d === "area") return v === "todas" ? "Todas" : v;
+  return LABEL_SIMPLES[d][v] ?? v;
+}
+const ic = (Ic: typeof Users, t: string) => <span className="inline-flex items-center gap-1.5"><Ic size={13} /> {t}</span>;
+const GRUPOS_BASE: { dim: Dim; g: string; items: { v: string; node: ReactNode }[] }[] = [
+  { dim: "status", g: "Status", items: [{ v: "ativas", node: "✓ Ativas" }, { v: "inativas", node: "Inativas" }, { v: "todas", node: "Todas" }] },
+  { dim: "tipo", g: "Tipo", items: [{ v: "todos", node: "Todos" }, { v: "equipe", node: ic(Users, "Equipe") }, { v: "naoEquipe", node: ic(User, "Só usuários") }] },
+  { dim: "acesso", g: "Acesso", items: [{ v: "todos", node: "Todos" }, { v: "comPendencia", node: ic(CircleAlert, "Com pendência") }, { v: "pronto", node: ic(CircleCheck, "Pronto") }, { v: "nuncaLogou", node: ic(Sparkles, "Nunca logou") }] },
+  { dim: "vinculo", g: "Vínculo", items: [
+    { v: "todos", node: "Todos" },
+    ...VINCULOS_LOGICOS.map((v) => ({ v, node: <span className="inline-flex items-center gap-1.5">{VINCULO_LOGICO_ICONE[v]} {VINCULO_LOGICO_LABEL[v]}</span> })),
+    { v: "semVinculo", node: ic(TriangleAlert, "Sem vínculo") },
+  ] },
+];
+const GRUPO_AREA: { dim: Dim; g: string; items: { v: string; node: ReactNode }[] } = {
+  dim: "area", g: "Área", items: [
+    { v: "todas", node: "Todas" },
+    ...AREAS.map((a) => ({ v: a, node: a === "Bar" ? ic(Wine, "Bar") : a === "Cozinha" ? ic(ChefHat, "Cozinha") : a === "Salão" ? ic(UtensilsCrossed, "Salão") : ic(SprayCan, "Limpeza") })),
+  ],
+};
+
+function PessoasFiltro({ value, onPick, mostrarArea }: { value: Record<Dim, string>; onPick: (d: Dim, v: string) => void; mostrarArea: boolean }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const grupos = mostrarArea ? [...GRUPOS_BASE, GRUPO_AREA] : GRUPOS_BASE;
+  const n = (Object.keys(PESSOA_DEF) as Dim[]).filter((d) => value[d] !== PESSOA_DEF[d] && (d !== "area" || mostrarArea)).length;
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-        active
-          ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-          : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-      }`}
-    >
-      {children}
-    </button>
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 h-9 rounded-lg border border-dashed hover:bg-gray-50 dark:hover:bg-gray-800 ${n ? "border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}
+      >
+        <Filter size={14} /> Filtro{n ? ` · ${n}` : ""}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-30 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl p-1.5 max-h-[70vh] overflow-y-auto">
+          {grupos.map((gr) => (
+            <div key={gr.dim}>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 px-2.5 pt-2 pb-1">{gr.g}</div>
+              {gr.items.map((it) => {
+                const on = value[gr.dim] === it.v;
+                return (
+                  <button
+                    key={it.v}
+                    type="button"
+                    onClick={() => onPick(gr.dim, it.v)}
+                    className={`w-full flex items-center gap-2 text-sm text-left px-2.5 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${on ? "font-semibold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}
+                  >
+                    <span className="flex-1">{it.node}</span>
+                    {on && <Check size={14} className="text-indigo-500" />}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
