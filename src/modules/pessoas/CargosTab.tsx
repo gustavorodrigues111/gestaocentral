@@ -184,11 +184,22 @@ export function CargosTab({ restaurantId }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+      {/* Toolbar em uma linha só: contagem + Filtro + busca (esq) · exportar/importar/novo (dir) */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
           {ordenados.length}{ordenados.length !== cargos.length ? ` de ${cargos.length}` : ""} cargo(s)
-        </p>
-        <div className="flex gap-2">
+        </span>
+        <FilterDropdown active={active} onToggle={toggleFiltro} />
+        <div className="relative flex-1 min-w-[150px] max-w-[260px]">
+          <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" /></svg>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar cargo…"
+            className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+          />
+        </div>
+        <div className="flex gap-2 ml-auto">
           <ExportMenu
             onXlsx={() => exportarCargosXLSX(ordenados, ativosPorCargo, restauranteNome)}
             onPdf={() => exportarCargosPDF(ordenados, ativosPorCargo, restauranteNome)}
@@ -204,7 +215,24 @@ export function CargosTab({ restaurantId }: Props) {
         </div>
       </div>
 
-      <FacetFilter active={active} onToggle={toggleFiltro} onClear={() => setActive([])} busca={busca} onBusca={setBusca} />
+      {/* Chips dos filtros ativos — só aparecem quando há filtro */}
+      {active.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          {active.map((a) => {
+            const dc = dotClass(a);
+            return (
+              <span key={keyOf(a)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold pl-2.5 pr-1.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+                {dc && <span className={`w-2 h-2 rounded ${dc}`} />}
+                {a.l}
+                <button type="button" onClick={() => toggleFiltro(a)} className="w-4 h-4 inline-flex items-center justify-center rounded-full hover:bg-indigo-200/60 dark:hover:bg-indigo-800/60" aria-label={`Remover ${a.l}`}>
+                  <X size={12} />
+                </button>
+              </span>
+            );
+          })}
+          <button type="button" onClick={() => setActive([])} className="text-[13px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 underline">limpar tudo</button>
+        </div>
+      )}
 
       {loading ? (
         <div className="text-sm text-gray-500">Carregando...</div>
@@ -355,14 +383,8 @@ function ExportMenu({ onXlsx, onPdf }: { onXlsx: () => void; onPdf: () => void }
   );
 }
 
-// ─── Barra de filtro faceteado ──────────────────────────────────────────────
-function FacetFilter({ active, onToggle, onClear, busca, onBusca }: {
-  active: FilterItem[];
-  onToggle: (i: FilterItem) => void;
-  onClear: () => void;
-  busca: string;
-  onBusca: (v: string) => void;
-}) {
+// ─── Botão/menu de filtro faceteado ─────────────────────────────────────────
+function FilterDropdown({ active, onToggle }: { active: FilterItem[]; onToggle: (i: FilterItem) => void }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -373,69 +395,39 @@ function FacetFilter({ active, onToggle, onClear, busca, onBusca }: {
   }, [open]);
 
   return (
-    <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
-      <div className="flex items-center gap-2 flex-wrap flex-1">
-        <div className="relative" ref={wrapRef}>
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-          >
-            <Filter size={14} /> Filtro
-          </button>
-          {open && (
-            <div className="absolute left-0 top-full mt-1.5 z-30 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl p-1.5">
-              {MENU_GROUPS.map((g) => (
-                <div key={g.g}>
-                  <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 px-2.5 pt-2 pb-1">{g.g}</div>
-                  {g.items.map((it) => {
-                    const on = active.some((a) => keyOf(a) === keyOf(it));
-                    const dc = dotClass(it);
-                    return (
-                      <button
-                        key={keyOf(it)}
-                        type="button"
-                        onClick={() => onToggle(it)}
-                        className={`w-full flex items-center gap-2 text-sm text-left px-2.5 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${on ? "font-semibold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}
-                      >
-                        {dc && <span className={`w-2 h-2 rounded ${dc}`} />}
-                        <span className="flex-1">{it.l}</span>
-                        {on && <Check size={14} className="text-indigo-500" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 h-9 rounded-lg border border-dashed hover:bg-gray-50 dark:hover:bg-gray-800 ${active.length ? "border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}
+      >
+        <Filter size={14} /> Filtro{active.length ? ` · ${active.length}` : ""}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-30 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl p-1.5 max-h-[70vh] overflow-y-auto">
+          {MENU_GROUPS.map((g) => (
+            <div key={g.g}>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-gray-400 px-2.5 pt-2 pb-1">{g.g}</div>
+              {g.items.map((it) => {
+                const on = active.some((a) => keyOf(a) === keyOf(it));
+                const dc = dotClass(it);
+                return (
+                  <button
+                    key={keyOf(it)}
+                    type="button"
+                    onClick={() => onToggle(it)}
+                    className={`w-full flex items-center gap-2 text-sm text-left px-2.5 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${on ? "font-semibold text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300"}`}
+                  >
+                    {dc && <span className={`w-2 h-2 rounded ${dc}`} />}
+                    <span className="flex-1">{it.l}</span>
+                    {on && <Check size={14} className="text-indigo-500" />}
+                  </button>
+                );
+              })}
             </div>
-          )}
+          ))}
         </div>
-
-        {active.map((a) => {
-          const dc = dotClass(a);
-          return (
-            <span key={keyOf(a)} className="inline-flex items-center gap-1.5 text-[13px] font-semibold pl-2.5 pr-1.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-              {dc && <span className={`w-2 h-2 rounded ${dc}`} />}
-              {a.l}
-              <button type="button" onClick={() => onToggle(a)} className="w-4 h-4 inline-flex items-center justify-center rounded-full hover:bg-indigo-200/60 dark:hover:bg-indigo-800/60" aria-label={`Remover ${a.l}`}>
-                <X size={12} />
-              </button>
-            </span>
-          );
-        })}
-        {active.length > 0 && (
-          <button type="button" onClick={onClear} className="text-[13px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 underline">limpar tudo</button>
-        )}
-      </div>
-
-      <div className="relative flex-1 min-w-[180px] max-w-[260px]">
-        <svg viewBox="0 0 24 24" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" /></svg>
-        <input
-          value={busca}
-          onChange={(e) => onBusca(e.target.value)}
-          placeholder="Buscar cargo…"
-          className="w-full h-9 pl-9 pr-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-        />
-      </div>
+      )}
     </div>
   );
 }
