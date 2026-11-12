@@ -10,7 +10,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu } from "lucide-react";
-import { isComandasKioskHost } from "../../core/restaurant/subdomain";
+import { isComandasKioskHost, isEtiquetasKioskHost } from "../../core/restaurant/subdomain";
 import { APP_VERSION_LABEL } from "../../core/version";
 import { destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
 
@@ -135,7 +135,7 @@ export function EstoqueValidadePage() {
   const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases">("locais");
   // No app do caixa (kiosk), a navegação vira um MENU (como o Comandas) e abre
   // direto nas Etiquetas (emitir/dar baixa), em vez da barra de abas do admin.
-  const naKiosk = isComandasKioskHost();
+  const naKiosk = isComandasKioskHost() || isEtiquetasKioskHost();
   const [menuAberto, setMenuAberto] = useState(false);
   const [printerCfg, setPrinterCfg] = useState(false);
   useEffect(() => { if (naKiosk) setAba("etiquetas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps

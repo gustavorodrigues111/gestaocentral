@@ -27,6 +27,7 @@ const RESERVED_SUBDOMAINS = new Set([
   "preview",
   "test",
   "comandas",   // kiosk do PDV (não é subdomínio de restaurante) — ver isComandasKioskHost
+  "etiquetas",  // kiosk das Etiquetas (maquininha Sunmi) — ver isEtiquetasKioskHost
 ]);
 
 /**
@@ -38,6 +39,26 @@ const RESERVED_SUBDOMAINS = new Set([
 export function isComandasKioskHost(hostname?: string): boolean {
   const host = (hostname ?? (typeof window !== "undefined" ? window.location.hostname : "")).toLowerCase();
   return host === "comandas.planejamento.app" || host === "comandas.localhost.direct";
+}
+
+/**
+ * True quando o app está no KIOSK das ETIQUETAS (maquininha Sunmi): abre SÓ o
+ * módulo Controles de Validades > Etiquetas, sem admin. Dispara por host
+ * (etiquetas.planejamento.app) OU pelo parâmetro `?kiosk=etiquetas` na URL
+ * inicial — que é o que o app da Sunmi usa. O parâmetro fica gravado
+ * (localStorage) pra sobreviver às navegações internas.
+ */
+export function isEtiquetasKioskHost(hostname?: string): boolean {
+  const host = (hostname ?? (typeof window !== "undefined" ? window.location.hostname : "")).toLowerCase();
+  if (host === "etiquetas.planejamento.app" || host === "etiquetas.localhost.direct") return true;
+  try {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get("kiosk") === "etiquetas") localStorage.setItem("etiq_kiosk_mode", "1");
+      return localStorage.getItem("etiq_kiosk_mode") === "1";
+    }
+  } catch { /* sem storage */ }
+  return false;
 }
 
 /**

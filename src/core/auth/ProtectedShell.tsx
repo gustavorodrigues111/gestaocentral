@@ -14,7 +14,7 @@ import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "re
 import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
 import { RestaurantProvider, useRestaurant } from "../restaurant/RestaurantContext";
-import { isComandasKioskHost } from "../restaurant/subdomain";
+import { isComandasKioskHost, isEtiquetasKioskHost } from "../restaurant/subdomain";
 import { useFilaEtiquetasCaixa } from "../../modules/estoqueValidade/filaImpressao";
 import { PessoasProvider } from "../pessoas/PessoasContext";
 import { LoginScreen } from "./LoginScreen";
@@ -221,6 +221,16 @@ export function ProtectedShell() {
     );
   }
 
+  // KIOSK das ETIQUETAS (maquininha Sunmi): abre SÓ Controles de Validades >
+  // Etiquetas, sem admin. A segurança continua nas permissões da pessoa.
+  if (isEtiquetasKioskHost()) {
+    return (
+      <RestaurantProvider>
+        <EtiquetasKioskShell />
+      </RestaurantProvider>
+    );
+  }
+
   return (
     <RestaurantProvider>
       <SubdomainGuard>
@@ -337,6 +347,82 @@ function ComandasKioskShell() {
           <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} onSwitchRestaurant={restaurants.length > 1 ? trocar : undefined} />} />
           {podeValidade && <Route path="/r/:rid/estoqueValidade" element={<EstoqueValidadePage />} />}
           <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
+        </Routes>
+      </div>
+    </div>
+  );
+}
+
+// Shell do KIOSK das ETIQUETAS (maquininha Sunmi): trava o app em Controles de
+// Validades > Etiquetas do restaurante ativo (ou o 1º que a pessoa acessa).
+// Sem menu, sem outras rotas. A EstoqueValidadePage já abre em modo kiosk.
+function EtiquetasKioskShell() {
+  const { restaurants, activeId, setActiveId, loading } = useRestaurant();
+  const { signOut, pessoa } = useAuth();
+  const nav = useNavigate();
+  const [escolhido, setEscolhido] = useState<string | null>(() => { try { return localStorage.getItem("etiq_kiosk_rid"); } catch { return null; } });
+  const escolhidoValido = escolhido && restaurants.some((r) => r.id === escolhido) ? escolhido : null;
+  const rid = restaurants.length === 1 ? restaurants[0].id : (escolhidoValido || "");
+  useEffect(() => { if (rid && activeId !== rid) setActiveId(rid); }, [rid, activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const escolher = (id: string) => { try { localStorage.setItem("etiq_kiosk_rid", id); } catch { /* */ } setEscolhido(id); setActiveId(id); nav(`/r/${id}/estoqueValidade`, { replace: true }); };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Carregando…</div>;
+
+  if (restaurants.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 text-center bg-gray-50 dark:bg-gray-950">
+        <div className="max-w-sm">
+          <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Sem restaurante pra operar</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Esta conta não tem acesso a nenhum restaurante. Peça pro administrador liberar, ou entre com a conta certa.</p>
+          <button onClick={() => void signOut()} className="mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700">Sair</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!rid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50 dark:bg-gray-950">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-4">
+            <div className="flex justify-center mb-2 text-indigo-500"><Tag size={36} /></div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Qual restaurante?</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Escolha onde vai emitir etiquetas.</p>
+          </div>
+          <div className="space-y-2">
+            {restaurants.map((r) => (
+              <button key={r.id} onClick={() => escolher(r.id)} className="w-full flex items-center gap-2.5 px-4 h-14 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold text-gray-900 dark:text-gray-100 hover:border-indigo-300 dark:hover:border-indigo-700 text-left">
+                <Tag size={18} className="text-indigo-500 shrink-0" /> <span className="truncate">{r.nome}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => void signOut()} className="mt-4 w-full text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Sair</button>
+        </div>
+      </div>
+    );
+  }
+
+  const podeValidade = !!rid && canUse(pessoa, rid, "estoqueValidade");
+  if (!podeValidade) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 text-center bg-gray-50 dark:bg-gray-950">
+        <div className="max-w-sm">
+          <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Sem acesso às Etiquetas</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Esta conta não tem permissão de Controles de Validades neste restaurante.</p>
+          <button onClick={() => void signOut()} className="mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700">Sair</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <div className="max-w-3xl mx-auto px-3 sm:px-5 py-4">
+        <Routes>
+          <Route path="/r/:rid/estoqueValidade" element={<EstoqueValidadePage />} />
+          <Route path="*" element={<Navigate to={`/r/${rid}/estoqueValidade`} replace />} />
         </Routes>
       </div>
     </div>
