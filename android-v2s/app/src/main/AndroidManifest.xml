@@ -5,8 +5,15 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- Android 11+: declarar o app de leitura da Sunmi para poder chamá-lo -->
+    <!-- Android 11+: declarar os serviços/apps da Sunmi para poder vê-los e chamá-los.
+         Sem isto, bindService() na impressora interna retorna false ("serviço não encontrado"). -->
     <queries>
+        <!-- Impressora interna (serviço AIDL woyou) -->
+        <package android:name="woyou.aidlservice.jiuiv5" />
+        <intent>
+            <action android:name="woyou.aidlservice.jiuiv5.IWoyouService" />
+        </intent>
+        <!-- Leitor de QR da Sunmi -->
         <package android:name="com.sunmi.sunmiqrcodescanner" />
         <intent>
             <action android:name="com.summi.scan" />
