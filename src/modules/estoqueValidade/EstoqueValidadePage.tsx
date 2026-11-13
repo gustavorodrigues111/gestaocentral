@@ -390,11 +390,12 @@ export function EstoqueValidadePage() {
             ? <MaquinasTab maquinas={config.maquinas || []} ambientes={agruparPorAmbiente(locais).map((g) => g.ambiente).filter((a): a is LocalEstoque => !!a).map((a) => ({ id: a.id, nome: a.nome }))} bobinas={BOBINAS_ETIQ} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome }))} podeEditar={podeEditar} onSalvar={(ms) => void salvarConfig({ maquinas: ms })} />
             : <ProdutosTab produtos={produtos} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
           {naMaquininha && (
-            <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center space-y-2">
+            <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center space-y-3">
               {maquina && (
                 <div className="text-xs text-gray-400">Esta máquina: <b className="text-gray-600 dark:text-gray-300">{maquina.nome}</b> · <button type="button" onClick={() => { if (confirm("Trocar esta máquina por outra? Você vai escolher de novo qual é esta.")) { try { localStorage.removeItem("etiq_machine_id"); } catch { /* */ } setMachineId(""); } }} className="text-indigo-600 dark:text-indigo-400">trocar</button></div>
               )}
-              <button type="button" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }} className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><RefreshCw size={14} /> Buscar atualização do app</button>
+              <button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 active:scale-95"><RefreshCw size={16} /> Atualizar telas</button>
+              <div><button type="button" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }} className="inline-flex items-center gap-1.5 text-xs text-gray-400"><Smartphone size={13} /> Atualizar o app (raro)</button></div>
             </div>
           )}
         </div>
