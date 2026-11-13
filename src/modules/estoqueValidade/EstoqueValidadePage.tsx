@@ -771,7 +771,11 @@ function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
   useEffect(() => { if (!noAppSunmi()) return; const d1 = armarTeclaScan(() => void abrirRef.current()); const d2 = armarCodigoScan((c) => aoLerRef.current(c)); return () => { d1(); d2(); }; }, []);
 
   if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão pra dar baixa.</div>;
-  const aVencer = etiquetas.slice().sort((a, b) => a.validade.localeCompare(b.validade)).slice(0, 15);
+  const ordenadas = etiquetas.slice().sort((a, b) => a.validade.localeCompare(b.validade));
+  const filtrando = num !== "";
+  const lista = filtrando
+    ? ordenadas.filter((e) => e.numero != null && String(e.numero).padStart(5, "0").endsWith(num))
+    : ordenadas.slice(0, 15);
   return (
     <div className="space-y-4 max-w-md mx-auto">
       <button type="button" onClick={() => void abrirLeitor()} className="w-full h-16 rounded-2xl bg-indigo-600 text-white text-lg font-semibold inline-flex items-center justify-center gap-2 active:bg-indigo-700 shadow-sm"><Camera size={22} /> Ler QR da etiqueta</button>
@@ -784,19 +788,21 @@ function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
         </div>
       </div>
       {msg && <div className="text-sm text-rose-600 text-center">{msg}</div>}
-      {aVencer.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Vencendo primeiro</div>
+      <div>
+        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">{filtrando ? `Etiquetas com final ${num}` : "Vencendo primeiro"}</div>
+        {lista.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-4">{filtrando ? "Nenhuma etiqueta ativa com esse número." : "Nenhuma etiqueta ativa."}</div>
+        ) : (
           <div className="space-y-1.5">
-            {aVencer.map((e) => { const d = diasAteValidade(e.validade, hojeSP()); return (
+            {lista.map((e) => { const d = diasAteValidade(e.validade, hojeSP()); const cod = e.codigo || (e.numero != null ? String(e.numero).padStart(5, "0") : ""); return (
               <button key={e.id} type="button" onClick={() => setAberta(e)} className="w-full flex items-center justify-between gap-2 px-3 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-left active:bg-gray-50 dark:active:bg-gray-800/50">
-                <span className="truncate text-sm text-gray-900 dark:text-gray-100">{(e.codigo || (e.numero != null ? String(e.numero).padStart(5, "0") : "")) && <b className="tabular-nums text-gray-400 mr-2">{e.codigo || String(e.numero).padStart(5, "0")}</b>}{e.produtoNome}</span>
+                <span className="truncate text-sm text-gray-900 dark:text-gray-100">{cod && <b className="tabular-nums text-gray-500 dark:text-gray-300 mr-2">{cod}</b>}{e.produtoNome}</span>
                 <span className={`text-xs whitespace-nowrap ${d < 0 ? "text-rose-600" : d === 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400"}`}>{d < 0 ? "vencida" : d === 0 ? "hoje" : d === 1 ? "amanhã" : `${d}d`}</span>
               </button>
             ); })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
       {scan && <ScannerModal titulo="Ler QR da etiqueta" onDetect={aoLerQr} onClose={() => setScan(false)} />}
       {aberta && <BaixaEtiquetaModal etiqueta={aberta} usuario={usuario} onClose={() => setAberta(null)} />}
     </div>
