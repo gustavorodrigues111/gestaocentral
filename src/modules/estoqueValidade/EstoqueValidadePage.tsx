@@ -88,7 +88,17 @@ export type Operador = { id: string; nome: string; pinHash: string };
 export type Maquina = {
   id: string; nome: string; ambienteIds: string[];
   bobinaId?: string; modoProducao?: boolean; restaurantesAlvo?: string[]; operadores?: Operador[];
+  deviceId?: string | null;   // aparelho que já vinculou esta máquina (some da lista de associar)
 };
+
+// Id persistente deste aparelho (pra saber qual máquina ele já vinculou).
+function deviceIdLocal(): string {
+  try {
+    let id = localStorage.getItem("etiq_device_id");
+    if (!id) { id = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`; localStorage.setItem("etiq_device_id", id); }
+    return id;
+  } catch { return "dev_tmp"; }
+}
 
 /** Hash do PIN (SHA-256 com o id do operador como sal). Evita PIN em texto puro. */
 export async function hashPin(pin: string, salt: string): Promise<string> {
@@ -179,9 +189,24 @@ export function EstoqueValidadePage() {
   // tamanho, modo produção) vem de config.maquinas, lida ao vivo do servidor.
   const [machineId, setMachineId] = useState<string>(() => { try { return localStorage.getItem("etiq_machine_id") || ""; } catch { return ""; } });
   const maquina = naMaquininha ? (config.maquinas || []).find((m) => m.id === machineId) || null : null;
-  const parearMaquina = (id: string) => { try { localStorage.setItem("etiq_machine_id", id); } catch { /* sem storage */ } setMachineId(id); };
-  // Com uma só máquina cadastrada, vincula sozinho (não precisa escolher no aparelho).
-  useEffect(() => { if (naMaquininha && !maquina && (config.maquinas || []).length === 1) parearMaquina(config.maquinas![0].id); }, [naMaquininha, maquina, config.maquinas]); // eslint-disable-line react-hooks/exhaustive-deps
+  const deviceId = useMemo(() => deviceIdLocal(), []);
+  // Máquinas livres pra este aparelho associar: sem dono ou já deste aparelho.
+  const maquinasDisponiveis = (config.maquinas || []).filter((m) => !m.deviceId || m.deviceId === deviceId);
+  const parearMaquina = (id: string) => {
+    try { localStorage.setItem("etiq_machine_id", id); } catch { /* sem storage */ }
+    setMachineId(id);
+    // Marca a máquina como vinculada a este aparelho (e solta qualquer outra que fosse deste aparelho).
+    const novas = (config.maquinas || []).map((m) => (m.id === id ? { ...m, deviceId } : (m.deviceId === deviceId ? { ...m, deviceId: null } : m)));
+    void salvarConfig({ maquinas: novas });
+  };
+  const desvincularMaquina = () => {
+    const novas = (config.maquinas || []).map((m) => (m.id === machineId ? { ...m, deviceId: null } : m));
+    void salvarConfig({ maquinas: novas });
+    try { localStorage.removeItem("etiq_machine_id"); } catch { /* sem storage */ }
+    setMachineId("");
+  };
+  // Com uma só máquina DISPONÍVEL, vincula sozinho (não precisa escolher no aparelho).
+  useEffect(() => { if (naMaquininha && !maquina && maquinasDisponiveis.length === 1) parearMaquina(maquinasDisponiveis[0].id); }, [naMaquininha, maquina, maquinasDisponiveis.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (maquina?.bobinaId) { try { localStorage.setItem("etiq_bobina", maquina.bobinaId); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-impressora")); }
   }, [maquina?.bobinaId]);
@@ -291,12 +316,16 @@ export function EstoqueValidadePage() {
           <div className="flex justify-center mb-2 text-indigo-500"><Settings size={34} /></div>
           <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Qual máquina é esta?</h2>
           <p className="text-sm text-gray-500 mt-1 mb-4">{restaurante?.nome || ""} · escolha uma vez; depois é tudo pelo sistema.</p>
-          <div className="space-y-2">
-            {(config.maquinas || []).map((m) => (
-              <button key={m.id} type="button" onClick={() => parearMaquina(m.id)}
-                className="w-full h-14 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-semibold text-gray-900 dark:text-gray-100 active:scale-[.99]">{m.nome}</button>
-            ))}
-          </div>
+          {maquinasDisponiveis.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-sm text-gray-500">Todas as máquinas já estão vinculadas a outro aparelho. Libere uma no admin (Cadastro › Máquinas) pra associar aqui.</div>
+          ) : (
+            <div className="space-y-2">
+              {maquinasDisponiveis.map((m) => (
+                <button key={m.id} type="button" onClick={() => parearMaquina(m.id)}
+                  className="w-full h-14 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-semibold text-gray-900 dark:text-gray-100 active:scale-[.99]">{m.nome}</button>
+              ))}
+            </div>
+          )}
         </div>
       </PageContainer>
     );
@@ -445,7 +474,7 @@ export function EstoqueValidadePage() {
           {naMaquininha && (
             <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center space-y-3">
               {maquina && (
-                <div className="text-xs text-gray-400">Esta máquina: <b className="text-gray-600 dark:text-gray-300">{maquina.nome}</b> · <button type="button" onClick={() => { if (confirm("Trocar esta máquina por outra? Você vai escolher de novo qual é esta.")) { try { localStorage.removeItem("etiq_machine_id"); } catch { /* */ } setMachineId(""); } }} className="text-indigo-600 dark:text-indigo-400">trocar</button></div>
+                <div className="text-xs text-gray-400">Esta máquina: <b className="text-gray-600 dark:text-gray-300">{maquina.nome}</b> · <button type="button" onClick={() => { if (confirm("Trocar esta máquina por outra? Ela fica liberada e você escolhe de novo.")) desvincularMaquina(); }} className="text-indigo-600 dark:text-indigo-400">trocar</button></div>
               )}
               <button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 active:scale-95"><RefreshCw size={16} /> Atualizar telas</button>
               <div className="flex items-center justify-center gap-4 pt-1">
@@ -1051,53 +1080,92 @@ function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, o
   maquinas: Maquina[]; ambientes: { id: string; nome: string }[]; bobinas: [string, string][];
   restaurantes: { id: string; nome: string }[]; podeEditar: boolean; onSalvar: (ms: Maquina[]) => void;
 }) {
+  const [editId, setEditId] = useState<string | null>(null);
   const upd = (id: string, patch: Partial<Maquina>) => onSalvar(maquinas.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  const addNova = () => { const id = `maq_${Date.now().toString(36)}`; onSalvar([...maquinas, { id, nome: `Máquina ${maquinas.length + 1}`, ambienteIds: [] }]); setEditId(id); };
+  const emEdicao = maquinas.find((m) => m.id === editId) || null;
+  const ambNome = (id: string) => ambientes.find((a) => a.id === id)?.nome || "";
+  return (
+    <div className="space-y-3 max-w-2xl">
+      <p className="text-xs text-gray-500">Cada máquina mostra só os ambientes marcados nela (catálogo por localização). Você edita por aqui e aparece no aparelho sozinho — sem tocar nele.</p>
+      {maquinas.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhuma máquina cadastrada ainda.</div>
+      ) : (
+        <div className="space-y-2">
+          {maquinas.map((m) => (
+            <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+              <div className="min-w-0">
+                <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{m.nome}{m.deviceId ? <span className="ml-2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">● vinculada</span> : null}</div>
+                <div className="text-xs text-gray-400 truncate">
+                  {(m.ambienteIds || []).length ? (m.ambienteIds || []).map(ambNome).filter(Boolean).join(", ") : "sem ambientes"}
+                  {m.operadores?.length ? ` · ${m.operadores.length} operador${m.operadores.length > 1 ? "es" : ""}` : ""}
+                  {m.modoProducao ? " · modo produção" : ""}
+                </div>
+              </div>
+              {podeEditar && <button type="button" onClick={() => setEditId(m.id)} className="shrink-0 h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 flex items-center justify-center" title="Editar"><Pencil size={15} /></button>}
+            </div>
+          ))}
+        </div>
+      )}
+      {podeEditar && <Button size="sm" onClick={addNova}>+ Adicionar nova máquina</Button>}
+      {emEdicao && (
+        <MaquinaEditorModal maquina={emEdicao} ambientes={ambientes} bobinas={bobinas} restaurantes={restaurantes} podeEditar={podeEditar}
+          onChange={(patch) => upd(emEdicao.id, patch)}
+          onExcluir={() => { if (confirm(`Excluir a máquina "${emEdicao.nome}"?`)) { onSalvar(maquinas.filter((x) => x.id !== emEdicao.id)); setEditId(null); } }}
+          onClose={() => setEditId(null)} />
+      )}
+    </div>
+  );
+}
+
+function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, podeEditar, onChange, onExcluir, onClose }: {
+  maquina: Maquina; ambientes: { id: string; nome: string }[]; bobinas: [string, string][];
+  restaurantes: { id: string; nome: string }[]; podeEditar: boolean;
+  onChange: (patch: Partial<Maquina>) => void; onExcluir: () => void; onClose: () => void;
+}) {
   const toggleArr = (arr: string[] | undefined, v: string) => { const s = new Set(arr || []); if (s.has(v)) s.delete(v); else s.add(v); return [...s]; };
   const chip = (on: boolean, cor: string) => `px-2.5 py-1 rounded-full text-xs font-medium border ${on ? cor : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`;
   return (
-    <div className="space-y-4 max-w-2xl">
-      <p className="text-xs text-gray-500">Cada máquina mostra só os ambientes marcados aqui (catálogo por localização). Você edita por aqui e aparece no aparelho sozinho — sem tocar nele.</p>
-      {maquinas.length === 0 && <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhuma máquina cadastrada. Crie uma e marque os ambientes que ela mostra.</div>}
-      {maquinas.map((m) => (
-        <div key={m.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 space-y-3">
-          <div className="flex items-center gap-2">
-            <input defaultValue={m.nome} disabled={!podeEditar} onBlur={(e) => e.target.value.trim() && upd(m.id, { nome: e.target.value.trim() })} className={`${inp} font-semibold`} />
-            {podeEditar && <button type="button" onClick={() => { if (confirm(`Excluir a máquina "${m.nome}"?`)) onSalvar(maquinas.filter((x) => x.id !== m.id)); }} className="shrink-0 h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-rose-500 flex items-center justify-center"><Trash2 size={15} /></button>}
+    <Modal title="Máquina" onClose={onClose} maxWidth="max-w-md" headerAction={podeEditar ? <button type="button" onClick={onExcluir} className="text-gray-300 hover:text-rose-600 px-1" title="Excluir máquina"><Trash2 size={16} /></button> : undefined}>
+      <div className="space-y-4">
+        <div>
+          <div className="text-xs text-gray-500 mb-1">Nome</div>
+          <input defaultValue={m.nome} disabled={!podeEditar} onBlur={(e) => e.target.value.trim() && onChange({ nome: e.target.value.trim() })} className={`${inp} font-semibold`} />
+        </div>
+        <div>
+          <div className="text-xs text-gray-500 mb-1">Ambientes que aparecem nesta máquina</div>
+          <div className="flex flex-wrap gap-1.5">
+            {ambientes.length === 0 && <span className="text-xs text-gray-400">Cadastre ambientes em Locais.</span>}
+            {ambientes.map((a) => (
+              <button key={a.id} type="button" disabled={!podeEditar} onClick={() => onChange({ ambienteIds: toggleArr(m.ambienteIds, a.id) })} className={chip((m.ambienteIds || []).includes(a.id), "bg-indigo-600 text-white border-indigo-600")}>{a.nome}</button>
+            ))}
           </div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-500 mb-1">Tamanho da etiqueta</div>
+          <select value={m.bobinaId || ""} disabled={!podeEditar} onChange={(e) => onChange({ bobinaId: e.target.value })} className={inp}>
+            <option value="">Padrão do aparelho</option>
+            {bobinas.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" disabled={!podeEditar} checked={!!m.modoProducao} onChange={(e) => onChange({ modoProducao: e.target.checked })} /> Modo produção (vários restaurantes)</label>
+        {m.modoProducao && (
           <div>
-            <div className="text-xs text-gray-500 mb-1">Ambientes que aparecem nesta máquina</div>
+            <div className="text-xs text-gray-500 mb-1">Restaurantes que esta máquina pode etiquetar</div>
             <div className="flex flex-wrap gap-1.5">
-              {ambientes.length === 0 && <span className="text-xs text-gray-400">Cadastre ambientes em Locais.</span>}
-              {ambientes.map((a) => (
-                <button key={a.id} type="button" disabled={!podeEditar} onClick={() => upd(m.id, { ambienteIds: toggleArr(m.ambienteIds, a.id) })} className={chip((m.ambienteIds || []).includes(a.id), "bg-indigo-600 text-white border-indigo-600")}>{a.nome}</button>
+              {restaurantes.map((r) => (
+                <button key={r.id} type="button" disabled={!podeEditar} onClick={() => onChange({ restaurantesAlvo: toggleArr(m.restaurantesAlvo, r.id) })} className={chip((m.restaurantesAlvo || []).includes(r.id), "bg-emerald-600 text-white border-emerald-600")}>{r.nome}</button>
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Tamanho da etiqueta</div>
-              <select value={m.bobinaId || ""} disabled={!podeEditar} onChange={(e) => upd(m.id, { bobinaId: e.target.value })} className={inp}>
-                <option value="">Padrão do aparelho</option>
-                {bobinas.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-              </select>
-            </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 h-9"><input type="checkbox" disabled={!podeEditar} checked={!!m.modoProducao} onChange={(e) => upd(m.id, { modoProducao: e.target.checked })} /> Modo produção (vários restaurantes)</label>
-          </div>
-          {m.modoProducao && (
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Restaurantes que esta máquina pode etiquetar</div>
-              <div className="flex flex-wrap gap-1.5">
-                {restaurantes.map((r) => (
-                  <button key={r.id} type="button" disabled={!podeEditar} onClick={() => upd(m.id, { restaurantesAlvo: toggleArr(m.restaurantesAlvo, r.id) })} className={chip((m.restaurantesAlvo || []).includes(r.id), "bg-emerald-600 text-white border-emerald-600")}>{r.nome}</button>
-                ))}
-              </div>
-            </div>
-          )}
-          <MaquinaOperadores operadores={m.operadores || []} podeEditar={podeEditar} onChange={(ops) => upd(m.id, { operadores: ops })} />
-        </div>
-      ))}
-      {podeEditar && <Button size="sm" onClick={() => onSalvar([...maquinas, { id: `maq_${Date.now().toString(36)}`, nome: `Máquina ${maquinas.length + 1}`, ambienteIds: [] }])}>+ Nova máquina</Button>}
-    </div>
+        )}
+        <MaquinaOperadores operadores={m.operadores || []} podeEditar={podeEditar} onChange={(ops) => onChange({ operadores: ops })} />
+        {m.deviceId && podeEditar && (
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400">Vinculada a um aparelho. <button type="button" onClick={() => onChange({ deviceId: null })} className="text-indigo-600 dark:text-indigo-400">Liberar</button> pra poder associar em outro.</div>
+        )}
+        <div className="flex justify-end pt-1"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
+      </div>
+    </Modal>
   );
 }
 
