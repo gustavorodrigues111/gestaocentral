@@ -365,7 +365,9 @@ export function EstoqueValidadePage() {
           </div>
         </div>
       )}
-      {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} naMaquininha={naMaquininha} onAbrirEtiquetas={() => { if (naMaquininha) { setAba("baixa"); return; } try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
+      {aba === "painel" && (naMaquininha
+        ? <PainelMaquininha etiquetas={etiquetasAtivas} usuario={{ uid: me?.id || null, nome: me?.nome || null }} />
+        : <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />)}
       {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
         ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
       {aba === "baixa" && (naMaquininha
@@ -413,7 +415,7 @@ export function EstoqueValidadePage() {
 }
 
 // ═══ PAINEL (saldo + FEFO) ═══════════════════════════════════════════════════
-function PainelTab({ produtos, lotes, localNome, etiquetas, onAbrirEtiquetas, naMaquininha }: { produtos: ProdutoEtiqueta[]; lotes: LoteEstoque[]; localNome: (id?: string | null) => string; etiquetas: EtiquetaEmitida[]; onAbrirEtiquetas: () => void; naMaquininha?: boolean }) {
+function PainelTab({ produtos, lotes, localNome, etiquetas, onAbrirEtiquetas }: { produtos: ProdutoEtiqueta[]; lotes: LoteEstoque[]; localNome: (id?: string | null) => string; etiquetas: EtiquetaEmitida[]; onAbrirEtiquetas: () => void }) {
   const ativos = lotes.filter((l) => l.status === "ativo" && l.qtdRestante > 0);
   const grupos = useMemo(() => {
     const g = { vencido: [] as LoteEstoque[], hoje: [] as LoteEstoque[], amanha: [] as LoteEstoque[], semana: [] as LoteEstoque[] };
@@ -432,35 +434,6 @@ function PainelTab({ produtos, lotes, localNome, etiquetas, onAbrirEtiquetas, na
     ["Amanhã", grupos.amanha, "bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900 text-orange-700 dark:text-orange-300"],
     ["Nesta semana", grupos.semana, "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-300"],
   ];
-
-  // Maquininha (V1): sem gestão de estoque. O painel é a lista de etiquetas a
-  // vencer, em ordem cronológica (mais próximas primeiro).
-  if (naMaquininha) {
-    const aVencer = etiquetas.slice().sort((a, b) => a.validade.localeCompare(b.validade));
-    return (
-      <div className="space-y-4">
-        <ResumoEtiquetas ativas={etiquetas} onAbrir={onAbrirEtiquetas} />
-        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Etiquetas a vencer</div>
-        {aVencer.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhuma etiqueta ativa no momento.</div>
-        ) : (
-          <div className="space-y-1.5">
-            {aVencer.map((e) => {
-              const d = diasAte(e.validade);
-              const cor = d < 0 ? "text-rose-600" : d === 0 ? "text-amber-600 dark:text-amber-400" : d === 1 ? "text-orange-600 dark:text-orange-400" : "text-gray-500";
-              const txt = d < 0 ? `venceu ${fmtBR(e.validade)}` : d === 0 ? "vence hoje" : d === 1 ? "vence amanhã" : `vence ${fmtBR(e.validade)}`;
-              return (
-                <div key={e.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{e.produtoNome}</span>
-                  <span className={`text-xs whitespace-nowrap ${cor}`}>{txt}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">
@@ -635,6 +608,49 @@ function BaixaTab({ rid, usuario, etiquetas, produtos, lotesAtivos, localNome, p
       {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"}`}>{msg}</div>}
       {scan && <ScannerModal onDetect={aoLerQr} onClose={() => setScan(false)} />}
       {etiquetaLida && <BaixaEtiquetaModal etiqueta={etiquetaLida} usuario={usuario} onClose={() => setEtiquetaLida(null)} />}
+    </div>
+  );
+}
+
+// ═══ PAINEL NA MAQUININHA (filtra por prazo + toca pra dar baixa) ════════════
+function PainelMaquininha({ etiquetas, usuario }: { etiquetas: EtiquetaEmitida[]; usuario: { uid?: string | null; nome?: string | null } }) {
+  const [filtro, setFiltro] = useState<"todas" | "vencida" | "hoje" | "amanha">("todas");
+  const [aberta, setAberta] = useState<EtiquetaEmitida | null>(null);
+  const hoje = hojeSP();
+  const comDias = useMemo(() => etiquetas.map((e) => ({ e, d: diasAteValidade(e.validade, hoje) })).sort((a, b) => a.d - b.d), [etiquetas, hoje]);
+  const n = { vencida: 0, hojeN: 0, amanha: 0 };
+  for (const { d } of comDias) { if (d < 0) n.vencida++; else if (d === 0) n.hojeN++; else if (d === 1) n.amanha++; }
+  const lista = comDias.filter(({ d }) => filtro === "todas" ? true : filtro === "vencida" ? d < 0 : filtro === "hoje" ? d === 0 : d === 1);
+  const tiles: [typeof filtro, string, number, string][] = [
+    ["vencida", "Vencidas", n.vencida, "text-rose-600 dark:text-rose-400"],
+    ["hoje", "Vencem hoje", n.hojeN, "text-amber-600 dark:text-amber-400"],
+    ["amanha", "Amanhã", n.amanha, "text-orange-600 dark:text-orange-400"],
+    ["todas", "Ativas", etiquetas.length, "text-gray-900 dark:text-gray-100"],
+  ];
+  return (
+    <div className="space-y-4 max-w-md mx-auto">
+      <div className="grid grid-cols-4 gap-2">
+        {tiles.map(([k, l, c, cor]) => (
+          <button key={k} type="button" onClick={() => setFiltro(k)} className={`rounded-xl border p-2 text-center active:scale-95 ${filtro === k ? "border-indigo-400 dark:border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/20" : "border-gray-200 dark:border-gray-800"}`}>
+            <div className={`text-2xl font-bold tabular-nums ${c > 0 || k === "todas" ? cor : "text-gray-300 dark:text-gray-600"}`}>{c}</div>
+            <div className="text-[10px] text-gray-500 leading-tight">{l}</div>
+          </button>
+        ))}
+      </div>
+      <div className="text-xs text-gray-400 text-center">{lista.length === 0 ? "Nada aqui." : "Toque numa etiqueta pra dar baixa."}</div>
+      <div className="space-y-1.5">
+        {lista.map(({ e, d }) => {
+          const cor = d < 0 ? "text-rose-600" : d === 0 ? "text-amber-600 dark:text-amber-400" : d === 1 ? "text-orange-600 dark:text-orange-400" : "text-gray-400";
+          const txt = d < 0 ? `venceu ${fmtBR(e.validade)}` : d === 0 ? "vence hoje" : d === 1 ? "vence amanhã" : `vence ${fmtBR(e.validade)}`;
+          return (
+            <button key={e.id} type="button" onClick={() => setAberta(e)} className="w-full flex items-center justify-between gap-3 px-3 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-left active:bg-gray-50 dark:active:bg-gray-800/50">
+              <span className="truncate text-sm text-gray-900 dark:text-gray-100">{e.codigo && <b className="tabular-nums text-gray-400 mr-2">{e.codigo}</b>}{e.produtoNome}</span>
+              <span className={`text-xs whitespace-nowrap ${cor}`}>{txt}</span>
+            </button>
+          );
+        })}
+      </div>
+      {aberta && <BaixaEtiquetaModal etiqueta={aberta} usuario={usuario} onClose={() => setAberta(null)} />}
     </div>
   );
 }
