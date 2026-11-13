@@ -9,7 +9,7 @@
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw, Home, ChevronRight } from "lucide-react";
+import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw, Home, ChevronRight, ChevronDown, Smartphone } from "lucide-react";
 import { isComandasKioskHost, isEtiquetasKioskHost } from "../../core/restaurant/subdomain";
 import { APP_VERSION_LABEL } from "../../core/version";
 import { destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
@@ -42,7 +42,7 @@ function PrinterCfgModal({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -77,7 +77,15 @@ export type ProdutoEtiqueta = {
   precoCusto?: number | null; qrTokenEstoque: string; ativo: boolean; criadoEm: string;
   locais?: string[];  // locais onde o produto fica (só os compatíveis com a matriz)
 };
-export type EstoqueConfig = { unidades: string[]; categorias: string[]; metodos: MetodoConservacao[] };
+// Máquina de etiqueta (maquininha/estação): config remota, editada no admin e
+// lida ao vivo pelo aparelho. Define quais AMBIENTES aparecem nela (catálogo por
+// localização), o tamanho do rolo e, no modo produção, quais restaurantes ela
+// pode etiquetar.
+export type Maquina = {
+  id: string; nome: string; ambienteIds: string[];
+  bobinaId?: string; modoProducao?: boolean; restaurantesAlvo?: string[];
+};
+export type EstoqueConfig = { unidades: string[]; categorias: string[]; metodos: MetodoConservacao[]; maquinas?: Maquina[] };
 export type LoteEstoque = {
   id: string; restaurantId: string; produtoId: string; produtoNome: string;
   localId?: string | null; qtdInicial: number; qtdRestante: number; unidade: string;
@@ -122,7 +130,8 @@ function SearchInput({ value, onChange, placeholder, autoFocus }: { value: strin
 
 export function EstoqueValidadePage() {
   const { pessoa: me } = useAuth();
-  const { restaurants } = useRestaurant();
+  const { restaurants, setActiveId } = useRestaurant();
+  const nav = useNavigate();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const restaurante = restaurants.find((r) => r.id === rid) || null;
@@ -132,7 +141,7 @@ export function EstoqueValidadePage() {
   const podeEditar = can("estoqueValidade", "editar");
 
   const [aba, setAba] = useTabPersistida<"home" | "painel" | "etiquetas" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
-  const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases">("locais");
+  const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases" | "maquinas">("locais");
   // No app do caixa (kiosk), a navegação vira um MENU (como o Comandas) e abre
   // direto nas Etiquetas (emitir/dar baixa), em vez da barra de abas do admin.
   const naKiosk = isComandasKioskHost() || isEtiquetasKioskHost();
@@ -141,6 +150,8 @@ export function EstoqueValidadePage() {
   const naMaquininha = noAppSunmi();
   const [menuAberto, setMenuAberto] = useState(false);
   const [printerCfg, setPrinterCfg] = useState(false);
+  const [trocaRest, setTrocaRest] = useState(false);
+  const trocarRestaurante = (id: string) => { try { localStorage.setItem("etiq_kiosk_rid", id); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-kiosk-rid")); setActiveId(id); setTrocaRest(false); setAba("home"); nav(`/r/${id}/estoqueValidade`, { replace: true }); };
   useEffect(() => { if (naMaquininha) setAba("home"); else if (naKiosk) setAba("etiquetas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
@@ -153,6 +164,14 @@ export function EstoqueValidadePage() {
     return { vencidas, hoje, ativas: etiquetasAtivas.length };
   }, [etiquetasAtivas]);
   const [config, setConfig] = useState<EstoqueConfig>(CONFIG_PADRAO);
+  // Máquina pareada neste aparelho (só a maquininha). A config dela (ambientes,
+  // tamanho, modo produção) vem de config.maquinas, lida ao vivo do servidor.
+  const [machineId, setMachineId] = useState<string>(() => { try { return localStorage.getItem("etiq_machine_id") || ""; } catch { return ""; } });
+  const maquina = naMaquininha ? (config.maquinas || []).find((m) => m.id === machineId) || null : null;
+  const parearMaquina = (id: string) => { try { localStorage.setItem("etiq_machine_id", id); } catch { /* sem storage */ } setMachineId(id); };
+  useEffect(() => {
+    if (maquina?.bobinaId) { try { localStorage.setItem("etiq_bobina", maquina.bobinaId); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-impressora")); }
+  }, [maquina?.bobinaId]);
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string } | null>(null);
   const [vinculosLocal, setVinculosLocal] = useState<LocalEstoque | null>(null);
@@ -168,7 +187,7 @@ export function EstoqueValidadePage() {
       onSnapshot(query(collection(db, "etiquetas"), where("restaurantId", "==", rid), where("status", "==", "ativa")), (s) => setEtiquetasAtivas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EtiquetaEmitida)), () => setEtiquetasAtivas([])),
       onSnapshot(doc(db, "estoqueConfig", rid), (s) => {
         const d = (s.data() || {}) as Partial<EstoqueConfig>;
-        setConfig({ unidades: d.unidades?.length ? d.unidades : UNIDADES_PADRAO, categorias: d.categorias || [], metodos: d.metodos?.length ? d.metodos : METODOS_PADRAO });
+        setConfig({ unidades: d.unidades?.length ? d.unidades : UNIDADES_PADRAO, categorias: d.categorias || [], metodos: d.metodos?.length ? d.metodos : METODOS_PADRAO, maquinas: d.maquinas || [] });
       }, () => setConfig(CONFIG_PADRAO)),
     ];
     return () => subs.forEach((u) => u());
@@ -235,19 +254,54 @@ export function EstoqueValidadePage() {
   if (permLoading) return null;
   if (!podeVer) return <div className="p-6 text-sm text-gray-500">Você não tem acesso à Gestão de Estoques e Validades.</div>;
 
+  // Maquininha ainda não vinculada a uma máquina configurada (e há máquinas no
+  // restaurante): pede pra escolher qual máquina é esta. Depois fica remoto.
+  if (naMaquininha && (config.maquinas || []).length > 0 && !maquina) {
+    return (
+      <PageContainer>
+        <div className="max-w-sm mx-auto py-8 text-center">
+          <div className="flex justify-center mb-2 text-indigo-500"><Settings size={34} /></div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Qual máquina é esta?</h2>
+          <p className="text-sm text-gray-500 mt-1 mb-4">{restaurante?.nome || ""} · escolha uma vez; depois é tudo pelo sistema.</p>
+          <div className="space-y-2">
+            {(config.maquinas || []).map((m) => (
+              <button key={m.id} type="button" onClick={() => parearMaquina(m.id)}
+                className="w-full h-14 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-semibold text-gray-900 dark:text-gray-100 active:scale-[.99]">{m.nome}</button>
+            ))}
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
+
   const ABAS = [["painel", "Painel", BarChart3], ["etiquetas", "Etiquetas", Printer], ["baixa", "Baixa", PackageMinus], ["entrada", "Entrada", PackagePlus], ["cadastro", "Cadastro", FolderOpen]] as const;
 
   return (
     <PageContainer>
       {naMaquininha ? (
         aba === "home" ? (
-          <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="relative flex items-center justify-between gap-2 mb-4">
             <div>
               <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Tag size={22} className="text-indigo-500" /> Etiquetas</h1>
-              <p className="text-[12px] text-gray-500">{restaurante?.nome || ""}</p>
+              {restaurants.length > 1 ? (
+                <button type="button" onClick={() => setTrocaRest((v) => !v)} className="text-[12px] text-indigo-600 dark:text-indigo-400 font-medium inline-flex items-center gap-1 active:opacity-70">{restaurante?.nome || "Restaurante"} <ChevronDown size={13} /></button>
+              ) : (
+                <p className="text-[12px] text-gray-500">{restaurante?.nome || ""}</p>
+              )}
             </div>
             <button type="button" title="Buscar atualização do app" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }}
               className="h-10 w-10 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 flex items-center justify-center active:scale-95"><RefreshCw size={18} /></button>
+            {trocaRest && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setTrocaRest(false)} />
+                <div className="absolute left-0 top-14 z-50 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
+                  <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">Trocar restaurante</div>
+                  {restaurants.map((r) => (
+                    <button key={r.id} type="button" onClick={() => trocarRestaurante(r.id)} className={`w-full text-left px-3 py-2 text-sm ${r.id === rid ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{r.nome}</button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <button type="button" onClick={() => setAba("home")}
@@ -316,13 +370,14 @@ export function EstoqueValidadePage() {
         </div>
       )}
       {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} naMaquininha={naMaquininha} onAbrirEtiquetas={() => { if (naMaquininha) { setAba("baixa"); return; } try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
-      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")} />}
+      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
+        ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
       {aba === "baixa" && <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
       {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
         <div>
           <div className={naMaquininha ? "grid grid-cols-3 gap-2 mb-4" : "flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2"}>
-            {([["locais", <span className="inline-flex items-center gap-1.5"><MapPin size={naMaquininha ? 18 : 14} /> Locais</span>], ["produtos", <span className="inline-flex items-center gap-1.5"><Tag size={naMaquininha ? 18 : 14} /> Produtos</span>], ["bases", <span className="inline-flex items-center gap-1.5"><Settings size={naMaquininha ? 18 : 14} /> Bases</span>]] as const).map(([k, l]) => (
+            {(([["locais", <span className="inline-flex items-center gap-1.5"><MapPin size={naMaquininha ? 18 : 14} /> Locais</span>], ["produtos", <span className="inline-flex items-center gap-1.5"><Tag size={naMaquininha ? 18 : 14} /> Produtos</span>], ["bases", <span className="inline-flex items-center gap-1.5"><Settings size={naMaquininha ? 18 : 14} /> Bases</span>], ...(naMaquininha ? [] : [["maquinas", <span className="inline-flex items-center gap-1.5"><Smartphone size={14} /> Máquinas</span>]])]) as ["locais" | "produtos" | "bases" | "maquinas", ReactNode][]).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setSubCad(k)}
                 className={naMaquininha
                   ? `h-16 rounded-xl text-sm font-semibold flex items-center justify-center ${subCad === k ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`
@@ -333,7 +388,15 @@ export function EstoqueValidadePage() {
             ? <LocaisTab locais={locais} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} />
             : subCad === "bases"
             ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
+            : subCad === "maquinas"
+            ? <MaquinasTab maquinas={config.maquinas || []} ambientes={agruparPorAmbiente(locais).map((g) => g.ambiente).filter((a): a is LocalEstoque => !!a).map((a) => ({ id: a.id, nome: a.nome }))} bobinas={BOBINAS_ETIQ} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome }))} podeEditar={podeEditar} onSalvar={(ms) => void salvarConfig({ maquinas: ms })} />
             : <ProdutosTab produtos={produtos} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
+          {naMaquininha && maquina && (
+            <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center">
+              <div className="text-xs text-gray-400">Esta máquina: <b className="text-gray-600 dark:text-gray-300">{maquina.nome}</b></div>
+              <button type="button" onClick={() => { if (confirm("Trocar esta máquina por outra? Você vai escolher de novo qual é esta.")) { try { localStorage.removeItem("etiq_machine_id"); } catch { /* */ } setMachineId(""); } }} className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">Trocar máquina</button>
+            </div>
+          )}
         </div>
       )}
 
@@ -796,6 +859,61 @@ function BasesTab({ config, podeEditar, onSalvar }: { config: EstoqueConfig; pod
       <ListaBase titulo={<span className="inline-flex items-center gap-1.5"><Snowflake size={14} /> Métodos de conservação (após aberto)</span>} itens={config.metodos.map((m) => m.label)} podeEditar={podeEditar}
         onAdd={(v) => onSalvar({ metodos: [...config.metodos, { id: slug(v), label: v }] })}
         onRemove={(v) => onSalvar({ metodos: config.metodos.filter((m) => m.label !== v) })} />
+    </div>
+  );
+}
+
+// Máquinas de etiqueta (maquininhas/estações). Config remota: o que você marca
+// aqui aparece no aparelho sozinho (ambientes que ele mostra, tamanho, modo prod).
+function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, onSalvar }: {
+  maquinas: Maquina[]; ambientes: { id: string; nome: string }[]; bobinas: [string, string][];
+  restaurantes: { id: string; nome: string }[]; podeEditar: boolean; onSalvar: (ms: Maquina[]) => void;
+}) {
+  const upd = (id: string, patch: Partial<Maquina>) => onSalvar(maquinas.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  const toggleArr = (arr: string[] | undefined, v: string) => { const s = new Set(arr || []); if (s.has(v)) s.delete(v); else s.add(v); return [...s]; };
+  const chip = (on: boolean, cor: string) => `px-2.5 py-1 rounded-full text-xs font-medium border ${on ? cor : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`;
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-xs text-gray-500">Cada máquina mostra só os ambientes marcados aqui (catálogo por localização). Você edita por aqui e aparece no aparelho sozinho — sem tocar nele.</p>
+      {maquinas.length === 0 && <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhuma máquina cadastrada. Crie uma e marque os ambientes que ela mostra.</div>}
+      {maquinas.map((m) => (
+        <div key={m.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <input defaultValue={m.nome} disabled={!podeEditar} onBlur={(e) => e.target.value.trim() && upd(m.id, { nome: e.target.value.trim() })} className={`${inp} font-semibold`} />
+            {podeEditar && <button type="button" onClick={() => { if (confirm(`Excluir a máquina "${m.nome}"?`)) onSalvar(maquinas.filter((x) => x.id !== m.id)); }} className="shrink-0 h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-rose-500 flex items-center justify-center"><Trash2 size={15} /></button>}
+          </div>
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Ambientes que aparecem nesta máquina</div>
+            <div className="flex flex-wrap gap-1.5">
+              {ambientes.length === 0 && <span className="text-xs text-gray-400">Cadastre ambientes em Locais.</span>}
+              {ambientes.map((a) => (
+                <button key={a.id} type="button" disabled={!podeEditar} onClick={() => upd(m.id, { ambienteIds: toggleArr(m.ambienteIds, a.id) })} className={chip((m.ambienteIds || []).includes(a.id), "bg-indigo-600 text-white border-indigo-600")}>{a.nome}</button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Tamanho da etiqueta</div>
+              <select value={m.bobinaId || ""} disabled={!podeEditar} onChange={(e) => upd(m.id, { bobinaId: e.target.value || undefined })} className={inp}>
+                <option value="">Padrão do aparelho</option>
+                {bobinas.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 h-9"><input type="checkbox" disabled={!podeEditar} checked={!!m.modoProducao} onChange={(e) => upd(m.id, { modoProducao: e.target.checked })} /> Modo produção (vários restaurantes)</label>
+          </div>
+          {m.modoProducao && (
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Restaurantes que esta máquina pode etiquetar</div>
+              <div className="flex flex-wrap gap-1.5">
+                {restaurantes.map((r) => (
+                  <button key={r.id} type="button" disabled={!podeEditar} onClick={() => upd(m.id, { restaurantesAlvo: toggleArr(m.restaurantesAlvo, r.id) })} className={chip((m.restaurantesAlvo || []).includes(r.id), "bg-emerald-600 text-white border-emerald-600")}>{r.nome}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+      {podeEditar && <Button size="sm" onClick={() => onSalvar([...maquinas, { id: `maq_${Date.now().toString(36)}`, nome: `Máquina ${maquinas.length + 1}`, ambienteIds: [] }])}>+ Nova máquina</Button>}
     </div>
   );
 }

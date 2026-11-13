@@ -361,6 +361,7 @@ function EtiquetasKioskShell() {
   const { signOut, pessoa } = useAuth();
   const nav = useNavigate();
   const [escolhido, setEscolhido] = useState<string | null>(() => { try { return localStorage.getItem("etiq_kiosk_rid"); } catch { return null; } });
+  useEffect(() => { const h = () => { try { setEscolhido(localStorage.getItem("etiq_kiosk_rid")); } catch { /* */ } }; window.addEventListener("etiq-kiosk-rid", h); return () => window.removeEventListener("etiq-kiosk-rid", h); }, []);
   const escolhidoValido = escolhido && restaurants.some((r) => r.id === escolhido) ? escolhido : null;
   const rid = restaurants.length === 1 ? restaurants[0].id : (escolhidoValido || "");
   useEffect(() => { if (rid && activeId !== rid) setActiveId(rid); }, [rid, activeId]); // eslint-disable-line react-hooks/exhaustive-deps

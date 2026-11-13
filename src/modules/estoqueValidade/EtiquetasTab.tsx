@@ -66,10 +66,14 @@ type Props = {
   // Maquininha: a home já tem Emitir/Baixa/Painel, então o wizard começa DIRETO
   // na emissão (sem a tela "início") e o voltar do topo sai pra home (onSair).
   pularInicio?: boolean; onSair?: () => void;
+  // Config da máquina: ambientes visíveis (catálogo por localização) e modo
+  // produção (etiqueta pode sair com a empresa de outro restaurante).
+  ambienteIds?: string[]; modoProducao?: boolean; restaurantesAlvo?: string[];
+  restaurantes?: Array<{ id: string; nome: string; razaoSocial?: string | null; cnpj?: string | null }>;
 };
 
 export function EtiquetasTab(props: Props) {
-  const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos, pularInicio, onSair } = props;
+  const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos, pularInicio, onSair, ambienteIds, modoProducao, restaurantesAlvo, restaurantes } = props;
   const [passo, setPasso] = useState<Passo>(() => (pularInicio ? calcStartEmissao(locais).passo : "inicio"));
   const [ambienteId, setAmbienteId] = useState<string>(() => (pularInicio ? calcStartEmissao(locais).ambienteId : ""));   // "" = sem ambiente
   const [local, setLocal] = useState<LocalEstoque | null>(null);
@@ -120,9 +124,25 @@ export function EtiquetasTab(props: Props) {
 
   const metodoLabel = (id?: string | null) => config.metodos.find((m) => m.id === id)?.label || "";
   // Ambientes com os equipamentos que emitem etiqueta (têm conservação definida).
-  const grupos = useMemo(() => agruparPorAmbiente(locais)
-    .map((g) => ({ ...g, equipamentos: g.equipamentos.filter((l) => !!l.metodoConservacao) }))
-    .filter((g) => g.equipamentos.length > 0), [locais]);
+  const grupos = useMemo(() => {
+    let gs = agruparPorAmbiente(locais)
+      .map((g) => ({ ...g, equipamentos: g.equipamentos.filter((l) => !!l.metodoConservacao) }))
+      .filter((g) => g.equipamentos.length > 0);
+    // Catálogo por localização: a máquina só mostra os ambientes atribuídos a ela.
+    if (ambienteIds && ambienteIds.length) gs = gs.filter((g) => ambienteIds.includes(g.ambiente?.id || ""));
+    return gs;
+  }, [locais, ambienteIds]);
+  // Modo produção: restaurante-alvo da etiqueta (empresa/CNPJ que vão impressos).
+  const opcoesAlvo = useMemo(() => (restaurantes || []).filter((r) => (restaurantesAlvo || []).includes(r.id)), [restaurantes, restaurantesAlvo]);
+  const [alvoId, setAlvoId] = useState("");
+  useEffect(() => {
+    if (modoProducao && opcoesAlvo.length && !opcoesAlvo.some((r) => r.id === alvoId)) {
+      setAlvoId(opcoesAlvo.some((r) => r.id === rid) ? rid : opcoesAlvo[0].id);
+    }
+  }, [modoProducao, opcoesAlvo, alvoId, rid]);
+  const alvo = opcoesAlvo.find((r) => r.id === alvoId) || null;
+  const empresaLabel = modoProducao && alvo ? (alvo.razaoSocial || alvo.nome) : empresa;
+  const cnpjLabel = modoProducao && alvo ? (alvo.cnpj ?? null) : cnpj;
   const equipamentos = useMemo(() => grupos.flatMap((g) => g.equipamentos), [grupos]);
   const grupoAtual = grupos.find((g) => (g.ambiente?.id || "") === ambienteId) || null;
   const nomeAmbiente = grupoAtual?.ambiente?.nome || (grupos.length > 1 ? "Sem ambiente" : "");
@@ -133,7 +153,7 @@ export function EtiquetasTab(props: Props) {
   const urgentes = ativas.filter((e) => diasAteValidade(e.validade, hoje) <= 0).length;
 
   // Prévia com lote/QR de exemplo (os definitivos nascem no clique)
-  const chavePrevia = produto && local ? `${produto.id}|${local.id}|${bobinaAtual.id}|${largura}` : "";
+  const chavePrevia = produto && local ? `${produto.id}|${local.id}|${bobinaAtual.id}|${largura}|${alvoId}` : "";
   const metodoDoLocal = metodoLabel(local?.metodoConservacao);
   useEffect(() => {
     if (passo !== "confirmar" || !produto || !local || dias == null) return;
@@ -141,10 +161,10 @@ export function EtiquetasTab(props: Props) {
     const agora = new Date();
     desenharEtiqueta(blocosValidade({
       produto: produto.nome, metodo: metodoDoLocal, dias, manipulacao: agora, validade: validadeDe(agora, dias),
-      responsavel, lote: novoCodigoLote(agora), empresa, cnpj, qr: "https://planejamento.app/e/previa",
+      responsavel, lote: novoCodigoLote(agora), empresa: empresaLabel, cnpj: cnpjLabel, qr: "https://planejamento.app/e/previa",
     }), bobina, largura).then((c) => { if (vivo) setPrevia({ chave: chavePrevia, url: c.toDataURL("image/png") }); });
     return () => { vivo = false; };
-  }, [passo, produto, local, dias, metodoDoLocal, responsavel, empresa, cnpj, bobina, largura, chavePrevia]);
+  }, [passo, produto, local, dias, metodoDoLocal, responsavel, empresaLabel, cnpjLabel, bobina, largura, chavePrevia]);
 
   if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão para etiquetas.</div>;
 
@@ -193,7 +213,7 @@ export function EtiquetasTab(props: Props) {
           await enfileirarEtiqueta({
             restaurantId: rid, produtoNome: produto.nome, metodoLabel: metodo, dias,
             manipulacaoIso: agora.toISOString(), validadeYmd: ymd(validade), responsavel,
-            lote, empresa, cnpj: cnpj ?? null, qrTokens: docs.map((d) => d.qrToken),
+            lote, empresa: empresaLabel, cnpj: cnpjLabel ?? null, qrTokens: docs.map((d) => d.qrToken),
             criadoPorUid: responsavelUid ?? null, criadoPorNome: responsavel,
           });
         } catch { setMsg({ ok: false, texto: "Não consegui enviar pra impressora do caixa. Verifique a internet e tente de novo." }); return; }
@@ -203,7 +223,7 @@ export function EtiquetasTab(props: Props) {
       }
 
       const canvases = await Promise.all(docs.map((d) => desenharEtiqueta(blocosValidade({
-        produto: produto.nome, metodo, dias, manipulacao: agora, validade, responsavel, lote, empresa, cnpj, qr: urlEtiqueta(d.qrToken),
+        produto: produto.nome, metodo, dias, manipulacao: agora, validade, responsavel, lote, empresa: empresaLabel, cnpj: cnpjLabel, qr: urlEtiqueta(d.qrToken),
       }), bobina, largura)));
       const r = await imprimirEtiquetas(canvases, bobina, destino as Destino);
       if (!r.ok) { setMsg({ ok: false, texto: r.erro || "Falha ao imprimir." }); return; }
@@ -392,6 +412,18 @@ export function EtiquetasTab(props: Props) {
         {cabecalho(produto.nome, `${nomeCompleto(local, locais)} · ${metodoLabel(local.metodoConservacao)}`)}
         {avisoMsg}
         {aviso && <div className="mb-3 inline-block text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-2.5 py-1.5 rounded-lg">{aviso}</div>}
+
+        {modoProducao && opcoesAlvo.length > 1 && (
+          <div className="mb-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Etiqueta para</div>
+            <div className="grid grid-cols-2 gap-2">
+              {opcoesAlvo.map((r) => (
+                <button key={r.id} type="button" onClick={() => setAlvoId(r.id)}
+                  className={`h-12 rounded-xl border text-sm font-semibold ${alvoId === r.id ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"}`}>{r.nome}</button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-end justify-between mb-5">
           <div>
