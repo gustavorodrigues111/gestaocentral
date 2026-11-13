@@ -235,9 +235,17 @@ export function BaixaEtiquetaModal({ etiqueta: e, usuario, onClose }: { etiqueta
 
   async function baixar(status: "consumida" | "descartada") {
     setSalvando(true); setErro("");
-    try { await darBaixaEtiqueta(e.id, status, usuario, motivo); onClose(); }
-    catch { setErro("Não consegui registrar a baixa. Tente de novo."); }
-    finally { setSalvando(false); }
+    // Não trava esperando a rede: a escrita local já reflete na lista e o
+    // servidor sincroniza sozinho. Se a conexão demorar, fecha mesmo assim
+    // (até 4s); só mostra erro se a gravação realmente falhar nesse tempo.
+    const p = darBaixaEtiqueta(e.id, status, usuario, motivo);
+    const r = await Promise.race([
+      p.then(() => "ok" as const, () => "erro" as const),
+      new Promise<"lento">((res) => window.setTimeout(() => res("lento"), 4000)),
+    ]);
+    setSalvando(false);
+    if (r === "erro") { setErro("Não consegui registrar a baixa. Tente de novo."); return; }
+    onClose();
   }
 
   const linha = (rotulo: string, valor: ReactNode) => (
