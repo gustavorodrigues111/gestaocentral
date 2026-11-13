@@ -250,10 +250,8 @@ export function EstoqueValidadePage() {
               className="h-10 w-10 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 flex items-center justify-center active:scale-95"><RefreshCw size={18} /></button>
           </div>
         ) : (
-          <div className="flex justify-end mb-2">
-            <button type="button" onClick={() => setAba("home")} aria-label="Início" title="Início"
-              className="h-10 w-10 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-300 flex items-center justify-center active:scale-95"><Home size={20} /></button>
-          </div>
+          <button type="button" onClick={() => setAba("home")}
+            className="w-full mb-3 h-12 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200 font-semibold inline-flex items-center justify-center gap-2 active:scale-[.99]"><Home size={18} /> Retornar ao início</button>
         )
       ) : naKiosk ? (
         <div className="flex items-start justify-between gap-2 flex-wrap mb-4">
