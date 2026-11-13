@@ -31,9 +31,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const webhookToken = process.env.EVOLUTION_WEBHOOK_TOKEN || "";
   const appUrl = (process.env.APP_URL || "https://admin.planejamento.app").replace(/\/+$/, "");
 
-  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { acao?: string; instancia?: string } | null;
+  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { acao?: string; instancia?: string; jid?: string } | null;
   const acao = (body?.acao || "").toString();
   const instancia = (body?.instancia || "").toString().trim();
+  const jid = (body?.jid || "").toString().trim();
   if (!instancia) { res.status(400).json({ error: "Informe a instância." }); return; }
   // status = benigno e POLLADO a cada poucos segundos → sem checagem (não onerar
   // leituras). create/delete/logout/recreate = destrutivo → só MASTER. connect
@@ -103,6 +104,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       const c = await call(`/instance/connectionState/${encodeURIComponent(instancia)}`, "GET");
       const estado = (c.json as { instance?: { state?: string }; state?: string })?.instance?.state || (c.json as { state?: string })?.state || "unknown";
       res.status(200).json({ ok: true, estado });
+      return;
+    }
+    if (acao === "fotoPerfil") {   // foto de perfil de um contato/grupo (WhatsApp)
+      if (!jid) { res.status(400).json({ error: "Informe o jid." }); return; }
+      const r = await call(`/chat/fetchProfilePictureUrl/${encodeURIComponent(instancia)}`, "POST", { number: jid });
+      const url = (r.json as { profilePictureUrl?: string } | null)?.profilePictureUrl || null;
+      res.status(200).json({ ok: r.ok, url });
       return;
     }
     if (acao === "logout") {   // desconecta o WhatsApp mas mantém a instância

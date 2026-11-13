@@ -1327,7 +1327,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal, deepLi
         onLida={() => void marcarLida(c.waId)}
         onTransferir={() => { setTransferWaId(c.waId); setTransferir(true); }}
         podeResponder={podeResponder}>
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 ${grupo ? "bg-indigo-50 dark:bg-indigo-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"}`}>{grupo ? "👥" : "💬"}</div>
+        <FotoConversa numeroId={numeroSel} waId={c.waId} grupo={grupo} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className={`truncate ${naoLida ? "font-bold text-gray-900 dark:text-gray-50" : "font-medium text-gray-900 dark:text-gray-100"}`}>{nomeConversa(c.waId, c.nome)}</span>
@@ -2388,6 +2388,41 @@ function NovaConversaModal({ pessoas, onAbrir, onClose }: { pessoas: Pessoa[]; o
 async function chamarInstancia(acao: string, instancia: string): Promise<{ ok?: boolean; qr?: string | null; estado?: string; naoConfigurado?: boolean; error?: string }> {
   const r = await fetch("/api/evolution-instancia", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ acao, instancia }) });
   return r.json().catch(() => ({}));
+}
+
+// ── Foto de perfil do contato/grupo (via Evolution) ─────────────────────────
+// Cache por sessão (número:waId → url|null) pra não refazer a chamada. A URL do
+// WhatsApp expira: se a <img> falhar, cai no ícone e tira do cache (refaz depois).
+const fotoCache = new Map<string, string | null>();
+function waIdParaJid(waId: string): string {
+  if (waId.startsWith("g:")) return `${waId.slice(2)}@g.us`;
+  const num = (waId || "").replace(/\D/g, "");
+  return `${num}@s.whatsapp.net`;
+}
+async function buscarFotoPerfil(numeroId: string, waId: string): Promise<string | null> {
+  try {
+    const r = await fetch("/api/evolution-instancia", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ acao: "fotoPerfil", instancia: numeroId, jid: waIdParaJid(waId) }) });
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => null) as { url?: string } | null;
+    return j?.url || null;
+  } catch { return null; }
+}
+function FotoConversa({ numeroId, waId, grupo, tam = "w-10 h-10" }: { numeroId: string | null; waId: string; grupo: boolean; tam?: string }) {
+  const chave = numeroId ? `${numeroId}:${waId}` : "";
+  const [url, setUrl] = useState<string | null>(() => (chave ? fotoCache.get(chave) ?? null : null));
+  const [erro, setErro] = useState(false);
+  useEffect(() => {
+    setErro(false);
+    if (!numeroId || !chave) return;
+    if (fotoCache.has(chave)) { setUrl(fotoCache.get(chave) || null); return; }
+    let vivo = true;
+    void buscarFotoPerfil(numeroId, waId).then((u) => { fotoCache.set(chave, u); if (vivo) setUrl(u); });
+    return () => { vivo = false; };
+  }, [numeroId, waId, chave]);
+  if (url && !erro) {
+    return <img src={url} alt="" loading="lazy" onError={() => { setErro(true); fotoCache.delete(chave); }} className={`${tam} rounded-full object-cover shrink-0 bg-gray-100 dark:bg-gray-800`} />;
+  }
+  return <div className={`${tam} rounded-full flex items-center justify-center text-lg shrink-0 ${grupo ? "bg-indigo-50 dark:bg-indigo-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"}`}>{grupo ? "👥" : "💬"}</div>;
 }
 
 const ESTADO_META: Record<string, { label: ReactNode; cls: string }> = {
