@@ -4,7 +4,7 @@
 // [[project_gestor_redesign_2modulos]].
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, doc, onSnapshot, query, where, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -208,6 +208,26 @@ export function PrazosPage() {
     await updateDoc(doc(db, "prazos", p.id), { deletadoEm: new Date().toISOString(), deletadoPor: me?.id || null });
   }
 
+  // Zera o aviso antecipado de TODOS os prazos de uma vez (mantém o campo — dá
+  // pra reativar um a um). Eles passam a aparecer na agenda só na data.
+  const [zerandoAviso, setZerandoAviso] = useState(false);
+  async function tirarAvisoDeTodos() {
+    const alvos = prazos.filter((p) => p.antecedenciaDias !== 0);
+    if (!alvos.length) { alert("Todos os prazos já aparecem só na data (sem aviso antecipado)."); return; }
+    if (!confirm(`Tirar o aviso antecipado de ${alvos.length} prazo(s)? Eles passam a aparecer na agenda só na data de vencimento. O campo continua — dá pra reativar um a um depois.`)) return;
+    setZerandoAviso(true);
+    try {
+      const nowIso = new Date().toISOString();
+      for (let i = 0; i < alvos.length; i += 400) {
+        const batch = writeBatch(db);
+        for (const p of alvos.slice(i, i + 400)) batch.update(doc(db, "prazos", p.id), { antecedenciaDias: 0, atualizadoEm: nowIso });
+        await batch.commit();
+      }
+      alert(`Pronto — ${alvos.length} prazo(s) agora aparecem só na data.`);
+    } catch (e) { alert("Não consegui concluir: " + (e instanceof Error ? e.message : String(e))); }
+    finally { setZerandoAviso(false); }
+  }
+
   // ── Laudo (Google Drive) ──
   // Sobe em {raiz}/planejamento.app/Prazos/ — a raiz é única por restaurante
   // (Configurações › Google Drive) e do Drive pessoal de quem configurou.
@@ -250,7 +270,8 @@ export function PrazosPage() {
       <input ref={laudoRef} type="file" accept="application/pdf,image/*,.pdf,.doc,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void onLaudoFile(f); e.target.value = ""; }} />
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 self-center">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"}</p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isMaster && <button type="button" onClick={() => void tirarAvisoDeTodos()} disabled={zerandoAviso} title="Todos os prazos passam a aparecer só na data de vencimento (o campo 'Avisar' continua por prazo)" className="text-sm font-medium px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50">{zerandoAviso ? "Tirando…" : "Tirar aviso antecipado de todos"}</button>}
           {catsGeriveis.length > 0 && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
         </div>
       </header>
