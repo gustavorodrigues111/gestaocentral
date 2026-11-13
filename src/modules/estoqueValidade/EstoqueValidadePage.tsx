@@ -9,7 +9,7 @@
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw, Home, ChevronRight, ChevronDown, Smartphone } from "lucide-react";
+import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw, Home, ChevronRight, ChevronDown, Smartphone, User, LogOut } from "lucide-react";
 import { isComandasKioskHost, isEtiquetasKioskHost } from "../../core/restaurant/subdomain";
 import { APP_VERSION_LABEL } from "../../core/version";
 import { destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
@@ -81,10 +81,21 @@ export type ProdutoEtiqueta = {
 // lida ao vivo pelo aparelho. Define quais AMBIENTES aparecem nela (catálogo por
 // localização), o tamanho do rolo e, no modo produção, quais restaurantes ela
 // pode etiquetar.
+// Operador da máquina: identifica quem está emitindo/baixando (atribuição).
+// Troca rápida com PIN de 4 dígitos (trava fraca, guardada com hash — não dá
+// acesso além do que a conta do aparelho já tem).
+export type Operador = { id: string; nome: string; pinHash: string };
 export type Maquina = {
   id: string; nome: string; ambienteIds: string[];
-  bobinaId?: string; modoProducao?: boolean; restaurantesAlvo?: string[];
+  bobinaId?: string; modoProducao?: boolean; restaurantesAlvo?: string[]; operadores?: Operador[];
 };
+
+/** Hash do PIN (SHA-256 com o id do operador como sal). Evita PIN em texto puro. */
+export async function hashPin(pin: string, salt: string): Promise<string> {
+  const data = new TextEncoder().encode(`${salt}:${pin}`);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 export type EstoqueConfig = { unidades: string[]; categorias: string[]; metodos: MetodoConservacao[]; maquinas?: Maquina[] };
 export type LoteEstoque = {
   id: string; restaurantId: string; produtoId: string; produtoNome: string;
@@ -172,6 +183,16 @@ export function EstoqueValidadePage() {
   useEffect(() => {
     if (maquina?.bobinaId) { try { localStorage.setItem("etiq_bobina", maquina.bobinaId); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-impressora")); }
   }, [maquina?.bobinaId]);
+  // Operador ativo (atribuição): quando a máquina tem operadores, cada um
+  // destrava com PIN e vira o responsável das etiquetas e das baixas.
+  const [operadorId, setOperadorId] = useState<string>(() => { try { return localStorage.getItem("etiq_operador") || ""; } catch { return ""; } });
+  const operadorAtivo = maquina?.operadores?.find((o) => o.id === operadorId) || null;
+  const temOperadores = !!(maquina?.operadores && maquina.operadores.length);
+  const [operadorMenu, setOperadorMenu] = useState(false);
+  const acessarOperador = (id: string) => { try { localStorage.setItem("etiq_operador", id); } catch { /* sem storage */ } setOperadorId(id); };
+  const sairOperador = () => { try { localStorage.removeItem("etiq_operador"); } catch { /* sem storage */ } setOperadorId(""); setOperadorMenu(false); };
+  const respNome = operadorAtivo ? operadorAtivo.nome : (me?.nome || "");
+  const respUid = operadorAtivo ? operadorAtivo.id : (me?.id || null);
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string } | null>(null);
   const [vinculosLocal, setVinculosLocal] = useState<LocalEstoque | null>(null);
@@ -274,6 +295,11 @@ export function EstoqueValidadePage() {
     );
   }
 
+  // Máquina com operadores e ninguém acessado: tela de bloqueio (nome + PIN).
+  if (naMaquininha && temOperadores && !operadorAtivo) {
+    return <OperadorLock operadores={maquina!.operadores!} onAcessar={acessarOperador} restauranteNome={restaurante?.nome} />;
+  }
+
   const ABAS = [["painel", "Painel", BarChart3], ["etiquetas", "Etiquetas", Printer], ["baixa", "Baixa", PackageMinus], ["entrada", "Entrada", PackagePlus], ["cadastro", "Cadastro", FolderOpen]] as const;
 
   return (
@@ -281,12 +307,20 @@ export function EstoqueValidadePage() {
       {naMaquininha ? (
         aba === "home" ? (
           <div className="relative flex items-center justify-between gap-2 mb-4">
-            <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2 shrink-0"><Tag size={22} className="text-indigo-500" /> Etiquetas</h1>
-            <button type="button" onClick={() => { if (restaurants.length > 1) setTrocaRest((v) => !v); }}
-              className="h-10 max-w-[58%] px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
-              <span className="truncate">{restaurante?.nome || "Restaurante"}</span>
-              {restaurants.length > 1 && <ChevronDown size={15} className="shrink-0 text-gray-400" />}
-            </button>
+            <Tag size={24} className="text-indigo-500 shrink-0" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button type="button" onClick={() => { if (restaurants.length > 1) setTrocaRest((v) => !v); }}
+                className="h-10 min-w-0 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
+                <span className="truncate">{restaurante?.nome || "Restaurante"}</span>
+                {restaurants.length > 1 && <ChevronDown size={15} className="shrink-0 text-gray-400" />}
+              </button>
+              {operadorAtivo && (
+                <button type="button" onClick={() => setOperadorMenu((v) => !v)}
+                  className="h-10 shrink-0 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
+                  <User size={15} className="shrink-0 text-gray-400" /><span className="truncate max-w-[72px]">{operadorAtivo.nome.split(" ")[0]}</span><ChevronDown size={14} className="shrink-0 text-gray-400" />
+                </button>
+              )}
+            </div>
             {trocaRest && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setTrocaRest(false)} />
@@ -295,6 +329,16 @@ export function EstoqueValidadePage() {
                   {restaurants.map((r) => (
                     <button key={r.id} type="button" onClick={() => trocarRestaurante(r.id)} className={`w-full text-left px-3 py-2 text-sm ${r.id === rid ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{r.nome}</button>
                   ))}
+                </div>
+              </>
+            )}
+            {operadorMenu && operadorAtivo && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setOperadorMenu(false)} />
+                <div className="absolute right-0 top-14 z-50 w-48 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
+                  <div className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{operadorAtivo.nome}</div>
+                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                  <button type="button" onClick={sairOperador} className="w-full text-left px-3 py-2 text-sm text-rose-600 dark:text-rose-400 inline-flex items-center gap-2"><LogOut size={15} /> Sair</button>
                 </div>
               </>
             )}
@@ -366,12 +410,12 @@ export function EstoqueValidadePage() {
         </div>
       )}
       {aba === "painel" && (naMaquininha
-        ? <PainelMaquininha etiquetas={etiquetasAtivas} usuario={{ uid: me?.id || null, nome: me?.nome || null }} />
+        ? <PainelMaquininha etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} />
         : <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />)}
-      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
+      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={respNome} responsavelUid={respUid} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
         ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
       {aba === "baixa" && (naMaquininha
-        ? <BaixaMaquininha rid={rid} etiquetas={etiquetasAtivas} usuario={{ uid: me?.id || null, nome: me?.nome || null }} podeOperar={podeOperar} />
+        ? <BaixaMaquininha rid={rid} etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} podeOperar={podeOperar} />
         : <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />)}
       {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
@@ -609,6 +653,46 @@ function BaixaTab({ rid, usuario, etiquetas, produtos, lotesAtivos, localNome, p
       {scan && <ScannerModal onDetect={aoLerQr} onClose={() => setScan(false)} />}
       {etiquetaLida && <BaixaEtiquetaModal etiqueta={etiquetaLida} usuario={usuario} onClose={() => setEtiquetaLida(null)} />}
     </div>
+  );
+}
+
+// ═══ BLOQUEIO POR OPERADOR (nome + PIN de 4 dígitos) ═════════════════════════
+function OperadorLock({ operadores, onAcessar, restauranteNome }: { operadores: Operador[]; onAcessar: (id: string) => void; restauranteNome?: string }) {
+  const [sel, setSel] = useState<Operador | null>(null);
+  const [pin, setPin] = useState("");
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    if (!sel || pin.length !== 4) return;
+    let vivo = true;
+    void (async () => { const h = await hashPin(pin, sel.id); if (!vivo) return; if (h === sel.pinHash) onAcessar(sel.id); else { setErro("PIN incorreto."); setPin(""); } })();
+    return () => { vivo = false; };
+  }, [pin, sel, onAcessar]);
+  return (
+    <PageContainer>
+      <div className="max-w-sm mx-auto py-8">
+        {!sel ? (
+          <>
+            <div className="flex justify-center mb-2 text-indigo-500"><Hand size={32} /></div>
+            <h2 className="text-lg font-bold text-center text-gray-900 dark:text-gray-100">Quem vai operar?</h2>
+            <p className="text-sm text-gray-500 text-center mb-4">{restauranteNome || ""}</p>
+            <div className="space-y-2">
+              {operadores.map((o) => (
+                <button key={o.id} type="button" onClick={() => { setSel(o); setPin(""); setErro(""); }} className="w-full h-14 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-semibold text-gray-900 dark:text-gray-100 active:scale-[.99]">{o.nome}</button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={() => { setSel(null); setPin(""); setErro(""); }} className="text-sm text-gray-400 mb-3 inline-flex items-center gap-1"><ChevronRight size={14} className="rotate-180" /> trocar</button>
+            <h2 className="text-lg font-bold text-center text-gray-900 dark:text-gray-100">{sel.nome}</h2>
+            <p className="text-sm text-gray-500 text-center mb-4">Digite seu PIN</p>
+            <input value={pin} onChange={(e) => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setErro(""); }} inputMode="numeric" type="password" autoFocus
+              className="w-full h-16 text-4xl tracking-[0.5em] text-center rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" placeholder="••••" />
+            {erro && <div className="text-sm text-rose-600 text-center mt-2">{erro}</div>}
+          </>
+        )}
+      </div>
+    </PageContainer>
   );
 }
 
@@ -975,7 +1059,7 @@ function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, o
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end">
             <div>
               <div className="text-xs text-gray-500 mb-1">Tamanho da etiqueta</div>
-              <select value={m.bobinaId || ""} disabled={!podeEditar} onChange={(e) => upd(m.id, { bobinaId: e.target.value || undefined })} className={inp}>
+              <select value={m.bobinaId || ""} disabled={!podeEditar} onChange={(e) => upd(m.id, { bobinaId: e.target.value })} className={inp}>
                 <option value="">Padrão do aparelho</option>
                 {bobinas.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
               </select>
@@ -992,9 +1076,47 @@ function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, o
               </div>
             </div>
           )}
+          <MaquinaOperadores operadores={m.operadores || []} podeEditar={podeEditar} onChange={(ops) => upd(m.id, { operadores: ops })} />
         </div>
       ))}
       {podeEditar && <Button size="sm" onClick={() => onSalvar([...maquinas, { id: `maq_${Date.now().toString(36)}`, nome: `Máquina ${maquinas.length + 1}`, ambienteIds: [] }])}>+ Nova máquina</Button>}
+    </div>
+  );
+}
+
+// Operadores de uma máquina (nome + PIN de 4 dígitos, guardado com hash).
+function MaquinaOperadores({ operadores, podeEditar, onChange }: { operadores: Operador[]; podeEditar: boolean; onChange: (ops: Operador[]) => void }) {
+  const [nome, setNome] = useState("");
+  const [pin, setPin] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  async function add() {
+    const nm = nome.trim(); const p = pin.replace(/\D/g, "");
+    if (!nm || p.length !== 4) return;
+    setSalvando(true);
+    const id = `op_${Date.now().toString(36)}`;
+    const pinHash = await hashPin(p, id);
+    onChange([...operadores, { id, nome: nm, pinHash }]);
+    setNome(""); setPin(""); setSalvando(false);
+  }
+  return (
+    <div>
+      <div className="text-xs text-gray-500 mb-1">Operadores (nome + PIN de 4 dígitos)</div>
+      <div className="space-y-1.5 mb-2">
+        {operadores.length === 0 && <div className="text-xs text-gray-400">Sem operadores: a máquina usa a conta logada como responsável.</div>}
+        {operadores.map((o) => (
+          <div key={o.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2 text-sm">
+            <span className="text-gray-800 dark:text-gray-100">{o.nome}</span>
+            {podeEditar && <button type="button" onClick={() => onChange(operadores.filter((x) => x.id !== o.id))} className="text-rose-500"><Trash2 size={14} /></button>}
+          </div>
+        ))}
+      </div>
+      {podeEditar && (
+        <div className="flex gap-2">
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do operador" className={`${inp} flex-1`} />
+          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="PIN" className={`${inp} w-20 text-center tracking-widest`} />
+          <button type="button" onClick={() => void add()} disabled={salvando || !nome.trim() || pin.length !== 4} className="shrink-0 px-4 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-semibold disabled:opacity-40">Add</button>
+        </div>
+      )}
     </div>
   );
 }
