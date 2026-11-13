@@ -308,15 +308,14 @@ export function EstoqueValidadePage() {
             </span>
             <ChevronRight size={18} className="text-gray-400" />
           </button>
-          <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={() => setAba("etiquetas")} className="col-span-2 h-28 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={30} /><span className="text-lg font-semibold">Emitir etiqueta</span></button>
-            <button type="button" onClick={() => setAba("baixa")} className="col-span-2 h-28 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><PackageMinus size={30} /><span className="text-lg font-semibold">Dar baixa</span></button>
-            <button type="button" onClick={() => setAba("entrada")} className="h-24 rounded-2xl bg-emerald-600 text-white flex flex-col items-center justify-center gap-1 active:scale-[.98] shadow-sm"><PackagePlus size={26} /><span className="text-base font-semibold">Dar entrada</span></button>
-            <button type="button" onClick={() => setAba("cadastro")} className="h-24 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center gap-1 active:scale-[.98] shadow-sm"><FolderOpen size={26} /><span className="text-base font-semibold">Cadastro</span></button>
+          <div className="grid grid-cols-1 gap-3">
+            <button type="button" onClick={() => setAba("etiquetas")} className="h-24 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={28} /><span className="text-lg font-semibold">Emitir etiqueta</span></button>
+            <button type="button" onClick={() => setAba("baixa")} className="h-24 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><PackageMinus size={28} /><span className="text-lg font-semibold">Dar baixa</span></button>
+            <button type="button" onClick={() => setAba("cadastro")} className="h-24 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><FolderOpen size={28} /><span className="text-lg font-semibold">Cadastro</span></button>
           </div>
         </div>
       )}
-      {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
+      {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} naMaquininha={naMaquininha} onAbrirEtiquetas={() => { if (naMaquininha) { setAba("baixa"); return; } try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
       {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")} />}
       {aba === "baixa" && <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
       {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
@@ -350,7 +349,7 @@ export function EstoqueValidadePage() {
 }
 
 // ═══ PAINEL (saldo + FEFO) ═══════════════════════════════════════════════════
-function PainelTab({ produtos, lotes, localNome, etiquetas, onAbrirEtiquetas }: { produtos: ProdutoEtiqueta[]; lotes: LoteEstoque[]; localNome: (id?: string | null) => string; etiquetas: EtiquetaEmitida[]; onAbrirEtiquetas: () => void }) {
+function PainelTab({ produtos, lotes, localNome, etiquetas, onAbrirEtiquetas, naMaquininha }: { produtos: ProdutoEtiqueta[]; lotes: LoteEstoque[]; localNome: (id?: string | null) => string; etiquetas: EtiquetaEmitida[]; onAbrirEtiquetas: () => void; naMaquininha?: boolean }) {
   const ativos = lotes.filter((l) => l.status === "ativo" && l.qtdRestante > 0);
   const grupos = useMemo(() => {
     const g = { vencido: [] as LoteEstoque[], hoje: [] as LoteEstoque[], amanha: [] as LoteEstoque[], semana: [] as LoteEstoque[] };
@@ -369,6 +368,35 @@ function PainelTab({ produtos, lotes, localNome, etiquetas, onAbrirEtiquetas }: 
     ["Amanhã", grupos.amanha, "bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900 text-orange-700 dark:text-orange-300"],
     ["Nesta semana", grupos.semana, "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-300"],
   ];
+
+  // Maquininha (V1): sem gestão de estoque. O painel é a lista de etiquetas a
+  // vencer, em ordem cronológica (mais próximas primeiro).
+  if (naMaquininha) {
+    const aVencer = etiquetas.slice().sort((a, b) => a.validade.localeCompare(b.validade));
+    return (
+      <div className="space-y-4">
+        <ResumoEtiquetas ativas={etiquetas} onAbrir={onAbrirEtiquetas} />
+        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Etiquetas a vencer</div>
+        {aVencer.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhuma etiqueta ativa no momento.</div>
+        ) : (
+          <div className="space-y-1.5">
+            {aVencer.map((e) => {
+              const d = diasAte(e.validade);
+              const cor = d < 0 ? "text-rose-600" : d === 0 ? "text-amber-600 dark:text-amber-400" : d === 1 ? "text-orange-600 dark:text-orange-400" : "text-gray-500";
+              const txt = d < 0 ? `venceu ${fmtBR(e.validade)}` : d === 0 ? "vence hoje" : d === 1 ? "vence amanhã" : `vence ${fmtBR(e.validade)}`;
+              return (
+                <div key={e.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 flex items-center justify-between gap-3 text-sm">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{e.produtoNome}</span>
+                  <span className={`text-xs whitespace-nowrap ${cor}`}>{txt}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
