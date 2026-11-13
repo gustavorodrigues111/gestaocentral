@@ -41,6 +41,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Permite definir o app como TELA INICIAL (launcher): liga e abre
+                 direto nele, e o botão Home sempre volta pra ele. O operador
+                 define como padrão uma vez; depois fica travado no app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>
