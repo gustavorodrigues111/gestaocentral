@@ -180,6 +180,8 @@ export function EstoqueValidadePage() {
   const [machineId, setMachineId] = useState<string>(() => { try { return localStorage.getItem("etiq_machine_id") || ""; } catch { return ""; } });
   const maquina = naMaquininha ? (config.maquinas || []).find((m) => m.id === machineId) || null : null;
   const parearMaquina = (id: string) => { try { localStorage.setItem("etiq_machine_id", id); } catch { /* sem storage */ } setMachineId(id); };
+  // Com uma só máquina cadastrada, vincula sozinho (não precisa escolher no aparelho).
+  useEffect(() => { if (naMaquininha && !maquina && (config.maquinas || []).length === 1) parearMaquina(config.maquinas![0].id); }, [naMaquininha, maquina, config.maquinas]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (maquina?.bobinaId) { try { localStorage.setItem("etiq_bobina", maquina.bobinaId); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-impressora")); }
   }, [maquina?.bobinaId]);
@@ -1118,8 +1120,8 @@ function MaquinaOperadores({ operadores, podeEditar, onChange }: { operadores: O
       </div>
       {podeEditar && (
         <div className="flex gap-2">
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do operador" className={`${inp} flex-1`} />
-          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="PIN" className={`${inp} w-20 text-center tracking-widest`} />
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do operador" className="flex-1 min-w-0 h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="PIN" className="w-24 shrink-0 h-9 px-2.5 text-sm text-center tracking-[0.3em] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
           <button type="button" onClick={() => void add()} disabled={salvando || !nome.trim() || pin.length !== 4} className="shrink-0 px-4 rounded-lg bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-semibold disabled:opacity-40">Add</button>
         </div>
       )}
