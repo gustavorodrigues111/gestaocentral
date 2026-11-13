@@ -317,7 +317,7 @@ export function EstoqueValidadePage() {
         </div>
       )}
       {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
-      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} />}
+      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")} />}
       {aba === "baixa" && <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
       {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (

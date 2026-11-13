@@ -38,16 +38,40 @@ const gravarLS = (k: string, v: string) => { try { localStorage.setItem(k, v); }
 
 type Passo = "inicio" | "ambiente" | "local" | "produto" | "confirmar" | "baixa";
 
+// Cores dos botões de equipamento por método de conservação (congelado, etc.).
+const CORES_METODO: Record<string, string> = {
+  congelado: "bg-sky-50 dark:bg-sky-950/30 border-sky-300 dark:border-sky-800 text-sky-900 dark:text-sky-100",
+  refrigerado: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100",
+  ambiente: "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-100",
+  seco: "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-800 text-orange-900 dark:text-orange-100",
+  quente: "bg-rose-50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-100",
+};
+const corMetodo = (id?: string | null) => CORES_METODO[id || ""] || "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100";
+const btnQuadrado = "rounded-2xl border-2 p-4 min-h-[116px] flex flex-col items-center justify-center text-center gap-1 active:scale-[.98] shadow-sm transition-colors";
+
+// Começo direto do fluxo de emissão (sem a tela "início"): ambiente se houver
+// vários; senão cai direto nos equipamentos do único ambiente.
+function calcStartEmissao(locais: LocalEstoque[]): { passo: Passo; ambienteId: string } {
+  const gs = agruparPorAmbiente(locais)
+    .map((g) => ({ ...g, equipamentos: g.equipamentos.filter((l) => !!l.metodoConservacao) }))
+    .filter((g) => g.equipamentos.length > 0);
+  if (gs.length > 1) return { passo: "ambiente", ambienteId: "" };
+  return { passo: "local", ambienteId: gs[0]?.ambiente?.id || "" };
+}
+
 type Props = {
   rid: string; produtos: ProdutoEtiqueta[]; config: EstoqueConfig; ativas: EtiquetaEmitida[]; locais: LocalEstoque[];
   empresa: string; cnpj?: string | null; responsavel: string; responsavelUid?: string | null; podeOperar: boolean;
   podeEditar?: boolean; onGerenciarProdutos?: (local: LocalEstoque) => void;
+  // Maquininha: a home já tem Emitir/Baixa/Painel, então o wizard começa DIRETO
+  // na emissão (sem a tela "início") e o voltar do topo sai pra home (onSair).
+  pularInicio?: boolean; onSair?: () => void;
 };
 
 export function EtiquetasTab(props: Props) {
-  const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos } = props;
-  const [passo, setPasso] = useState<Passo>("inicio");
-  const [ambienteId, setAmbienteId] = useState<string>("");   // "" = sem ambiente
+  const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos, pularInicio, onSair } = props;
+  const [passo, setPasso] = useState<Passo>(() => (pularInicio ? calcStartEmissao(locais).passo : "inicio"));
+  const [ambienteId, setAmbienteId] = useState<string>(() => (pularInicio ? calcStartEmissao(locais).ambienteId : ""));   // "" = sem ambiente
   const [local, setLocal] = useState<LocalEstoque | null>(null);
   const [produto, setProduto] = useState<ProdutoEtiqueta | null>(null);
   const [copias, setCopias] = useState(1);
@@ -129,6 +153,7 @@ export function EtiquetasTab(props: Props) {
     if (passo === "confirmar") ir("produto");
     else if (passo === "produto") { setLocal(null); ir("local"); }
     else if (passo === "local" && grupos.length > 1) ir("ambiente");
+    else if (onSair) onSair();
     else ir("inicio");
   };
   // Com um só ambiente (ou nenhum), pula direto para os equipamentos.
@@ -199,7 +224,6 @@ export function EtiquetasTab(props: Props) {
     </div>
   );
   const avisoMsg = msg && <div className={`mb-3 text-sm ${msg.ok ? "text-emerald-700 dark:text-emerald-400" : "text-rose-600"}`}>{msg.texto}</div>;
-  const btnGrande = "w-full text-left rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-5 py-5 active:bg-gray-50 dark:active:bg-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors shadow-sm";
 
   // ── INÍCIO ──
   if (passo === "inicio") {
@@ -288,11 +312,12 @@ export function EtiquetasTab(props: Props) {
       <div className="max-w-2xl mx-auto">
         {cabecalho("Onde vai guardar?", "Escolha o ambiente")}
         {avisoMsg}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           {grupos.map((g) => (
-            <button key={g.ambiente?.id || "sem"} type="button" onClick={() => { setAmbienteId(g.ambiente?.id || ""); ir("local"); }} className={btnGrande}>
-              <div className="text-base font-semibold text-gray-900 dark:text-gray-100">{g.ambiente?.nome || "Sem ambiente"}</div>
-              <div className="text-sm text-gray-500">{g.equipamentos.length} equipamento{g.equipamentos.length > 1 ? "s" : ""}</div>
+            <button key={g.ambiente?.id || "sem"} type="button" onClick={() => { setAmbienteId(g.ambiente?.id || ""); ir("local"); }}
+              className={`${btnQuadrado} bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-100`}>
+              <div className="text-lg font-bold leading-tight">{g.ambiente?.nome || "Sem ambiente"}</div>
+              <div className="text-xs opacity-70">{g.equipamentos.length} equipamento{g.equipamentos.length > 1 ? "s" : ""}</div>
             </button>
           ))}
         </div>
@@ -310,14 +335,15 @@ export function EtiquetasTab(props: Props) {
         {lista.length === 0 ? (
           <p className="py-10 text-center text-sm text-gray-400">Nenhum equipamento com conservação definida. Cadastre em Cadastro &gt; Locais.</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {lista.map((l) => {
               const n = produtosDoLocal(produtos, l).length;
               return (
                 <button key={l.id} type="button" disabled={n === 0 && !podeEditar} onClick={() => { setLocal(l); ir("produto"); }}
-                  className={`${btnGrande} disabled:opacity-40`}>
-                  <div className="text-base font-semibold text-gray-900 dark:text-gray-100">{l.nome}</div>
-                  <div className="text-sm text-gray-500">{metodoLabel(l.metodoConservacao)} · {n === 0 ? "sem produtos" : `${n} produto${n > 1 ? "s" : ""}`}</div>
+                  className={`${btnQuadrado} ${corMetodo(l.metodoConservacao)} disabled:opacity-40`}>
+                  <div className="text-base font-bold leading-tight">{l.nome}</div>
+                  <div className="text-xs font-semibold opacity-80">{metodoLabel(l.metodoConservacao)}</div>
+                  <div className="text-[11px] opacity-70">{n === 0 ? "sem produtos" : `${n} produto${n > 1 ? "s" : ""}`}</div>
                 </button>
               );
             })}
@@ -339,11 +365,11 @@ export function EtiquetasTab(props: Props) {
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto"
             className="w-full h-12 px-3 mb-3 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
         )}
-        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        <div className="space-y-2">
           {lista.map((p) => (
             <button key={p.id} type="button" onClick={() => { setProduto(p); setCopias(1); ir("confirmar"); }}
-              className="w-full flex items-center justify-between gap-3 py-4 text-left active:bg-gray-50 dark:active:bg-gray-800/50">
-              <span className="text-base text-gray-900 dark:text-gray-100 truncate">{p.nome}</span>
+              className="w-full flex items-center justify-between gap-3 px-4 py-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-left shadow-sm active:bg-gray-50 dark:active:bg-gray-800/50 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+              <span className="text-base font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome}</span>
               <span className="text-sm text-gray-400 whitespace-nowrap">{diasNoLocal(p, local)} {diasNoLocal(p, local) === 1 ? "dia" : "dias"}</span>
             </button>
           ))}
