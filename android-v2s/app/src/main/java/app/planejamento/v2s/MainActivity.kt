@@ -9,6 +9,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -18,6 +21,7 @@ import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -37,6 +41,26 @@ class MainActivity : Activity() {
     private var arquivoCallback: ValueCallback<Array<Uri>>? = null
     private var pedidoCamera: PermissionRequest? = null
     private var leituraPendente: String? = null
+
+    // Resiliência de rede: se a carga do site falhar (queda de internet), não
+    // deixa o WebView preso na tela de erro — mostra uma tela amigável, tenta
+    // sozinho a cada 6s e recarrega assim que a conexão voltar.
+    private var ultimaFalha = false
+    private var erroNestaCarga = false
+    private val retry = Runnable { if (ultimaFalha) web.loadUrl(BuildConfig.URL_INICIAL) }
+    private val netCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) { runOnUiThread { if (ultimaFalha) web.loadUrl(BuildConfig.URL_INICIAL) } }
+    }
+
+    private fun mostrarOffline() {
+        val html = """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+            body{font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f6f6f5;color:#333;text-align:center;padding:24px}
+            h1{font-size:20px;margin:0 0 8px}p{color:#777;font-size:14px;line-height:1.5;margin:0}
+            a{display:inline-block;margin-top:20px;background:#4f46e5;color:#fff;text-decoration:none;padding:14px 28px;border-radius:14px;font-weight:600;font-size:16px}
+            </style></head><body><div><h1>Sem internet</h1><p>A maquininha está sem conexão.<br>Tentando reconectar sozinho…</p>
+            <a href="${BuildConfig.URL_INICIAL}">Tentar de novo</a></div></body></html>"""
+        web.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+    }
 
     // Leitor a laser/imager (versão Scanner): o SO manda o código já decodificado
     // por broadcast. Encaminha pro site sem abrir câmera. Requer "saída por
@@ -92,6 +116,16 @@ class MainActivity : Activity() {
                 // Links externos (WhatsApp, Drive, mapas…) abrem fora do app.
                 try { startActivity(Intent(Intent.ACTION_VIEW, req.url)) } catch (_: Exception) { }
                 return true
+            }
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) { erroNestaCarga = false }
+            override fun onReceivedError(view: WebView, req: WebResourceRequest, err: WebResourceError) {
+                if (!req.isForMainFrame) return
+                erroNestaCarga = true; ultimaFalha = true
+                mostrarOffline()
+                web.removeCallbacks(retry); web.postDelayed(retry, 6000)
+            }
+            override fun onPageFinished(view: WebView, url: String) {
+                if (!erroNestaCarga && url.startsWith("http")) { ultimaFalha = false; web.removeCallbacks(retry) }
             }
         }
 
@@ -240,10 +274,12 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(scanReceiver, filtro, Context.RECEIVER_EXPORTED)
             else @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(scanReceiver, filtro)
         } catch (_: Exception) { }
+        try { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).registerDefaultNetworkCallback(netCallback) } catch (_: Exception) { }
     }
 
     override fun onStop() {
         try { unregisterReceiver(scanReceiver) } catch (_: Exception) { }
+        try { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).unregisterNetworkCallback(netCallback) } catch (_: Exception) { }
         super.onStop()
     }
 
