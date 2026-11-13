@@ -408,7 +408,7 @@ export function EtiquetasTab(props: Props) {
 
         {previa && previa.chave === chavePrevia && (
           <div className="mb-5 flex justify-center">
-            <img src={previa.url} alt="Prévia da etiqueta" className="bg-white rounded shadow-sm ring-1 ring-gray-200 dark:ring-gray-700" style={{ width: Math.min(280, largura * 0.62), imageRendering: "pixelated" }} />
+            <img src={previa.url} alt="Prévia da etiqueta" className="bg-white rounded shadow-sm ring-1 ring-gray-200 dark:ring-gray-700" style={{ width: Math.min(360, largura * 0.85), imageRendering: "pixelated" }} />
           </div>
         )}
 
