@@ -11,7 +11,7 @@ import { Check, Trash2, ScanLine, Undo2, Search } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
-import { noAppSunmi, lerQrNativo, armarTeclaScan } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, armarTeclaScan, armarCodigoScan } from "../../core/impressao/impressora";
 import { ScannerModal } from "./ScannerModal";
 import {
   type EtiquetaEmitida, type Faixa, MOTIVOS_DESCARTE, buscarPorToken, darBaixaEtiqueta, diasAteValidade,
@@ -99,10 +99,17 @@ export function EtiquetasEmitidas({ rid, ativas, locais, usuario, podeOperar }: 
     setScan(true);
   }
 
-  // Botão físico da maquininha dispara a mesma leitura do botão "Ler etiqueta".
+  // Botão físico abre o leitor por câmera; o leitor a laser manda o código pronto.
   const lerQrRef = useRef(lerQr);
   lerQrRef.current = lerQr;
-  useEffect(() => (noAppSunmi() ? armarTeclaScan(() => void lerQrRef.current()) : undefined), []);
+  const aoLerRef = useRef(aoLer);
+  aoLerRef.current = aoLer;
+  useEffect(() => {
+    if (!noAppSunmi()) return;
+    const d1 = armarTeclaScan(() => void lerQrRef.current());
+    const d2 = armarCodigoScan((c) => void aoLerRef.current(c));
+    return () => { d1(); d2(); };
+  }, []);
 
   if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão para dar baixa em etiquetas.</div>;
 

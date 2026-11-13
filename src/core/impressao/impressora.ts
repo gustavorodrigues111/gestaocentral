@@ -33,7 +33,8 @@ declare global {
   interface Window {
     SunmiBridge?: SunmiBridge;
     __sunmiRetorno?: (id: string, json: string) => void;
-    __sunmiTeclaScan?: () => void;   // botão físico de leitura da maquininha
+    __sunmiTeclaScan?: () => void;            // botão físico abre o leitor (câmera)
+    __sunmiCodigoScan?: (code: string) => void; // leitor a laser (imager) devolve o código pronto
     etiquetaBridge?: EtiquetaBridge;
   }
 }
@@ -221,5 +222,26 @@ export function armarTeclaScan(fn: () => void): () => void {
   return () => {
     const i = ouvintesTecla.lastIndexOf(fn);
     if (i >= 0) ouvintesTecla.splice(i, 1);
+  };
+}
+
+// ── Leitor a laser / imager da Sunmi (versão Scanner) ─────────────────────────
+// Nas maquininhas com leitor de código físico (flash vermelho), apertar o botão
+// de scan dispara o imager e o SO manda o código já decodificado por broadcast
+// (sem abrir câmera). O app Android encaminha pra window.__sunmiCodigoScan(code)
+// e a tela ativa recebe o código direto — mais rápido que a câmera.
+const ouvintesCodigo: Array<(code: string) => void> = [];
+export function armarCodigoScan(fn: (code: string) => void): () => void {
+  if (typeof window === "undefined") return () => { /* ssr */ };
+  ouvintesCodigo.push(fn);
+  if (!window.__sunmiCodigoScan) {
+    window.__sunmiCodigoScan = (code: string) => {
+      const ult = ouvintesCodigo[ouvintesCodigo.length - 1];
+      if (ult && code) { try { ult(code); } catch { /* ignora erro da tela */ } }
+    };
+  }
+  return () => {
+    const i = ouvintesCodigo.lastIndexOf(fn);
+    if (i >= 0) ouvintesCodigo.splice(i, 1);
   };
 }

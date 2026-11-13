@@ -62,7 +62,7 @@ import { buscarPorToken, tokenDoQr, type EtiquetaEmitida } from "./etiquetasRepo
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
-import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, verificarAtualizacaoApp } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp } from "../../core/impressao/impressora";
 import { desenharEtiqueta } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
@@ -422,10 +422,18 @@ function BaixaTab({ rid, usuario, etiquetas, produtos, lotesAtivos, localNome, p
     if (p) { setSel(p); setMsg(""); } else { setMsg("QR não reconhecido neste restaurante."); }
   }
 
-  // Botão físico da maquininha abre o leitor (mesma ação do botão "Ler QR").
+  // Botão físico da maquininha abre o leitor por câmera (mesma ação do "Ler QR");
+  // o leitor a laser (versão Scanner) manda o código já pronto, sem abrir câmera.
   const abrirLeitorRef = useRef(abrirLeitor);
   abrirLeitorRef.current = abrirLeitor;
-  useEffect(() => (noAppSunmi() ? armarTeclaScan(() => void abrirLeitorRef.current()) : undefined), []);
+  const aoLerQrRef = useRef(aoLerQr);
+  aoLerQrRef.current = aoLerQr;
+  useEffect(() => {
+    if (!noAppSunmi()) return;
+    const d1 = armarTeclaScan(() => void abrirLeitorRef.current());
+    const d2 = armarCodigoScan((c) => aoLerQrRef.current(c));
+    return () => { d1(); d2(); };
+  }, []);
 
   const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
   const fila = sel ? lotesAtivos(sel.id).slice().sort(giroCmp) : [];

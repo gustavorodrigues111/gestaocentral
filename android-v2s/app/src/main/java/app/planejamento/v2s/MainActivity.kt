@@ -3,10 +3,14 @@ package app.planejamento.v2s
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -33,6 +37,19 @@ class MainActivity : Activity() {
     private var arquivoCallback: ValueCallback<Array<Uri>>? = null
     private var pedidoCamera: PermissionRequest? = null
     private var leituraPendente: String? = null
+
+    // Leitor a laser/imager (versão Scanner): o SO manda o código já decodificado
+    // por broadcast. Encaminha pro site sem abrir câmera. Requer "saída por
+    // broadcast" ligada em Configurações > Scanner da maquininha.
+    private val scanReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            val code = i?.getStringExtra("data")
+            if (!code.isNullOrBlank()) {
+                val js = "window.__sunmiCodigoScan && window.__sunmiCodigoScan(${org.json.JSONObject.quote(code)})"
+                runOnUiThread { web.evaluateJavascript(js, null) }
+            }
+        }
+    }
 
     companion object {
         private const val REQ_ARQUIVO = 10
@@ -214,6 +231,20 @@ class MainActivity : Activity() {
     @Deprecated("Activity simples, sem AndroidX")
     override fun onBackPressed() {
         if (web.canGoBack()) web.goBack() else @Suppress("DEPRECATION") super.onBackPressed()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filtro = IntentFilter("com.sunmi.scanner.ACTION_DATA_CODE_RECEIVED")
+        try {
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(scanReceiver, filtro, Context.RECEIVER_EXPORTED)
+            else @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(scanReceiver, filtro)
+        } catch (_: Exception) { }
+    }
+
+    override fun onStop() {
+        try { unregisterReceiver(scanReceiver) } catch (_: Exception) { }
+        super.onStop()
     }
 
     override fun onDestroy() {
