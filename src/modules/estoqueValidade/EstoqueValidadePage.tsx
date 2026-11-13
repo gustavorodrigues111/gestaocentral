@@ -140,7 +140,7 @@ function SearchInput({ value, onChange, placeholder, autoFocus }: { value: strin
 }
 
 export function EstoqueValidadePage() {
-  const { pessoa: me } = useAuth();
+  const { pessoa: me, signOut } = useAuth();
   const { restaurants, setActiveId } = useRestaurant();
   const nav = useNavigate();
   const { rid: ridParam } = useParams<{ rid: string }>();
@@ -195,6 +195,11 @@ export function EstoqueValidadePage() {
   const sairOperador = () => { try { localStorage.removeItem("etiq_operador"); } catch { /* sem storage */ } setOperadorId(""); setOperadorMenu(false); };
   const respNome = operadorAtivo ? operadorAtivo.nome : (me?.nome || "");
   const respUid = operadorAtivo ? operadorAtivo.id : (me?.id || null);
+  // Na maquininha, limita a troca de restaurante aos restaurantes da máquina
+  // (os marcados no modo produção), mesmo que a conta logada enxergue mais.
+  const restaurantesVisiveis = naMaquininha && maquina?.restaurantesAlvo?.length
+    ? restaurants.filter((r) => maquina.restaurantesAlvo!.includes(r.id))
+    : restaurants;
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string } | null>(null);
   const [vinculosLocal, setVinculosLocal] = useState<LocalEstoque | null>(null);
@@ -311,10 +316,10 @@ export function EstoqueValidadePage() {
           <div className="relative flex items-center justify-between gap-2 mb-4">
             <Tag size={24} className="text-indigo-500 shrink-0" />
             <div className="flex items-center gap-1.5 min-w-0">
-              <button type="button" onClick={() => { if (restaurants.length > 1) setTrocaRest((v) => !v); }}
+              <button type="button" onClick={() => { if (restaurantesVisiveis.length > 1) setTrocaRest((v) => !v); }}
                 className="h-10 min-w-0 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
                 <span className="truncate">{restaurante?.nome || "Restaurante"}</span>
-                {restaurants.length > 1 && <ChevronDown size={15} className="shrink-0 text-gray-400" />}
+                {restaurantesVisiveis.length > 1 && <ChevronDown size={15} className="shrink-0 text-gray-400" />}
               </button>
               {operadorAtivo && (
                 <button type="button" onClick={() => setOperadorMenu((v) => !v)}
@@ -328,7 +333,7 @@ export function EstoqueValidadePage() {
                 <div className="fixed inset-0 z-40" onClick={() => setTrocaRest(false)} />
                 <div className="absolute right-0 top-14 z-50 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
                   <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">Trocar restaurante</div>
-                  {restaurants.map((r) => (
+                  {restaurantesVisiveis.map((r) => (
                     <button key={r.id} type="button" onClick={() => trocarRestaurante(r.id)} className={`w-full text-left px-3 py-2 text-sm ${r.id === rid ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{r.nome}</button>
                   ))}
                 </div>
@@ -443,7 +448,11 @@ export function EstoqueValidadePage() {
                 <div className="text-xs text-gray-400">Esta máquina: <b className="text-gray-600 dark:text-gray-300">{maquina.nome}</b> · <button type="button" onClick={() => { if (confirm("Trocar esta máquina por outra? Você vai escolher de novo qual é esta.")) { try { localStorage.removeItem("etiq_machine_id"); } catch { /* */ } setMachineId(""); } }} className="text-indigo-600 dark:text-indigo-400">trocar</button></div>
               )}
               <button type="button" onClick={() => window.location.reload()} className="inline-flex items-center gap-2 h-10 px-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 active:scale-95"><RefreshCw size={16} /> Atualizar telas</button>
-              <div><button type="button" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }} className="inline-flex items-center gap-1.5 text-xs text-gray-400"><Smartphone size={13} /> Atualizar o app (raro)</button></div>
+              <div className="flex items-center justify-center gap-4 pt-1">
+                <button type="button" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }} className="inline-flex items-center gap-1.5 text-xs text-gray-400"><Smartphone size={13} /> Atualizar o app</button>
+                <button type="button" onClick={() => { if (confirm("Sair da conta do aparelho? Você vai precisar entrar de novo (ex.: com a conta da maquininha).")) void signOut(); }} className="inline-flex items-center gap-1.5 text-xs text-rose-500"><LogOut size={13} /> Sair do app (trocar conta)</button>
+              </div>
+              <div className="text-[10px] text-gray-400 pt-1">Conta: {me?.nome || "—"}</div>
             </div>
           )}
         </div>
