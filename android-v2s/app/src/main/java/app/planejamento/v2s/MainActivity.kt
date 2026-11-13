@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
@@ -154,6 +155,25 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         web.saveState(outState)
+    }
+
+    // Botão físico de leitura da maquininha: avisa a tela ativa (via
+    // window.__sunmiTeclaScan), que abre o leitor nativo e roteia o código.
+    // A tecla de scan da Sunmi chega como keycode (520/521, F1-F4, …) — num
+    // kiosk sem teclado, qualquer tecla de função F1+ ou FOCUS/CAMERA é o
+    // gatilho; teclas de digitação e de sistema (volume/voltar/etc.) passam.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && ehTeclaScan(event)) {
+            runOnUiThread { web.evaluateJavascript("window.__sunmiTeclaScan && window.__sunmiTeclaScan()", null) }
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun ehTeclaScan(e: KeyEvent): Boolean {
+        if (e.isPrintingKey) return false
+        val kc = e.keyCode
+        return kc >= KeyEvent.KEYCODE_F1 || kc == KeyEvent.KEYCODE_FOCUS || kc == KeyEvent.KEYCODE_CAMERA
     }
 
     @Deprecated("Activity simples, sem AndroidX")

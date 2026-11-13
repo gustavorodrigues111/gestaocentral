@@ -8,7 +8,7 @@
 //   • Painel  → saldo + o que vence (FEFO)
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu } from "lucide-react";
 import { isComandasKioskHost, isEtiquetasKioskHost } from "../../core/restaurant/subdomain";
 import { APP_VERSION_LABEL } from "../../core/version";
@@ -62,7 +62,7 @@ import { buscarPorToken, tokenDoQr, type EtiquetaEmitida } from "./etiquetasRepo
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
-import { noAppSunmi, lerQrNativo, imprimirEtiqueta } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan } from "../../core/impressao/impressora";
 import { desenharEtiqueta } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
@@ -418,6 +418,11 @@ function BaixaTab({ rid, usuario, etiquetas, produtos, lotesAtivos, localNome, p
     const p = produtos.find((x) => x.qrTokenEstoque === code && x.ativo);
     if (p) { setSel(p); setMsg(""); } else { setMsg("QR não reconhecido neste restaurante."); }
   }
+
+  // Botão físico da maquininha abre o leitor (mesma ação do botão "Ler QR").
+  const abrirLeitorRef = useRef(abrirLeitor);
+  abrirLeitorRef.current = abrirLeitor;
+  useEffect(() => (noAppSunmi() ? armarTeclaScan(() => void abrirLeitorRef.current()) : undefined), []);
 
   const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
   const fila = sel ? lotesAtivos(sel.id).slice().sort(giroCmp) : [];

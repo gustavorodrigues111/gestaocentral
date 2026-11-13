@@ -6,12 +6,12 @@
 //  relatório de desperdício). A baixa pode ser pela lista ou lendo o QR da
 //  etiqueta. Histórico dos últimos 7 dias com opção de desfazer.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Trash2, ScanLine, Undo2, Search } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
-import { noAppSunmi, lerQrNativo } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, armarTeclaScan } from "../../core/impressao/impressora";
 import { ScannerModal } from "./ScannerModal";
 import {
   type EtiquetaEmitida, type Faixa, MOTIVOS_DESCARTE, buscarPorToken, darBaixaEtiqueta, diasAteValidade,
@@ -98,6 +98,11 @@ export function EtiquetasEmitidas({ rid, ativas, locais, usuario, podeOperar }: 
     }
     setScan(true);
   }
+
+  // Botão físico da maquininha dispara a mesma leitura do botão "Ler etiqueta".
+  const lerQrRef = useRef(lerQr);
+  lerQrRef.current = lerQr;
+  useEffect(() => (noAppSunmi() ? armarTeclaScan(() => void lerQrRef.current()) : undefined), []);
 
   if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão para dar baixa em etiquetas.</div>;
 

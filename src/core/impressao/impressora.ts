@@ -32,6 +32,7 @@ declare global {
   interface Window {
     SunmiBridge?: SunmiBridge;
     __sunmiRetorno?: (id: string, json: string) => void;
+    __sunmiTeclaScan?: () => void;   // botão físico de leitura da maquininha
     etiquetaBridge?: EtiquetaBridge;
   }
 }
@@ -193,4 +194,25 @@ export async function lerQrNativo(): Promise<string | null> {
   if (!window.SunmiBridge?.lerQr) return null;
   const r = await chamar((id) => window.SunmiBridge!.lerQr(id), 120000);
   return r.ok && r.valor ? r.valor : null;
+}
+
+// ── Botão físico de leitura (maquininha) ──────────────────────────────────────
+// O app Android chama window.__sunmiTeclaScan() quando o operador aperta o botão
+// físico lateral da maquininha. A tela ativa registra aqui o que fazer (abrir o
+// leitor e rotear o código lido) — só o último registrado (a tela visível) é
+// chamado. Retorna uma função pra desarmar (usar no cleanup do useEffect).
+const ouvintesTecla: Array<() => void> = [];
+export function armarTeclaScan(fn: () => void): () => void {
+  if (typeof window === "undefined") return () => { /* ssr */ };
+  ouvintesTecla.push(fn);
+  if (!window.__sunmiTeclaScan) {
+    window.__sunmiTeclaScan = () => {
+      const ult = ouvintesTecla[ouvintesTecla.length - 1];
+      if (ult) { try { ult(); } catch { /* ignora erro da tela */ } }
+    };
+  }
+  return () => {
+    const i = ouvintesTecla.lastIndexOf(fn);
+    if (i >= 0) ouvintesTecla.splice(i, 1);
+  };
 }
