@@ -281,20 +281,16 @@ export function EstoqueValidadePage() {
       {naMaquininha ? (
         aba === "home" ? (
           <div className="relative flex items-center justify-between gap-2 mb-4">
-            <div>
-              <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Tag size={22} className="text-indigo-500" /> Etiquetas</h1>
-              {restaurants.length > 1 ? (
-                <button type="button" onClick={() => setTrocaRest((v) => !v)} className="text-[12px] text-indigo-600 dark:text-indigo-400 font-medium inline-flex items-center gap-1 active:opacity-70">{restaurante?.nome || "Restaurante"} <ChevronDown size={13} /></button>
-              ) : (
-                <p className="text-[12px] text-gray-500">{restaurante?.nome || ""}</p>
-              )}
-            </div>
-            <button type="button" title="Buscar atualização do app" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }}
-              className="h-10 w-10 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 flex items-center justify-center active:scale-95"><RefreshCw size={18} /></button>
+            <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2 shrink-0"><Tag size={22} className="text-indigo-500" /> Etiquetas</h1>
+            <button type="button" onClick={() => { if (restaurants.length > 1) setTrocaRest((v) => !v); }}
+              className="h-10 max-w-[58%] px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
+              <span className="truncate">{restaurante?.nome || "Restaurante"}</span>
+              {restaurants.length > 1 && <ChevronDown size={15} className="shrink-0 text-gray-400" />}
+            </button>
             {trocaRest && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setTrocaRest(false)} />
-                <div className="absolute left-0 top-14 z-50 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
+                <div className="absolute right-0 top-14 z-50 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
                   <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">Trocar restaurante</div>
                   {restaurants.map((r) => (
                     <button key={r.id} type="button" onClick={() => trocarRestaurante(r.id)} className={`w-full text-left px-3 py-2 text-sm ${r.id === rid ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{r.nome}</button>
@@ -391,10 +387,12 @@ export function EstoqueValidadePage() {
             : subCad === "maquinas"
             ? <MaquinasTab maquinas={config.maquinas || []} ambientes={agruparPorAmbiente(locais).map((g) => g.ambiente).filter((a): a is LocalEstoque => !!a).map((a) => ({ id: a.id, nome: a.nome }))} bobinas={BOBINAS_ETIQ} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome }))} podeEditar={podeEditar} onSalvar={(ms) => void salvarConfig({ maquinas: ms })} />
             : <ProdutosTab produtos={produtos} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
-          {naMaquininha && maquina && (
-            <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center">
-              <div className="text-xs text-gray-400">Esta máquina: <b className="text-gray-600 dark:text-gray-300">{maquina.nome}</b></div>
-              <button type="button" onClick={() => { if (confirm("Trocar esta máquina por outra? Você vai escolher de novo qual é esta.")) { try { localStorage.removeItem("etiq_machine_id"); } catch { /* */ } setMachineId(""); } }} className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">Trocar máquina</button>
+          {naMaquininha && (
+            <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center space-y-2">
+              {maquina && (
+                <div className="text-xs text-gray-400">Esta máquina: <b className="text-gray-600 dark:text-gray-300">{maquina.nome}</b> · <button type="button" onClick={() => { if (confirm("Trocar esta máquina por outra? Você vai escolher de novo qual é esta.")) { try { localStorage.removeItem("etiq_machine_id"); } catch { /* */ } setMachineId(""); } }} className="text-indigo-600 dark:text-indigo-400">trocar</button></div>
+              )}
+              <button type="button" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }} className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"><RefreshCw size={14} /> Buscar atualização do app</button>
             </div>
           )}
         </div>
