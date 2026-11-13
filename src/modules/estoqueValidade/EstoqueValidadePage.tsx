@@ -778,7 +778,7 @@ function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
       <div>
         <div className="text-xs text-gray-500 mb-1 text-center">ou digite o número que está grande na etiqueta</div>
         <div className="flex gap-2">
-          <input value={num} onChange={(e) => setNum(e.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" placeholder="00000"
+          <input value={num === "" ? "" : num.padStart(5, "0")} onChange={(e) => { const d = e.target.value.replace(/\D/g, ""); const n = parseInt(d.slice(-5) || "0", 10); setNum(n > 0 ? String(n) : ""); }} inputMode="numeric" placeholder="00000"
             className="flex-1 h-14 px-3 text-3xl tracking-[0.3em] text-center rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 tabular-nums" />
           <button type="button" onClick={buscarNumero} disabled={!num} className="shrink-0 px-5 rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-semibold disabled:opacity-40">OK</button>
         </div>
