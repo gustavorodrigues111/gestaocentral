@@ -78,9 +78,9 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
   };
   const fio = (yy: number) => ctx.fillRect(0, yy, W, FIO);
 
-  // Começa um pouco abaixo do topo: acentos de maiúsculas (Á, Ã, Ç) sobem acima
-  // da caixa da fonte e seriam cortados na primeira linha.
-  let y = 4;
+  // Respiro no topo: além de evitar que acentos de maiúsculas (Á, Ã, Ç) sejam
+  // cortados, dá uma margem confortável pra primeira linha não colar na borda.
+  let y = 18;
 
   for (const b of blocos) {
     if (b.tipo === "rotulo") {
