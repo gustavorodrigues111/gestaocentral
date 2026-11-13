@@ -391,7 +391,7 @@ export function EtiquetasTab(props: Props) {
       <div className="max-w-2xl mx-auto">
         {cabecalho(produto.nome, `${nomeCompleto(local, locais)} · ${metodoLabel(local.metodoConservacao)}`)}
         {avisoMsg}
-        {aviso && <div className="mb-3 text-sm text-amber-700 dark:text-amber-300">{aviso}</div>}
+        {aviso && <div className="mb-3 inline-block text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-2.5 py-1.5 rounded-lg">{aviso}</div>}
 
         <div className="flex items-end justify-between mb-5">
           <div>
