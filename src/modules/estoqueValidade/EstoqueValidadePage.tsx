@@ -9,7 +9,7 @@
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw } from "lucide-react";
+import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw, Home, ChevronRight } from "lucide-react";
 import { isComandasKioskHost, isEtiquetasKioskHost } from "../../core/restaurant/subdomain";
 import { APP_VERSION_LABEL } from "../../core/version";
 import { destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
@@ -131,19 +131,27 @@ export function EstoqueValidadePage() {
   const podeOperar = can("estoqueValidade", "operar") || can("estoqueValidade", "editar");
   const podeEditar = can("estoqueValidade", "editar");
 
-  const [aba, setAba] = useTabPersistida<"painel" | "etiquetas" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
+  const [aba, setAba] = useTabPersistida<"home" | "painel" | "etiquetas" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
   const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases">("locais");
   // No app do caixa (kiosk), a navegação vira um MENU (como o Comandas) e abre
   // direto nas Etiquetas (emitir/dar baixa), em vez da barra de abas do admin.
   const naKiosk = isComandasKioskHost() || isEtiquetasKioskHost();
+  // Na maquininha (app Sunmi): tela inicial com botões grandes, navegação por
+  // "Início" (sem menu nem "imprimir aqui" — só imprime nela mesma).
+  const naMaquininha = noAppSunmi();
   const [menuAberto, setMenuAberto] = useState(false);
   const [printerCfg, setPrinterCfg] = useState(false);
-  useEffect(() => { if (naKiosk) setAba("etiquetas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (naMaquininha) setAba("home"); else if (naKiosk) setAba("etiquetas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
   const [lotes, setLotes] = useState<LoteEstoque[]>([]);
   const [pendentes, setPendentes] = useState<EntradaPendente[]>([]);
   const [etiquetasAtivas, setEtiquetasAtivas] = useState<EtiquetaEmitida[]>([]);
+  const homeResumo = useMemo(() => {
+    let vencidas = 0, hoje = 0;
+    for (const e of etiquetasAtivas) { const d = diasAte(e.validade); if (d < 0) vencidas++; else if (d === 0) hoje++; }
+    return { vencidas, hoje, ativas: etiquetasAtivas.length };
+  }, [etiquetasAtivas]);
   const [config, setConfig] = useState<EstoqueConfig>(CONFIG_PADRAO);
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string } | null>(null);
@@ -231,7 +239,21 @@ export function EstoqueValidadePage() {
 
   return (
     <PageContainer>
-      {naKiosk ? (
+      {naMaquininha ? (
+        aba === "home" ? (
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div>
+              <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Tag size={22} className="text-indigo-500" /> Etiquetas</h1>
+              <p className="text-[12px] text-gray-500">{restaurante?.nome || ""}</p>
+            </div>
+            <button type="button" title="Buscar atualização do app" onClick={() => { if (!verificarAtualizacaoApp()) alert("Atualização automática só no app novo. Reinstale uma vez pra habilitar."); }}
+              className="h-10 w-10 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-500 flex items-center justify-center active:scale-95"><RefreshCw size={18} /></button>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setAba("home")}
+            className="mb-4 h-12 px-4 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-base font-semibold inline-flex items-center gap-2 active:scale-[.98]"><Home size={20} /> Início</button>
+        )
+      ) : naKiosk ? (
         <div className="flex items-start justify-between gap-2 flex-wrap mb-4">
           <div>
             <h1 className="text-lg font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Tag size={20} className="text-indigo-500" /> Etiquetas</h1>
@@ -276,16 +298,36 @@ export function EstoqueValidadePage() {
         </div>
       )}
 
+      {naMaquininha && aba === "home" && (
+        <div className="space-y-3 max-w-md mx-auto">
+          <button type="button" onClick={() => setAba("painel")}
+            className="w-full flex items-center justify-between gap-2 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-4 py-3 active:scale-[.99]">
+            <span className="text-sm text-gray-600 dark:text-gray-300 inline-flex items-center gap-2">
+              <BarChart3 size={18} className="text-indigo-500" />
+              <span><b className="text-rose-600 dark:text-rose-400">{homeResumo.vencidas}</b> vencidas · <b className="text-amber-600 dark:text-amber-400">{homeResumo.hoje}</b> hoje · <b className="text-gray-800 dark:text-gray-100">{homeResumo.ativas}</b> ativas</span>
+            </span>
+            <ChevronRight size={18} className="text-gray-400" />
+          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button type="button" onClick={() => setAba("etiquetas")} className="col-span-2 h-28 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={30} /><span className="text-lg font-semibold">Emitir etiqueta</span></button>
+            <button type="button" onClick={() => setAba("baixa")} className="col-span-2 h-28 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><PackageMinus size={30} /><span className="text-lg font-semibold">Dar baixa</span></button>
+            <button type="button" onClick={() => setAba("entrada")} className="h-24 rounded-2xl bg-emerald-600 text-white flex flex-col items-center justify-center gap-1 active:scale-[.98] shadow-sm"><PackagePlus size={26} /><span className="text-base font-semibold">Dar entrada</span></button>
+            <button type="button" onClick={() => setAba("cadastro")} className="h-24 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center gap-1 active:scale-[.98] shadow-sm"><FolderOpen size={26} /><span className="text-base font-semibold">Cadastro</span></button>
+          </div>
+        </div>
+      )}
       {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
       {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} />}
       {aba === "baixa" && <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
       {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
         <div>
-          <div className="flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
-            {([["locais", <span className="inline-flex items-center gap-1.5"><MapPin size={14} /> Locais</span>], ["produtos", <span className="inline-flex items-center gap-1.5"><Tag size={14} /> Produtos</span>], ["bases", <span className="inline-flex items-center gap-1.5"><Settings size={14} /> Bases</span>]] as const).map(([k, l]) => (
+          <div className={naMaquininha ? "grid grid-cols-3 gap-2 mb-4" : "flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2"}>
+            {([["locais", <span className="inline-flex items-center gap-1.5"><MapPin size={naMaquininha ? 18 : 14} /> Locais</span>], ["produtos", <span className="inline-flex items-center gap-1.5"><Tag size={naMaquininha ? 18 : 14} /> Produtos</span>], ["bases", <span className="inline-flex items-center gap-1.5"><Settings size={naMaquininha ? 18 : 14} /> Bases</span>]] as const).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setSubCad(k)}
-                className={`px-3 py-1.5 text-sm font-medium rounded-lg ${subCad === k ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{l}</button>
+                className={naMaquininha
+                  ? `h-16 rounded-xl text-sm font-semibold flex items-center justify-center ${subCad === k ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`
+                  : `px-3 py-1.5 text-sm font-medium rounded-lg ${subCad === k ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{l}</button>
             ))}
           </div>
           {subCad === "locais"
