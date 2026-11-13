@@ -16,7 +16,7 @@ import { desenharEtiqueta, larguraPx, type Bobina } from "../../core/impressao/e
 import { imprimirEtiquetas, statusSunmi, avisoStatus, destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
 import type { LocalEstoque } from "../../core/types";
 import { blocosValidade, dataBR, diaSemana, novoCodigoLote, validadeDe, ymd } from "./etiquetaValidade";
-import { diasAteValidade, gravarEmissao, hojeSP, urlEtiqueta, type EtiquetaEmitida } from "./etiquetasRepo";
+import { diasAteValidade, gravarEmissao, hojeSP, urlEtiqueta, siglaEtiqueta, codigoEtiqueta, proximosNumerosEtiqueta, type EtiquetaEmitida } from "./etiquetasRepo";
 import { agruparPorAmbiente, diasNoLocal, nomeCompleto, produtosDoLocal } from "./compatibilidade";
 import { EtiquetasEmitidas } from "./EtiquetasEmitidas";
 import { enfileirarEtiqueta } from "./filaImpressao";
@@ -143,6 +143,8 @@ export function EtiquetasTab(props: Props) {
   const alvo = opcoesAlvo.find((r) => r.id === alvoId) || null;
   const empresaLabel = modoProducao && alvo ? (alvo.razaoSocial || alvo.nome) : empresa;
   const cnpjLabel = modoProducao && alvo ? (alvo.cnpj ?? null) : cnpj;
+  const sigla = siglaEtiqueta(modoProducao && alvo ? alvo.nome : empresa);
+  const codigoPrevia = codigoEtiqueta(sigla, proximosNumerosEtiqueta(ativas, 1)[0] || 1);
   const equipamentos = useMemo(() => grupos.flatMap((g) => g.equipamentos), [grupos]);
   const grupoAtual = grupos.find((g) => (g.ambiente?.id || "") === ambienteId) || null;
   const nomeAmbiente = grupoAtual?.ambiente?.nome || (grupos.length > 1 ? "Sem ambiente" : "");
@@ -161,7 +163,7 @@ export function EtiquetasTab(props: Props) {
     const agora = new Date();
     desenharEtiqueta(blocosValidade({
       produto: produto.nome, metodo: metodoDoLocal, dias, manipulacao: agora, validade: validadeDe(agora, dias),
-      responsavel, lote: novoCodigoLote(agora), empresa: empresaLabel, cnpj: cnpjLabel, qr: "https://planejamento.app/e/previa",
+      responsavel, lote: novoCodigoLote(agora), empresa: empresaLabel, cnpj: cnpjLabel, codigo: codigoPrevia, qr: "https://planejamento.app/e/previa",
     }), bobina, largura).then((c) => { if (vivo) setPrevia({ chave: chavePrevia, url: c.toDataURL("image/png") }); });
     return () => { vivo = false; };
   }, [passo, produto, local, dias, metodoDoLocal, responsavel, empresaLabel, cnpjLabel, bobina, largura, chavePrevia]);
@@ -191,6 +193,8 @@ export function EtiquetasTab(props: Props) {
       const lote = novoCodigoLote(agora);
       const metodo = metodoLabel(local.metodoConservacao);
       // 1 registro por etiqueta física (mesmo lote, QR próprio): a baixa é pote a pote.
+      // Número curto (sigla + 5 dígitos) pra baixa manual — gerado local (offline-ok).
+      const numeros = proximosNumerosEtiqueta(ativas, copias);
       const { docs, confirmacao } = gravarEmissao({
         tipo: "producao", restaurantId: rid, produtoId: produto.id, produtoNome: produto.nome,
         conservacao: local.metodoConservacao || "", conservacaoLabel: metodo, diasValidade: dias,
@@ -198,7 +202,7 @@ export function EtiquetasTab(props: Props) {
         manipuladorUid: responsavelUid || null, manipuladorNome: responsavel,
         impressaoTs: agora.toISOString(), validade: ymd(validade), lote, totalCopias: copias,
         via: naSunmi ? "sunmi" : naFila ? "fila-caixa" : "navegador",
-      });
+      }, { numeros, sigla });
       // Não trava a cozinha esperando a rede: até 5 s; depois imprime e o registro sobe sozinho.
       const r0 = await Promise.race([
         confirmacao.then(() => "ok" as const, () => "erro" as const),
@@ -223,7 +227,7 @@ export function EtiquetasTab(props: Props) {
       }
 
       const canvases = await Promise.all(docs.map((d) => desenharEtiqueta(blocosValidade({
-        produto: produto.nome, metodo, dias, manipulacao: agora, validade, responsavel, lote, empresa: empresaLabel, cnpj: cnpjLabel, qr: urlEtiqueta(d.qrToken),
+        produto: produto.nome, metodo, dias, manipulacao: agora, validade, responsavel, lote, empresa: empresaLabel, cnpj: cnpjLabel, codigo: d.codigo, qr: urlEtiqueta(d.qrToken),
       }), bobina, largura)));
       const r = await imprimirEtiquetas(canvases, bobina, destino as Destino);
       if (!r.ok) { setMsg({ ok: false, texto: r.erro || "Falha ao imprimir." }); return; }

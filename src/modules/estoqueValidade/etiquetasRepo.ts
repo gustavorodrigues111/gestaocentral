@@ -20,6 +20,8 @@ export type EtiquetaEmitida = {
   lote: string;                 // compartilhado entre as cópias da emissão
   copia: number; totalCopias: number;
   qrToken: string;              // único por etiqueta
+  numero?: number;              // 1..99999, único entre as ATIVAS do restaurante (baixa manual)
+  codigo?: string;              // sigla do restaurante + número (ex.: SOR00042), impresso grande
   status: StatusEtiqueta;
   baixaTs?: string | null; baixaDia?: string | null; baixaPorUid?: string | null; baixaPorNome?: string | null; baixaMotivo?: string | null;
   via?: "sunmi" | "navegador" | "fila-caixa";
@@ -28,6 +30,33 @@ export type EtiquetaEmitida = {
 
 export const urlEtiqueta = (token: string) => `https://planejamento.app/e/${encodeURIComponent(token)}`;
 export const tokenDaCopia = (lote: string, copia: number) => `et_${lote}-${copia}`;
+
+/** Sigla de 3 letras do restaurante, prefixo do código da etiqueta (ex.: "SOR"). */
+export function siglaEtiqueta(nome: string): string {
+  const letras = (nome || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z]/g, "");
+  return (letras.slice(0, 3) || "ETQ").padEnd(3, "X");
+}
+export const codigoEtiqueta = (sigla: string, numero: number) => `${sigla}${String(numero).padStart(5, "0")}`;
+
+/**
+ * Próximos N números livres (1..99999), reaproveitando os que não estão mais
+ * ativos. Cresce a partir do maior ativo e dá a volta em 99999. Local: funciona
+ * offline (não depende de contador no servidor).
+ */
+export function proximosNumerosEtiqueta(ativas: EtiquetaEmitida[], n: number): number[] {
+  const usados = new Set<number>();
+  let max = 0;
+  for (const e of ativas) if (typeof e.numero === "number") { usados.add(e.numero); if (e.numero > max) max = e.numero; }
+  const out: number[] = [];
+  let c = max + 1 > 99999 ? 1 : max + 1;
+  for (let i = 0; i < n; i++) {
+    let guard = 0;
+    while (usados.has(c) && guard++ < 100000) { c = c >= 99999 ? 1 : c + 1; }
+    out.push(c); usados.add(c);
+    c = c >= 99999 ? 1 : c + 1;
+  }
+  return out;
+}
 
 /** Aceita a URL do QR ou o token puro; devolve o token da etiqueta ou null. */
 export function tokenDoQr(lido: string): string | null {
@@ -69,17 +98,24 @@ export function textoPrazo(dias: number): string {
  * hora (os ids nascem no cliente) e a confirmação do servidor à parte: sem
  * internet a cozinha imprime assim mesmo e o registro sobe quando a rede volta.
  */
-export function gravarEmissao(base: Omit<EtiquetaEmitida, "id" | "copia" | "qrToken" | "status" | "criadoEm">): { docs: EtiquetaEmitida[]; confirmacao: Promise<void> } {
+export function gravarEmissao(base: Omit<EtiquetaEmitida, "id" | "copia" | "qrToken" | "status" | "criadoEm" | "numero" | "codigo">, opts?: { numeros?: number[]; sigla?: string }): { docs: EtiquetaEmitida[]; confirmacao: Promise<void> } {
   const batch = writeBatch(db);
   const criadoEm = new Date().toISOString();
   const docs: EtiquetaEmitida[] = [];
   for (let i = 1; i <= base.totalCopias; i++) {
     const ref = doc(collection(db, "etiquetas"));
     const dados: Omit<EtiquetaEmitida, "id"> = { ...base, copia: i, qrToken: tokenDaCopia(base.lote, i), status: "ativa", criadoEm };
+    const numero = opts?.numeros?.[i - 1];
+    if (typeof numero === "number") { dados.numero = numero; if (opts?.sigla) dados.codigo = codigoEtiqueta(opts.sigla, numero); }
     batch.set(ref, dados);
     docs.push({ ...dados, id: ref.id });
   }
   return { docs, confirmacao: batch.commit() };
+}
+
+/** Acha a etiqueta ATIVA pelo número digitado (baixa manual). null se não houver. */
+export function etiquetaPorNumero(ativas: EtiquetaEmitida[], numero: number): EtiquetaEmitida | null {
+  return ativas.find((e) => e.numero === numero && e.status === "ativa") || null;
 }
 
 /** Hoje no fuso de São Paulo (UTC-3), YYYY-MM-DD. */

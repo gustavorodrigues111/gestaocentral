@@ -25,12 +25,13 @@ export function novoCodigoLote(agora: Date, aleatorio: () => number = Math.rando
 
 export type DadosEtiquetaValidade = {
   produto: string; metodo: string; dias: number; manipulacao: Date; validade: Date; responsavel: string;
-  lote: string; empresa: string; cnpj?: string | null; qr: string;
+  lote: string; empresa: string; cnpj?: string | null; qr: string; codigo?: string | null;
 };
 
 /** Campos da RDC 216 (produto, manipulação, validade, responsável) + lote e QR. */
 export function blocosValidade(d: DadosEtiquetaValidade): BlocoEtiqueta[] {
   return [
+    ...(d.codigo ? [{ tipo: "codigo", texto: d.codigo } as BlocoEtiqueta] : []),
     { tipo: "rotulo", texto: d.metodo, direita: `${d.dias} ${d.dias === 1 ? "dia" : "dias"}` },
     { tipo: "titulo", texto: d.produto },
     { tipo: "colunas", colunas: [

@@ -58,7 +58,7 @@ import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { EtiquetasTab } from "./EtiquetasTab";
 import { BaixaEtiquetaModal, ResumoEtiquetas } from "./EtiquetasEmitidas";
 import { ScannerModal } from "./ScannerModal";
-import { buscarPorToken, tokenDoQr, type EtiquetaEmitida } from "./etiquetasRepo";
+import { buscarPorToken, tokenDoQr, etiquetaPorNumero, diasAteValidade, hojeSP, type EtiquetaEmitida } from "./etiquetasRepo";
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
@@ -368,7 +368,9 @@ export function EstoqueValidadePage() {
       {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} naMaquininha={naMaquininha} onAbrirEtiquetas={() => { if (naMaquininha) { setAba("baixa"); return; } try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />}
       {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={me?.nome || ""} responsavelUid={me?.id || null} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
         ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
-      {aba === "baixa" && <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
+      {aba === "baixa" && (naMaquininha
+        ? <BaixaMaquininha rid={rid} etiquetas={etiquetasAtivas} usuario={{ uid: me?.id || null, nome: me?.nome || null }} podeOperar={podeOperar} />
+        : <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />)}
       {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
         <div>
@@ -632,6 +634,70 @@ function BaixaTab({ rid, usuario, etiquetas, produtos, lotesAtivos, localNome, p
       {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"}`}>{msg}</div>}
       {scan && <ScannerModal onDetect={aoLerQr} onClose={() => setScan(false)} />}
       {etiquetaLida && <BaixaEtiquetaModal etiqueta={etiquetaLida} usuario={usuario} onClose={() => setEtiquetaLida(null)} />}
+    </div>
+  );
+}
+
+// ═══ BAIXA NA MAQUININHA (só etiquetas: Ler QR ou digitar o número) ══════════
+function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
+  rid: string; etiquetas: EtiquetaEmitida[]; usuario: { uid?: string | null; nome?: string | null }; podeOperar: boolean;
+}) {
+  const [scan, setScan] = useState(false);
+  const [aberta, setAberta] = useState<EtiquetaEmitida | null>(null);
+  const [num, setNum] = useState("");
+  const [msg, setMsg] = useState("");
+
+  function aoLerQr(code: string) {
+    setScan(false); setMsg("");
+    const token = tokenDoQr(code);
+    if (token) {
+      const e = etiquetas.find((x) => x.qrToken === token);
+      if (e) { setAberta(e); return; }
+      void buscarPorToken(rid, token).then((x) => (x ? setAberta(x) : setMsg("Etiqueta não encontrada nesta unidade.")), () => setMsg("Não consegui consultar a etiqueta."));
+      return;
+    }
+    setMsg("QR não reconhecido.");
+  }
+  async function abrirLeitor() { if (noAppSunmi()) { const v = await lerQrNativo(); if (v) { aoLerQr(v); return; } } setScan(true); }
+  function buscarNumero() {
+    const n = parseInt((num || "").replace(/\D/g, ""), 10);
+    if (!n) { setMsg("Digite o número da etiqueta."); return; }
+    const e = etiquetaPorNumero(etiquetas, n);
+    if (e) { setAberta(e); setNum(""); setMsg(""); } else setMsg(`Nenhuma etiqueta ativa com o número ${String(n).padStart(5, "0")}.`);
+  }
+  const abrirRef = useRef(abrirLeitor); abrirRef.current = abrirLeitor;
+  const aoLerRef = useRef(aoLerQr); aoLerRef.current = aoLerQr;
+  useEffect(() => { if (!noAppSunmi()) return; const d1 = armarTeclaScan(() => void abrirRef.current()); const d2 = armarCodigoScan((c) => aoLerRef.current(c)); return () => { d1(); d2(); }; }, []);
+
+  if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão pra dar baixa.</div>;
+  const aVencer = etiquetas.slice().sort((a, b) => a.validade.localeCompare(b.validade)).slice(0, 15);
+  return (
+    <div className="space-y-4 max-w-md mx-auto">
+      <button type="button" onClick={() => void abrirLeitor()} className="w-full h-16 rounded-2xl bg-indigo-600 text-white text-lg font-semibold inline-flex items-center justify-center gap-2 active:bg-indigo-700 shadow-sm"><Camera size={22} /> Ler QR da etiqueta</button>
+      <div>
+        <div className="text-xs text-gray-500 mb-1 text-center">ou digite o número que está grande na etiqueta</div>
+        <div className="flex gap-2">
+          <input value={num} onChange={(e) => setNum(e.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" placeholder="00000"
+            className="flex-1 h-14 px-3 text-3xl tracking-[0.3em] text-center rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 tabular-nums" />
+          <button type="button" onClick={buscarNumero} disabled={!num} className="shrink-0 px-5 rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-semibold disabled:opacity-40">OK</button>
+        </div>
+      </div>
+      {msg && <div className="text-sm text-rose-600 text-center">{msg}</div>}
+      {aVencer.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Vencendo primeiro</div>
+          <div className="space-y-1.5">
+            {aVencer.map((e) => { const d = diasAteValidade(e.validade, hojeSP()); return (
+              <button key={e.id} type="button" onClick={() => setAberta(e)} className="w-full flex items-center justify-between gap-2 px-3 py-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-left active:bg-gray-50 dark:active:bg-gray-800/50">
+                <span className="truncate text-sm text-gray-900 dark:text-gray-100">{(e.codigo || (e.numero != null ? String(e.numero).padStart(5, "0") : "")) && <b className="tabular-nums text-gray-400 mr-2">{e.codigo || String(e.numero).padStart(5, "0")}</b>}{e.produtoNome}</span>
+                <span className={`text-xs whitespace-nowrap ${d < 0 ? "text-rose-600" : d === 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-400"}`}>{d < 0 ? "vencida" : d === 0 ? "hoje" : d === 1 ? "amanhã" : `${d}d`}</span>
+              </button>
+            ); })}
+          </div>
+        </div>
+      )}
+      {scan && <ScannerModal titulo="Ler QR da etiqueta" onDetect={aoLerQr} onClose={() => setScan(false)} />}
+      {aberta && <BaixaEtiquetaModal etiqueta={aberta} usuario={usuario} onClose={() => setAberta(null)} />}
     </div>
   );
 }

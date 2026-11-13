@@ -27,6 +27,7 @@ export type BlocoEtiqueta =
   | { tipo: "linha"; texto: string; negrito?: boolean; tam?: number }
   | { tipo: "fio" }                                        // separador fino
   | { tipo: "colunas"; colunas: Coluna[] }                 // ex.: Validade | Manipulado
+  | { tipo: "codigo"; texto: string }                      // código curto grande (baixa manual)
   | { tipo: "rodapeQr"; qr: string; linhas: string[] };    // ancorado embaixo; 1ª linha em negrito
 
 const FONTE = "'Inter', 'Roboto', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif";
@@ -106,6 +107,12 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
       const px = b.tam ?? 18;
       fonte(px, b.negrito ? 700 : 600); // térmica: 400 sai falhada, 600 fica cheio
       for (const l of quebrar(ctx, b.texto, W)) { ctx.fillText(l, 0, y); y += px + 4; }
+    } else if (b.tipo === "codigo") {
+      // Rótulo pequeno "Nº" + código grande, pra leitura/digitação a olho.
+      fonte(15, 700, 1.2); ctx.fillText("Nº", 0, y + 10);
+      const lx = ctx.measureText("Nº").width + 8;
+      fonte(30, 800, 1); ctx.fillText(b.texto, lx, y);
+      y += 38;
     } else if (b.tipo === "fio") {
       fio(y);
       y += FIO + 10;
