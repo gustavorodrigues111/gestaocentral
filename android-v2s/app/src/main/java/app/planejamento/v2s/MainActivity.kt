@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -59,7 +60,9 @@ class MainActivity : Activity() {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
-        ponte = SunmiBridge(applicationContext, ::responderJs, ::abrirLeitorQr)
+        ponte = SunmiBridge(applicationContext, ::responderJs, ::abrirLeitorQr) {
+            Atualizador.verificar(this, false)   // menu "Buscar atualização" (avisa mesmo se já estiver na última)
+        }
         ponte.conectar()
         web.addJavascriptInterface(ponte, "SunmiBridge")
 
@@ -99,6 +102,34 @@ class MainActivity : Activity() {
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState)
         else web.loadUrl(BuildConfig.URL_INICIAL)
+
+        // Checa atualização do app pouco depois de abrir (silencioso: só avisa se houver).
+        web.postDelayed({ Atualizador.verificar(this, true) }, 4000)
+        tratarResultadoInstalacao(intent)
+    }
+
+    // PackageInstaller devolve o pedido de confirmação de instalação aqui.
+    @Deprecated("Activity simples, sem AndroidX")
+    override fun onNewIntent(novo: Intent?) {
+        super.onNewIntent(novo)
+        setIntent(novo)
+        tratarResultadoInstalacao(novo)
+    }
+
+    private fun tratarResultadoInstalacao(i: Intent?) {
+        if (i?.action != "app.planejamento.v2s.INSTALL_RESULT") return
+        val status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, Int.MIN_VALUE)
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            @Suppress("DEPRECATION")
+            val confirmar = i.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+            confirmar?.let {
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try { startActivity(it) } catch (_: Exception) { }
+            }
+        } else if (status == PackageInstaller.STATUS_FAILURE || status == PackageInstaller.STATUS_FAILURE_ABORTED) {
+            val msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+            if (!msg.isNullOrBlank()) Toast.makeText(this, "Atualização não concluída: $msg", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun responderJs(id: String, json: JSONObject) {

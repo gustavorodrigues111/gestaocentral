@@ -16,6 +16,7 @@ type SunmiBridge = {
   status: () => string;                                     // {"conectada":bool,"estado":n,"modo":n,"modelo":"..."}
   imprimirEtiqueta: (id: string, pngBase64: string, copias: number) => void;
   lerQr: (id: string) => void;
+  verificarAtualizacao?: () => void;                        // checa/instala nova versão do app (só no app antigo pode faltar)
 };
 
 // Ponte exposta pelo app Electron do CAIXA (desktop/): imprime o PNG da etiqueta
@@ -65,6 +66,12 @@ function chamar(fn: (id: string) => void, timeoutMs: number): Promise<{ ok: bool
 
 export function noAppSunmi(): boolean {
   return typeof window !== "undefined" && !!window.SunmiBridge;
+}
+
+/** Pede ao app da maquininha pra checar/instalar atualização. false = não dá (app antigo). */
+export function verificarAtualizacaoApp(): boolean {
+  if (!window.SunmiBridge?.verificarAtualizacao) return false;
+  try { window.SunmiBridge.verificarAtualizacao(); return true; } catch { return false; }
 }
 
 /** Roda dentro do app do caixa (Electron) com a ponte de etiqueta local? */

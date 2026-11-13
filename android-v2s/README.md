@@ -14,6 +14,23 @@ workflow. Ao terminar, baixe o artefato `planejamento-v2s-apk`.
 **Pelo Android Studio:** File > Open > pasta `android-v2s`. Espere sincronizar e
 use Build > Build APK(s).
 
+## Atualização automática (não precisa reinstalar a cada versão)
+
+O app é uma casca do site: **telas e lógica atualizam sozinhas** a cada deploy
+na Vercel. Só a **casca nativa** (impressora, leitor, botão físico) precisa de
+APK novo — e isso agora também atualiza pela internet:
+
+- Ao abrir, o app lê `apks/latest.json` no Storage. Se o `versionCode` de lá for
+  maior que o instalado, oferece **"Atualizar agora"** (baixa o APK e instala via
+  PackageInstaller — o Android pede confirmação). Há também **Menu → Buscar
+  atualização**.
+- **Para publicar uma versão nativa nova:**
+  1. Suba `versionCode`/`versionName` em `app/build.gradle.kts` e gere o APK.
+  2. Upload do APK em `apks/planejamento-v2s.apk` (mantendo o mesmo token).
+  3. Edite `apks/latest.json` com o novo `versionCode`/`versionName` (o campo
+     `url` aponta sempre pro mesmo APK). As maquininhas pegam na próxima abertura.
+- A primeira instalação do app **com** o atualizador ainda é manual (uma vez).
+
 ## Instalar na maquininha
 
 1. Copie o APK para o aparelho (cabo USB, Drive ou WhatsApp) e abra o arquivo.
@@ -31,7 +48,9 @@ use Build > Build APK(s).
 - [ ] 5 cópias seguidas saem alinhadas (sem desvio acumulado)
 - [ ] QR da etiqueta é lido pelo celular
 - [ ] Botão "Ler QR" na aba Baixa abre o leitor da Sunmi
+- [ ] Botão FÍSICO lateral abre o leitor (na aba Baixa / Etiquetas emitidas)
 - [ ] Login continua salvo depois de fechar e abrir o app
+- [ ] Menu > Buscar atualização responde (e atualiza quando há versão nova)
 
 ## Pontos a confirmar no aparelho
 

@@ -23,6 +23,7 @@ class SunmiBridge(
     private val context: Context,
     private val responder: (id: String, json: JSONObject) -> Unit,
     private val abrirLeitor: (id: String) -> Unit,
+    private val aoVerificarAtualizacao: () -> Unit,
 ) {
     @Volatile private var impressora: SunmiPrinterService? = null
     @Volatile private var erroConexao: String? = null
@@ -93,6 +94,9 @@ class SunmiBridge(
 
     @JavascriptInterface
     fun lerQr(id: String) = abrirLeitor(id)
+
+    @JavascriptInterface
+    fun verificarAtualizacao() = aoVerificarAtualizacao()
 
     private fun ok(id: String, valor: String? = null) {
         val j = JSONObject().put("ok", true)
