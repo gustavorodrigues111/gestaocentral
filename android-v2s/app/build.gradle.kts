@@ -11,8 +11,8 @@ android {
         applicationId = "app.planejamento.v2s"
         minSdk = 25          // Android 7.1 (Sunmi V2) em diante; a V2s roda Android 11
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.2.3-piloto"
+        versionCode = 6
+        versionName = "0.2.4-piloto"
         // Abre direto no KIOSK das Etiquetas (sem admin). Host etiquetas.* dispara
         // o modo kiosk no site. Troque para testar em preview da Vercel.
         buildConfigField("String", "URL_INICIAL", "\"https://etiquetas.planejamento.app\"")

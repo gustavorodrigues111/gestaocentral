@@ -190,13 +190,16 @@ class MainActivity : Activity() {
 
     // Botão físico de leitura da maquininha: avisa a tela ativa (via
     // window.__sunmiTeclaScan), que abre o leitor nativo e roteia o código.
-    // A tecla de scan da Sunmi chega como keycode (520/521, F1-F4, …) — num
-    // kiosk sem teclado, qualquer tecla de função F1+ ou FOCUS/CAMERA é o
-    // gatilho; teclas de digitação e de sistema (volume/voltar/etc.) passam.
+    // Na V2s base os únicos botões são Liga/Desliga + Volume (+/−); os DOIS de
+    // volume viram o gatilho do leitor (o app consome a tecla, então o volume
+    // não muda). Também cobre a tecla de scan dedicada (F1+/FOCUS/CAMERA) nas
+    // versões Scanner. Liga/Desliga e digitação passam normalmente.
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && ehTeclaScan(event)) {
-            runOnUiThread { web.evaluateJavascript("window.__sunmiTeclaScan && window.__sunmiTeclaScan()", null) }
-            return true
+        if (ehTeclaScan(event)) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                runOnUiThread { web.evaluateJavascript("window.__sunmiTeclaScan && window.__sunmiTeclaScan()", null) }
+            }
+            return true   // consome down/up/repeat: volume não muda e não aparece a barra
         }
         return super.dispatchKeyEvent(event)
     }
@@ -204,6 +207,7 @@ class MainActivity : Activity() {
     private fun ehTeclaScan(e: KeyEvent): Boolean {
         if (e.isPrintingKey) return false
         val kc = e.keyCode
+        if (kc == KeyEvent.KEYCODE_VOLUME_UP || kc == KeyEvent.KEYCODE_VOLUME_DOWN) return true
         return kc >= KeyEvent.KEYCODE_F1 || kc == KeyEvent.KEYCODE_FOCUS || kc == KeyEvent.KEYCODE_CAMERA
     }
 
