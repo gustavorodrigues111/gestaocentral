@@ -110,20 +110,21 @@ export async function hashPin(pin: string, salt: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 // Perfil de acesso dedicado da máquina de etiquetas: só enxerga o módulo
-// Etiquetas (ver + operar: emitir e dar baixa). Id fixo pra ser idempotente —
-// uma máquina em qualquer restaurante usa o mesmo perfil.
+// Etiquetas, mas com gestão completa dele (ver + operar + editar) — pra o
+// próprio aparelho cadastrar locais/produtos/bases. Id fixo pra ser
+// idempotente — uma máquina em qualquer restaurante usa o mesmo perfil.
 const PERFIL_MAQUINA_ID = "_maq_etiquetas";
 async function garantirPerfilMaquina(): Promise<string> {
   const ref = doc(db, "accessProfiles", PERFIL_MAQUINA_ID);
   await setDoc(ref, sanitizeForFirestore({
     id: PERFIL_MAQUINA_ID,
     nome: "Maquininha (Etiquetas)",
-    descricao: "Conta de aparelho — só emite e dá baixa em etiquetas de validade. Não enxerga mais nada do sistema.",
+    descricao: "Conta de aparelho — gerencia só o módulo Etiquetas (emite, dá baixa e cadastra locais/produtos). Não enxerga mais nada do sistema.",
     builtin: false,
     maquinaEtiquetas: true,
     restaurantId: null,
     criadoEm: new Date().toISOString(),
-    permissions: { estoqueValidade: { ver: true, operar: true } },
+    permissions: { estoqueValidade: { ver: true, operar: true, editar: true } },
   }), { merge: true });
   return PERFIL_MAQUINA_ID;
 }
