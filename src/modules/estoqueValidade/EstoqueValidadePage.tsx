@@ -1184,6 +1184,9 @@ function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, rid, podeEdit
   restaurantes: { id: string; nome: string }[]; rid: string; podeEditar: boolean; onSalvar: (ms: Maquina[]) => void;
 }) {
   const [editId, setEditId] = useState<string | null>(null);
+  // Mantém o perfil de acesso da máquina sempre atualizado (ex.: ganhou
+  // permissão de editar/cadastrar depois que as contas já existiam). Idempotente.
+  useEffect(() => { if (podeEditar) void garantirPerfilMaquina(); }, [podeEditar]);
   const upd = (id: string, patch: Partial<Maquina>) => onSalvar(maquinas.map((m) => (m.id === id ? { ...m, ...patch } : m)));
   const addNova = () => { const id = `maq_${Date.now().toString(36)}`; onSalvar([...maquinas, { id, nome: `Máquina ${maquinas.length + 1}`, ambienteIds: [] }]); setEditId(id); };
   const emEdicao = maquinas.find((m) => m.id === editId) || null;
