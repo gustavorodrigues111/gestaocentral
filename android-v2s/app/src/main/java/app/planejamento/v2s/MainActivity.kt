@@ -3,7 +3,9 @@ package app.planejamento.v2s
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -54,6 +56,11 @@ class MainActivity : Activity() {
     private var telaApagada = false
     private val TELA_OCIOSA_MS = 45_000L
     private val apagarRun = Runnable { apagarTela() }
+
+    // Admin de dispositivo: deixa desligar a tela DE VERDADE (dpm.lockNow()).
+    // Habilitado uma vez pelo usuário. Sem ele, cai no "escurecer" (overlay).
+    private lateinit var dpm: DevicePolicyManager
+    private lateinit var adminCn: ComponentName
 
     // Resiliência de rede: se a carga do site falhar (queda de internet), não
     // deixa o WebView preso na tela de erro — mostra uma tela amigável, tenta
@@ -179,7 +186,28 @@ class MainActivity : Activity() {
         // Checa atualização do app pouco depois de abrir (silencioso: só avisa se houver).
         web.postDelayed({ Atualizador.verificar(this, true) }, 4000)
         tratarResultadoInstalacao(intent)
+
+        dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        adminCn = ComponentName(this, TelaAdminReceiver::class.java)
+        pedirAdminTelaUmaVez()
         agendarApagar()
+    }
+
+    // Pede pra habilitar o admin (só pra apagar a tela) uma única vez. Se o
+    // usuário recusar, segue com o "escurecer" como alternativa.
+    private fun pedirAdminTelaUmaVez() {
+        if (dpm.isAdminActive(adminCn)) return
+        val prefs = getSharedPreferences("tela", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("pediuAdmin", false)) return
+        prefs.edit().putBoolean("pediuAdmin", true).apply()
+        web.postDelayed({
+            try {
+                val i = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                    .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminCn)
+                    .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Permite a maquininha APAGAR A TELA sozinha quando fica parada (economia). Só isso — não mexe em dados nem senha.")
+                startActivity(i)
+            } catch (_: Exception) { }
+        }, 1500)
     }
 
     // PackageInstaller devolve o pedido de confirmação de instalação aqui.
@@ -275,6 +303,11 @@ class MainActivity : Activity() {
         web.postDelayed(apagarRun, TELA_OCIOSA_MS)
     }
     private fun apagarTela() {
+        // Com admin: desliga a tela DE VERDADE (acorda no botão físico).
+        if (::dpm.isInitialized && dpm.isAdminActive(adminCn)) {
+            try { dpm.lockNow(); return } catch (_: Exception) { }
+        }
+        // Sem admin: "escurece" (cobre de preto + brilho zero); toque acorda.
         if (telaApagada) return
         telaApagada = true
         telaOverlay.visibility = View.VISIBLE

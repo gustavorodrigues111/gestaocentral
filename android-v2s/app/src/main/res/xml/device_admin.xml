@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Política de admin mínima: só "force-lock" (apagar a tela). Nada de limpar
+     dados, senha, etc. Usado pra desligar a tela de verdade após ociosidade. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <force-lock />
+    </uses-policies>
+</device-admin>
