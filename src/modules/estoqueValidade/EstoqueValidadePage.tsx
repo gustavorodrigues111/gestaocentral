@@ -307,10 +307,27 @@ export function EstoqueValidadePage() {
   const localNome = (id?: string | null) => nomeCompleto(locais.find((l) => l.id === id), locais);
   const lotesAtivosDoProduto = (produtoId: string) => lotes.filter((l) => l.produtoId === produtoId && l.status === "ativo" && l.qtdRestante > 0);
 
+  // Na maquininha, só aparecem os ambientes LIBERADOS pra esta máquina
+  // (allow-list estrita: não-marcado = não aparece). Equipamento segue o
+  // ambiente pai. Fora da maquininha (admin), mostra tudo.
+  const locaisVisiveis = useMemo(() => {
+    if (!naMaquininha || !maquina) return locais;
+    const allow = new Set(maquina.ambienteIds || []);
+    return locais.filter((l) => (ehAmbiente(l) ? allow.has(l.id) : !!l.paiId && allow.has(l.paiId)));
+  }, [naMaquininha, maquina, locais]);
+
   // ── Locais ──
   async function salvarLocal(l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) {
     if (l.id) await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo });
-    else await addDoc(collection(db, "locaisEstoque"), { restaurantId: rid, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo, ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null });
+    else {
+      const ref = await addDoc(collection(db, "locaisEstoque"), { restaurantId: rid, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo, ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null });
+      // Ambiente novo criado NA maquininha já entra liberado pra esta máquina
+      // (e fica disponível pra marcar nas outras pelo planejamento.app).
+      if (naMaquininha && maquina && ehAmbiente(l)) {
+        const novas = (config.maquinas || []).map((m) => (m.id === maquina.id ? { ...m, ambienteIds: Array.from(new Set([...(m.ambienteIds || []), ref.id])) } : m));
+        await salvarConfig({ maquinas: novas });
+      }
+    }
     setLocalModal(null);
   }
   async function excluirLocal(l: LocalEstoque) { if (confirm(`Excluir o local "${l.nome}"?`)) await deleteDoc(doc(db, "locaisEstoque", l.id)); }
@@ -506,12 +523,12 @@ export function EstoqueValidadePage() {
       {aba === "painel" && (naMaquininha
         ? <PainelMaquininha etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} />
         : <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />)}
-      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={respNome} responsavelUid={respUid} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locais} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
+      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={respNome} responsavelUid={respUid} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locaisVisiveis} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
         ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
       {aba === "baixa" && (naMaquininha
         ? <BaixaMaquininha rid={rid} etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} podeOperar={podeOperar} />
         : <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />)}
-      {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
+      {aba === "entrada" && <EntradaTab produtos={produtos} locais={locaisVisiveis} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
         <div>
           <div className={naMaquininha ? "grid grid-cols-3 gap-2 mb-4" : "flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2"}>
@@ -523,7 +540,7 @@ export function EstoqueValidadePage() {
             ))}
           </div>
           {subCad === "locais"
-            ? <LocaisTab locais={locais} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} />
+            ? <LocaisTab locais={locaisVisiveis} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} naMaquininha={naMaquininha} />
             : subCad === "bases"
             ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
             : subCad === "maquinas"
@@ -545,10 +562,10 @@ export function EstoqueValidadePage() {
         </div>
       )}
 
-      {localModal && <LocalModal local={localModal.local} locais={locais} config={config} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
-      {prodModal && <ProdutoModal key={prodModal.produto?.id || "novo"} produto={prodModal.produto} nomeInicial={prodModal.nomeInicial} localInicial={prodModal.localInicial} produtos={produtos} config={config} locais={locais} onClose={() => setProdModal(null)} onSalvar={salvarProduto}
+      {localModal && <LocalModal local={localModal.local} locais={locaisVisiveis} config={config} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
+      {prodModal && <ProdutoModal key={prodModal.produto?.id || "novo"} produto={prodModal.produto} nomeInicial={prodModal.nomeInicial} localInicial={prodModal.localInicial} produtos={produtos} config={config} locais={locaisVisiveis} onClose={() => setProdModal(null)} onSalvar={salvarProduto}
         onUsarExistente={(p) => setProdModal({ produto: p, localInicial: prodModal.localInicial })} />}
-      {vinculosLocal && <VinculosModal local={vinculosLocal} locais={locais} produtos={produtos} metodoLabel={config.metodos.find((m) => m.id === vinculosLocal.metodoConservacao)?.label || ""}
+      {vinculosLocal && <VinculosModal local={vinculosLocal} locais={locaisVisiveis} produtos={produtos} metodoLabel={config.metodos.find((m) => m.id === vinculosLocal.metodoConservacao)?.label || ""}
         onClose={() => setVinculosLocal(null)} onNovoProduto={(nome) => { setProdModal({ produto: null, nomeInicial: nome, localInicial: vinculosLocal.id }); setVinculosLocal(null); }} />}
       {etiqModal && <EtiquetaFixaModal produto={etiqModal} onClose={() => setEtiqModal(null)} />}
       {printerCfg && <PrinterCfgModal onClose={() => setPrinterCfg(false)} />}
@@ -1024,8 +1041,8 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
 }
 
 // ═══ CADASTRO › LOCAIS ═══════════════════════════════════════════════════════
-function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restauranteNome, podeEditar, onNovo, onEditar, onExcluir }: {
-  locais: LocalEstoque[]; contarProdutos: (localId: string) => number; onProdutos: (l: LocalEstoque) => void; metodoLabel: (id?: string | null) => string | null; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void;
+function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restauranteNome, podeEditar, onNovo, onEditar, onExcluir, naMaquininha }: {
+  locais: LocalEstoque[]; contarProdutos: (localId: string) => number; onProdutos: (l: LocalEstoque) => void; metodoLabel: (id?: string | null) => string | null; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void; naMaquininha?: boolean;
 }) {
   const grupos = useMemo(() => agruparPorAmbiente(locais, false), [locais]);
   const acoes = (l: LocalEstoque) => podeEditar && (
@@ -1041,7 +1058,9 @@ function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restaurant
         {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo ambiente ou equipamento</Button>}
       </div>
       {locais.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nada cadastrado. {podeEditar ? "Comece pelos ambientes e depois os equipamentos de cada um." : ""}</div>
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">{naMaquininha
+          ? <>Nenhum ambiente liberado pra esta máquina. {podeEditar ? "Crie um aqui (já entra liberado) ou marque no planejamento.app, em Máquinas." : ""}</>
+          : <>Nada cadastrado. {podeEditar ? "Comece pelos ambientes e depois os equipamentos de cada um." : ""}</>}</div>
       ) : (
         <div className="space-y-5">
           {grupos.map(({ ambiente, equipamentos }) => (
