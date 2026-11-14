@@ -291,12 +291,17 @@ export function EstoqueValidadePage() {
   // a conta abre em qualquer um dos restaurantes dela. Se o aparelho já está
   // pareado (tem machineId) mas a máquina NÃO está na config do rid atual,
   // procura em quais restaurantes da conta ela vive e troca pra lá sozinho.
+  const [maquinaNaoAchada, setMaquinaNaoAchada] = useState(false);
+  const ridsDaConta = (restaurants.map((r) => r.id).join(",") + "|" + (me?.restaurantIds || []).join(","));
   useEffect(() => {
-    if (!naMaquininha || !machineId || !configLoaded || maquina) return;
+    if (!naMaquininha || !machineId || !configLoaded || maquina) { setMaquinaNaoAchada(false); return; }
+    // Varre TODOS os restaurantes que a conta enxerga (não só me.restaurantIds,
+    // que pode estar desatualizado) procurando onde a máquina vive.
+    const candidatos = Array.from(new Set([...(me?.restaurantIds || []), ...restaurants.map((r) => r.id)])).filter((r) => r && r !== rid);
     let vivo = true;
     (async () => {
-      for (const r of (me?.restaurantIds || [])) {
-        if (r === rid || !vivo) continue;
+      for (const r of candidatos) {
+        if (!vivo) return;
         try {
           const snap = await getDoc(doc(db, "estoqueConfig", r));
           const ms = ((snap.data()?.maquinas || []) as Maquina[]);
@@ -309,9 +314,10 @@ export function EstoqueValidadePage() {
           }
         } catch { /* ignora e tenta o próximo */ }
       }
+      if (vivo) setMaquinaNaoAchada(true);   // varreu tudo e não achou
     })();
     return () => { vivo = false; };
-  }, [naMaquininha, machineId, configLoaded, maquina, rid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [naMaquininha, machineId, configLoaded, maquina, rid, ridsDaConta]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (maquina?.bobinaId) { try { localStorage.setItem("etiq_bobina", maquina.bobinaId); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-impressora")); }
   }, [maquina?.bobinaId]);
@@ -494,6 +500,22 @@ export function EstoqueValidadePage() {
   // Firestore resolve. Uma espera só mata todas as corridas de carregamento.
   if (naMaquininha && !configLoaded) {
     return <PageContainer><div className="py-16 text-center text-sm text-gray-400"><RefreshCw size={22} className="mx-auto mb-2 animate-spin opacity-60" /> Carregando a máquina…</div></PageContainer>;
+  }
+
+  // Aparelho pareado mas a máquina não foi achada em nenhum restaurante da conta
+  // (config apagada/ID trocado). Evita "Carregando" eterno — dá saída.
+  if (naMaquininha && machineId && !maquina && maquinaNaoAchada) {
+    return (
+      <PageContainer>
+        <div className="max-w-sm mx-auto py-10 text-center">
+          <div className="flex justify-center mb-2 text-amber-500"><TriangleAlert size={34} /></div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Máquina não encontrada</h2>
+          <p className="text-sm text-gray-500 mt-1 mb-4">Este aparelho estava vinculado a uma máquina que não existe mais (ou foi renomeada) em nenhum dos restaurantes desta conta.</p>
+          <button type="button" onClick={() => { try { localStorage.removeItem("etiq_machine_id"); localStorage.removeItem("etiq_kiosk_rid"); } catch { /* */ } window.location.reload(); }} className="w-full h-12 rounded-2xl bg-indigo-600 text-white font-semibold">Escolher restaurante e máquina de novo</button>
+          <button type="button" onClick={() => window.location.reload()} className="mt-2 w-full h-11 rounded-2xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-600 dark:text-gray-300">Tentar de novo</button>
+        </div>
+      </PageContainer>
+    );
   }
 
   // Maquininha ainda não vinculada a uma máquina configurada (e há máquinas no
