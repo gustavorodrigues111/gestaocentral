@@ -215,8 +215,10 @@ export function EtiquetasTab(props: Props) {
       // 1 registro por etiqueta física (mesmo lote, QR próprio): a baixa é pote a pote.
       // Número curto (sigla + 5 dígitos) pra baixa manual — gerado local (offline-ok).
       const numeros = proximosNumerosEtiqueta(ativas, copias);
+      // Modo produção: a etiqueta pertence ao restaurante-alvo (CNPJ dele).
+      const ridEmissao = (modoProducao && alvoId) ? alvoId : rid;
       const { docs, confirmacao } = gravarEmissao({
-        tipo: "producao", restaurantId: rid, produtoId: produto.id, produtoNome: produto.nome,
+        tipo: "producao", restaurantId: ridEmissao, produtoId: produto.id, produtoNome: produto.nome,
         conservacao: local.metodoConservacao || "", conservacaoLabel: metodo, diasValidade: dias,
         localId: local.id, localNome: nomeCompleto(local, locais),
         manipuladorUid: responsavelUid || null, manipuladorNome: responsavel,
@@ -235,7 +237,7 @@ export function EtiquetasTab(props: Props) {
       if (naFila) {
         try {
           await enfileirarEtiqueta({
-            restaurantId: rid, produtoNome: produto.nome, metodoLabel: metodo, dias,
+            restaurantId: ridEmissao, produtoNome: produto.nome, metodoLabel: metodo, dias,
             manipulacaoIso: agora.toISOString(), validadeYmd: ymd(validade), responsavel,
             lote, empresa: empresaLabel, cnpj: cnpjLabel ?? null, qrTokens: docs.map((d) => d.qrToken),
             criadoPorUid: responsavelUid ?? null, criadoPorNome: responsavel,

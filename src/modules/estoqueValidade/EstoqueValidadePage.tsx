@@ -44,7 +44,7 @@ function PrinterCfgModal({ onClose }: { onClose: () => void }) {
 }
 import { useParams, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
-import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { provisionarAcesso, gerarSenhaInicial } from "../../core/auth/provisionar";
@@ -78,15 +78,18 @@ export type ProdutoEtiqueta = {
   estoqueMinimo?: number | null; marcaFornecedor?: string | null; sif?: string | null;
   precoCusto?: number | null; qrTokenEstoque: string; ativo: boolean; criadoEm: string;
   locais?: string[];  // locais onde o produto fica (só os compatíveis com a matriz)
-  // Modo produção: restaurantes (empresas) a que o produto pertence — a etiqueta
-  // só pode sair pra um desses (evita CNPJ errado). Vazio/ausente = usa o
-  // restaurantId (produto de 1 restaurante só, retrocompat).
+  // Restaurantes (empresas) a que o produto pertence — 1 ou mais. A etiqueta só
+  // sai pra um desses (CNPJ certo). `restaurantId` é mantido = restaurantIds[0]
+  // pra retrocompat; `empresasIds` é o nome antigo (migrado pra restaurantIds).
+  restaurantIds?: string[];
   empresasIds?: string[];
 };
-// Empresas a que um produto pertence (fallback pro restaurantId legado).
-export function empresasDoProduto(p: Pick<ProdutoEtiqueta, "empresasIds" | "restaurantId">): string[] {
-  return p.empresasIds?.length ? p.empresasIds : [p.restaurantId];
+// Restaurantes a que um produto pertence (fallback: empresasIds antigo → restaurantId).
+export function ridsDoProduto(p: Pick<ProdutoEtiqueta, "restaurantIds" | "empresasIds" | "restaurantId">): string[] {
+  return p.restaurantIds?.length ? p.restaurantIds : (p.empresasIds?.length ? p.empresasIds : (p.restaurantId ? [p.restaurantId] : []));
 }
+// alias retrocompat (EtiquetasTab usava empresasDoProduto)
+export const empresasDoProduto = ridsDoProduto;
 // Máquina de etiqueta (maquininha/estação): config remota, editada no admin e
 // lida ao vivo pelo aparelho. Define quais AMBIENTES aparecem nela (catálogo por
 // localização), o tamanho do rolo e, no modo produção, quais restaurantes ela
@@ -327,6 +330,16 @@ export function EstoqueValidadePage() {
   const restaurantesVisiveis = naMaquininha && maquina?.restaurantesAlvo?.length
     ? restaurants.filter((r) => maquina.restaurantesAlvo!.includes(r.id))
     : restaurants;
+  // Restaurantes cujos dados a tela carrega. Normal = só o rid atual. Máquina
+  // em modo produção = o rid + todos os restaurantes-alvo (dados de cada um).
+  const ridsParaCarregar = useMemo(() => {
+    if (!rid) return [] as string[];
+    if (naMaquininha && maquina?.modoProducao && maquina.restaurantesAlvo?.length) {
+      return Array.from(new Set([rid, ...maquina.restaurantesAlvo]));
+    }
+    return [rid];
+  }, [rid, naMaquininha, maquina]);
+  const ridsKey = ridsParaCarregar.join(",");
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string } | null>(null);
   const [vinculosLocal, setVinculosLocal] = useState<LocalEstoque | null>(null);
@@ -334,12 +347,16 @@ export function EstoqueValidadePage() {
 
   useEffect(() => {
     if (!rid) return;
+    const rids = ridsKey ? ridsKey.split(",") : [rid];
+    // Catálogo (locais/produtos) pertence a 1+ restaurantes (array-contains-any).
+    // Transacional (lotes/etiquetas/entradas) é por restaurante (in). Config é do
+    // rid "casa" só.
     const subs = [
-      onSnapshot(query(collection(db, "locaisEstoque"), where("restaurantId", "==", rid)), (s) => setLocais(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LocalEstoque)), () => setLocais([])),
-      onSnapshot(query(collection(db, "produtosEtiqueta"), where("restaurantId", "==", rid)), (s) => setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ProdutoEtiqueta)), () => setProdutos([])),
-      onSnapshot(query(collection(db, "lotesEstoque"), where("restaurantId", "==", rid)), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LoteEstoque)), () => setLotes([])),
-      onSnapshot(query(collection(db, "entradasPendentes"), where("restaurantId", "==", rid)), (s) => setPendentes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntradaPendente).filter((p) => p.status === "pendente")), () => setPendentes([])),
-      onSnapshot(query(collection(db, "etiquetas"), where("restaurantId", "==", rid), where("status", "==", "ativa")), (s) => setEtiquetasAtivas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EtiquetaEmitida)), () => setEtiquetasAtivas([])),
+      onSnapshot(query(collection(db, "locaisEstoque"), where("restaurantIds", "array-contains-any", rids)), (s) => setLocais(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LocalEstoque)), () => setLocais([])),
+      onSnapshot(query(collection(db, "produtosEtiqueta"), where("restaurantIds", "array-contains-any", rids)), (s) => setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ProdutoEtiqueta)), () => setProdutos([])),
+      onSnapshot(query(collection(db, "lotesEstoque"), where("restaurantId", "in", rids)), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LoteEstoque)), () => setLotes([])),
+      onSnapshot(query(collection(db, "entradasPendentes"), where("restaurantId", "in", rids)), (s) => setPendentes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntradaPendente).filter((p) => p.status === "pendente")), () => setPendentes([])),
+      onSnapshot(query(collection(db, "etiquetas"), where("restaurantId", "in", rids), where("status", "==", "ativa")), (s) => setEtiquetasAtivas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EtiquetaEmitida)), () => setEtiquetasAtivas([])),
       onSnapshot(doc(db, "estoqueConfig", rid), (s) => {
         const d = (s.data() || {}) as Partial<EstoqueConfig>;
         setConfig({ unidades: d.unidades?.length ? d.unidades : UNIDADES_PADRAO, categorias: d.categorias || [], metodos: d.metodos?.length ? d.metodos : METODOS_PADRAO, maquinas: d.maquinas || [] });
@@ -347,7 +364,33 @@ export function EstoqueValidadePage() {
       }, () => { setConfig(CONFIG_PADRAO); setConfigLoaded(true); }),
     ];
     return () => subs.forEach((u) => u());
-  }, [rid]);
+  }, [rid, ridsKey]);
+
+  // Migração: docs antigos têm só `restaurantId` (sem `restaurantIds`) → não
+  // aparecem nas consultas novas (array-contains). Faz backfill 1x (quem edita),
+  // puxando pelo campo antigo. Produto usa empresasIds se existir.
+  useEffect(() => {
+    if (!podeEditar || ridsParaCarregar.length === 0) return;
+    let cancel = false;
+    (async () => {
+      for (const col of ["locaisEstoque", "produtosEtiqueta"] as const) {
+        try {
+          const snap = await getDocs(query(collection(db, col), where("restaurantId", "in", ridsParaCarregar)));
+          const faltando = snap.docs.filter((d) => { const x = d.data() as { restaurantIds?: unknown }; return !Array.isArray(x.restaurantIds) || x.restaurantIds.length === 0; });
+          for (let i = 0; i < faltando.length && !cancel; i += 400) {
+            const batch = writeBatch(db);
+            faltando.slice(i, i + 400).forEach((d) => {
+              const x = d.data() as { restaurantId?: string; empresasIds?: string[] };
+              const ids = col === "produtosEtiqueta" && x.empresasIds?.length ? x.empresasIds : (x.restaurantId ? [x.restaurantId] : []);
+              if (ids.length) batch.update(d.ref, { restaurantIds: ids });
+            });
+            await batch.commit();
+          }
+        } catch { /* sem permissão/offline — ignora */ }
+      }
+    })();
+    return () => { cancel = true; };
+  }, [podeEditar, ridsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const localNome = (id?: string | null) => nomeCompleto(locais.find((l) => l.id === id), locais);
   const lotesAtivosDoProduto = (produtoId: string) => lotes.filter((l) => l.produtoId === produtoId && l.status === "ativo" && l.qtdRestante > 0);
@@ -377,7 +420,10 @@ export function EstoqueValidadePage() {
   async function salvarLocal(l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) {
     if (l.id) await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo });
     else {
-      const ref = await addDoc(collection(db, "locaisEstoque"), { restaurantId: rid, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo, ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null });
+      // Local novo pertence aos restaurantes carregados (compartilhado numa
+      // cozinha de produção); fora disso, só o rid atual. restaurantId = o 1º.
+      const ridsLocal = ridsParaCarregar.length ? ridsParaCarregar : [rid];
+      const ref = await addDoc(collection(db, "locaisEstoque"), { restaurantId: ridsLocal[0], restaurantIds: ridsLocal, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo, ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null });
       // Ambiente novo criado NA maquininha já entra liberado pra esta máquina
       // (e fica disponível pra marcar nas outras pelo planejamento.app).
       if (naMaquininha && maquina && ehAmbiente(l)) {
@@ -394,17 +440,18 @@ export function EstoqueValidadePage() {
     await setDoc(doc(db, "estoqueConfig", rid), { ...config, ...patch, atualizadoEm: new Date().toISOString() }, { merge: true });
   }
   async function salvarProduto(p: Partial<ProdutoEtiqueta> & { id?: string }) {
+    // A quais restaurantes o produto pertence. Modo produção usa a seleção do
+    // form (restaurantIds/empresasIds); senão, só o rid atual.
+    const rids = (maquina?.modoProducao && (p.restaurantIds?.length || p.empresasIds?.length)) ? (p.restaurantIds?.length ? p.restaurantIds : p.empresasIds!) : [rid];
     const dados = {
       nome: p.nome, categorias: p.categorias || [], conservacao: p.conservacao || {}, unidade: p.unidade || (config.unidades[0] || "UND"),
       estoqueMinimo: p.estoqueMinimo ?? null, marcaFornecedor: p.marcaFornecedor || null,
       sif: p.sif || null, precoCusto: p.precoCusto ?? null, ativo: p.ativo ?? true,
       locais: limparVinculos(p.locais || [], p.conservacao || {}, locais),
-      // Produção: a quais restaurantes (empresas) o produto pertence. Sem modo
-      // produção fica [rid] (1 restaurante só).
-      empresasIds: (maquina?.modoProducao && p.empresasIds?.length) ? p.empresasIds : [rid],
+      restaurantIds: rids, restaurantId: rids[0],
     };
     if (p.id) await updateDoc(doc(db, "produtosEtiqueta", p.id), dados);
-    else await addDoc(collection(db, "produtosEtiqueta"), { restaurantId: rid, ...dados, qrTokenEstoque: novoToken(), criadoEm: new Date().toISOString() });
+    else await addDoc(collection(db, "produtosEtiqueta"), { ...dados, qrTokenEstoque: novoToken(), criadoEm: new Date().toISOString() });
     setProdModal(null);
   }
   async function excluirProduto(p: ProdutoEtiqueta) { if (confirm(`Excluir o produto "${p.nome}"?`)) await deleteDoc(doc(db, "produtosEtiqueta", p.id)); }
@@ -1511,7 +1558,7 @@ function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, lo
   // Vindo da tela do equipamento, ele já vem marcado (vale depois de preencher o prazo).
   const [locaisSel, setLocaisSel] = useState<string[]>(() => Array.from(new Set([...(produto?.locais || []), ...(localInicial ? [localInicial] : [])])));
   // Modo produção: a quais restaurantes (empresas) o produto pertence.
-  const [empresasSel, setEmpresasSel] = useState<string[]>(() => produto?.empresasIds?.length ? produto.empresasIds : (empresas?.length === 1 ? [empresas[0].id] : []));
+  const [empresasSel, setEmpresasSel] = useState<string[]>(() => produto ? ridsDoProduto(produto) : (empresas?.length === 1 ? [empresas[0].id] : []));
   const toggleEmpresa = (id: string) => setEmpresasSel((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const similares = produto ? [] : parecidos(nome, produtos);
   const [salvando, setSalvando] = useState(false);
@@ -1531,7 +1578,7 @@ function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, lo
     if (igual && !confirm(`Já existe o produto "${igual.nome}". Cadastrar outro com o mesmo nome?`)) return;
     setSalvando(true);
     try {
-      await onSalvar({ id: produto?.id, nome: nome.trim(), categorias: cats, unidade, conservacao: cons, locais: locaisSel, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo, ...(modoProducao ? { empresasIds: empresasSel } : {}) });
+      await onSalvar({ id: produto?.id, nome: nome.trim(), categorias: cats, unidade, conservacao: cons, locais: locaisSel, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo, ...(modoProducao ? { restaurantIds: empresasSel } : {}) });
     } finally { setSalvando(false); }
   }
   return (

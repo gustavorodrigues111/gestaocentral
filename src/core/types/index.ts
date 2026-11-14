@@ -7530,6 +7530,10 @@ export type LocalEstoqueTipo = "ambiente" | "geladeira" | "freezer" | "camara" |
 export type LocalEstoque = {
   id: string;
   restaurantId: string;
+  // Restaurantes a que o local (freezer/ambiente físico) pertence — 1 ou mais
+  // (compartilhado entre restaurantes numa cozinha de produção). restaurantId é
+  // mantido = restaurantIds[0] pra retrocompat.
+  restaurantIds?: string[];
   nome: string;
   tipo: LocalEstoqueTipo;
   paiId?: string | null;                // local pai (ex.: prateleira dentro da câmara)
