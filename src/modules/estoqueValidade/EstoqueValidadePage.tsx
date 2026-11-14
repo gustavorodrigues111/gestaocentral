@@ -273,6 +273,14 @@ export function EstoqueValidadePage() {
     try { localStorage.removeItem("etiq_machine_id"); } catch { /* sem storage */ }
     setMachineId("");
   };
+  // Liga/desliga um ambiente nesta máquina direto do aparelho (sem ir no desktop).
+  const toggleAmbienteMaquina = (ambId: string) => {
+    if (!maquina) return;
+    const atual = new Set(maquina.ambienteIds || []);
+    if (atual.has(ambId)) atual.delete(ambId); else atual.add(ambId);
+    const novas = (config.maquinas || []).map((m) => (m.id === maquina.id ? { ...m, ambienteIds: [...atual] } : m));
+    void salvarConfig({ maquinas: novas });
+  };
   // Com uma só máquina DISPONÍVEL, vincula sozinho (não precisa escolher no aparelho).
   useEffect(() => { if (naMaquininha && !maquina && maquinasDisponiveis.length === 1) parearMaquina(maquinasDisponiveis[0].id); }, [naMaquininha, maquina, maquinasDisponiveis.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -573,7 +581,8 @@ export function EstoqueValidadePage() {
             ))}
           </div>
           {subCad === "locais"
-            ? <LocaisTab locais={locaisVisiveis} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} naMaquininha={naMaquininha} carregando={naMaquininha && (!configLoaded || !maquina)} />
+            ? <LocaisTab locais={locaisVisiveis} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} naMaquininha={naMaquininha} carregando={naMaquininha && (!configLoaded || !maquina)}
+                ambientesDaMaquina={naMaquininha && maquina ? locais.filter(ehAmbiente).map((a) => ({ id: a.id, nome: a.nome })) : undefined} ambienteIdsMaquina={maquina?.ambienteIds || []} onToggleAmbienteMaquina={toggleAmbienteMaquina} />
             : subCad === "bases"
             ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
             : subCad === "maquinas"
@@ -1074,8 +1083,9 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
 }
 
 // ═══ CADASTRO › LOCAIS ═══════════════════════════════════════════════════════
-function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restauranteNome, podeEditar, onNovo, onEditar, onExcluir, naMaquininha, carregando }: {
+function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restauranteNome, podeEditar, onNovo, onEditar, onExcluir, naMaquininha, carregando, ambientesDaMaquina, ambienteIdsMaquina, onToggleAmbienteMaquina }: {
   locais: LocalEstoque[]; contarProdutos: (localId: string) => number; onProdutos: (l: LocalEstoque) => void; metodoLabel: (id?: string | null) => string | null; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void; naMaquininha?: boolean; carregando?: boolean;
+  ambientesDaMaquina?: { id: string; nome: string }[]; ambienteIdsMaquina?: string[]; onToggleAmbienteMaquina?: (id: string) => void;
 }) {
   const grupos = useMemo(() => agruparPorAmbiente(locais, false), [locais]);
   const acoes = (l: LocalEstoque) => podeEditar && (
@@ -1090,11 +1100,24 @@ function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restaurant
         <p className="text-xs text-gray-500 max-w-lg">Ambientes{restauranteNome ? ` do ${restauranteNome}` : ""} (cozinha de baixo, laje…) e, dentro de cada um, os equipamentos de estoque com a sua conservação.</p>
         {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo ambiente ou equipamento</Button>}
       </div>
+      {/* Maquininha: liga/desliga quais ambientes aparecem nesta máquina, sem ir no desktop. */}
+      {naMaquininha && podeEditar && ambientesDaMaquina && ambientesDaMaquina.length > 0 && onToggleAmbienteMaquina && (
+        <div className="mb-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
+          <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-2">Ambientes que aparecem nesta máquina</div>
+          <div className="flex flex-wrap gap-1.5">
+            {ambientesDaMaquina.map((a) => {
+              const on = (ambienteIdsMaquina || []).includes(a.id);
+              return <button key={a.id} type="button" onClick={() => onToggleAmbienteMaquina(a.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium border ${on ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{on ? "✓ " : ""}{a.nome}</button>;
+            })}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1.5">Marque os que esta máquina usa. Só os marcados aparecem em Emitir e Baixa.</p>
+        </div>
+      )}
       {carregando ? (
         <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-8 text-center text-sm text-gray-400">Carregando…</div>
       ) : locais.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">{naMaquininha
-          ? <>Nenhum ambiente liberado pra esta máquina. {podeEditar ? "Crie um aqui (já entra liberado) ou marque no planejamento.app, em Máquinas." : ""}</>
+          ? <>Nenhum ambiente liberado pra esta máquina. {podeEditar ? (ambientesDaMaquina && ambientesDaMaquina.length > 0 ? "Marque um ali em cima, ou crie um novo aqui." : "Crie um aqui (já entra liberado).") : ""}</>
           : <>Nada cadastrado. {podeEditar ? "Comece pelos ambientes e depois os equipamentos de cada um." : ""}</>}</div>
       ) : (
         <div className="space-y-5">
