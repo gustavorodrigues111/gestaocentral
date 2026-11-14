@@ -244,6 +244,7 @@ export function EstoqueValidadePage() {
     return { vencidas, hoje, ativas: etiquetasAtivas.length };
   }, [etiquetasAtivas]);
   const [config, setConfig] = useState<EstoqueConfig>(CONFIG_PADRAO);
+  const [configLoaded, setConfigLoaded] = useState(false);
   // Máquina pareada neste aparelho (só a maquininha). A config dela (ambientes,
   // tamanho, modo produção) vem de config.maquinas, lida ao vivo do servidor.
   const [machineId, setMachineId] = useState<string>(() => { try { return localStorage.getItem("etiq_machine_id") || ""; } catch { return ""; } });
@@ -300,7 +301,8 @@ export function EstoqueValidadePage() {
       onSnapshot(doc(db, "estoqueConfig", rid), (s) => {
         const d = (s.data() || {}) as Partial<EstoqueConfig>;
         setConfig({ unidades: d.unidades?.length ? d.unidades : UNIDADES_PADRAO, categorias: d.categorias || [], metodos: d.metodos?.length ? d.metodos : METODOS_PADRAO, maquinas: d.maquinas || [] });
-      }, () => setConfig(CONFIG_PADRAO)),
+        setConfigLoaded(true);
+      }, () => { setConfig(CONFIG_PADRAO); setConfigLoaded(true); }),
     ];
     return () => subs.forEach((u) => u());
   }, [rid]);
@@ -312,7 +314,10 @@ export function EstoqueValidadePage() {
   // (allow-list estrita: não-marcado = não aparece). Equipamento segue o
   // ambiente pai. Fora da maquininha (admin), mostra tudo.
   const locaisVisiveis = useMemo(() => {
-    if (!naMaquininha || !maquina) return locais;
+    if (!naMaquininha) return locais;
+    // Enquanto a config da máquina não chegou do Firestore, NÃO mostra tudo
+    // (senão pisca a lista inteira por alguns segundos até o filtro aplicar).
+    if (!maquina) return [];
     const allow = new Set(maquina.ambienteIds || []);
     return locais.filter((l) => (ehAmbiente(l) ? allow.has(l.id) : !!l.paiId && allow.has(l.paiId)));
   }, [naMaquininha, maquina, locais]);
@@ -541,7 +546,7 @@ export function EstoqueValidadePage() {
             ))}
           </div>
           {subCad === "locais"
-            ? <LocaisTab locais={locaisVisiveis} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} naMaquininha={naMaquininha} />
+            ? <LocaisTab locais={locaisVisiveis} contarProdutos={(id) => produtos.filter((p) => (p.locais || []).includes(id)).length} onProdutos={(l) => setVinculosLocal(l)} metodoLabel={(id) => config.metodos.find((m) => m.id === id)?.label || null} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} naMaquininha={naMaquininha} carregando={naMaquininha && (!configLoaded || !maquina)} />
             : subCad === "bases"
             ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
             : subCad === "maquinas"
@@ -1042,8 +1047,8 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
 }
 
 // ═══ CADASTRO › LOCAIS ═══════════════════════════════════════════════════════
-function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restauranteNome, podeEditar, onNovo, onEditar, onExcluir, naMaquininha }: {
-  locais: LocalEstoque[]; contarProdutos: (localId: string) => number; onProdutos: (l: LocalEstoque) => void; metodoLabel: (id?: string | null) => string | null; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void; naMaquininha?: boolean;
+function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restauranteNome, podeEditar, onNovo, onEditar, onExcluir, naMaquininha, carregando }: {
+  locais: LocalEstoque[]; contarProdutos: (localId: string) => number; onProdutos: (l: LocalEstoque) => void; metodoLabel: (id?: string | null) => string | null; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void; naMaquininha?: boolean; carregando?: boolean;
 }) {
   const grupos = useMemo(() => agruparPorAmbiente(locais, false), [locais]);
   const acoes = (l: LocalEstoque) => podeEditar && (
@@ -1058,7 +1063,9 @@ function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restaurant
         <p className="text-xs text-gray-500 max-w-lg">Ambientes{restauranteNome ? ` do ${restauranteNome}` : ""} (cozinha de baixo, laje…) e, dentro de cada um, os equipamentos de estoque com a sua conservação.</p>
         {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo ambiente ou equipamento</Button>}
       </div>
-      {locais.length === 0 ? (
+      {carregando ? (
+        <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-8 text-center text-sm text-gray-400">Carregando…</div>
+      ) : locais.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">{naMaquininha
           ? <>Nenhum ambiente liberado pra esta máquina. {podeEditar ? "Crie um aqui (já entra liberado) ou marque no planejamento.app, em Máquinas." : ""}</>
           : <>Nada cadastrado. {podeEditar ? "Comece pelos ambientes e depois os equipamentos de cada um." : ""}</>}</div>
