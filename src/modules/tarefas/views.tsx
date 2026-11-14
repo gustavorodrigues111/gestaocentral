@@ -946,7 +946,9 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   // Prazos do dia — pelo vencimento EXIBIDO (fim de semana desloca pra sexta).
   const prazosPorDia = new Map<string, Prazo[]>();
   (prazos || []).forEach(p => {
-    if (p.status === "resolvido" || !p.vencimento) return;
+    // Resolvidos FICAM na agenda (riscados), igual às tarefas concluídas — só
+    // somem os sem vencimento.
+    if (!p.vencimento) return;
     const dia = ymdExibicao(p.vencimento);
     if (!dias.includes(dia)) return;
     const arr = prazosPorDia.get(dia) || [];
@@ -1041,16 +1043,17 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
         <div className="space-y-1 flex-1 overflow-y-auto">
           {(prazosPorDia.get(data) || []).map(p => {
             const corPz = PRAZO_COR_HEX[p.tipo];
+            const resolvido = p.status === "resolvido";
             return (
             <button
               key={"pz-" + p.id}
               type="button"
               onClick={() => onAbrirPrazo?.(p)}
-              className="w-full text-left text-[11px] px-2 py-1.5 rounded-md border hover:shadow-sm transition-shadow cursor-pointer"
+              className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md border hover:shadow-sm transition-shadow cursor-pointer ${resolvido ? "line-through opacity-50" : ""}`}
               style={{ borderColor: corPz + "55", borderLeft: `4px solid ${corPz}`, background: corPz + "14", color: corPz }}
-              title={`Prazo: ${p.titulo}`}
+              title={`Prazo: ${p.titulo}${resolvido ? " (concluído)" : ""}`}
             >
-              <div className="flex items-start gap-1 font-medium leading-snug line-clamp-2"><AlarmClock size={11} className="shrink-0 mt-[1px]" /> <span>{p.titulo}</span></div>
+              <div className="flex items-start gap-1 font-medium leading-snug line-clamp-2">{resolvido ? <Check size={11} className="shrink-0 mt-[1px]" /> : <AlarmClock size={11} className="shrink-0 mt-[1px]" />} <span>{p.titulo}</span></div>
               <div className="text-[8px] uppercase tracking-wide opacity-70 mt-0.5 ml-[14px]">{PRAZO_TIPO_LABEL[p.tipo]}</div>
             </button>
             );
