@@ -146,6 +146,7 @@ export async function gerarRecorrenciasPendentes(
   autor: { id: string; nome: string },
 ): Promise<number> {
   const { proximoVencimento } = await import("../prazos/recorrencia");
+  const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10); // SP (UTC-3)
   const series = new Map<string, Tarefa[]>();
   for (const t of tarefas) {
     if (!t.recorrencia || !t.prazo || t.deletadoEm) continue;
@@ -162,8 +163,12 @@ export async function gerarRecorrenciasPendentes(
       // Cria o PRÓXIMO dia devido imediato — mesmo que já tenha passado (conclusão
       // atrasada). Não pula os perdidos: assim a ocorrência do dia que faltou nasce
       // como ATRASADA em vez de sumir. Avança um passo por conclusão.
-      const prox = proximoVencimento(ult.recorrencia, ult.prazo);
+      let prox = proximoVencimento(ult.recorrencia, ult.prazo);
       if (!prox) continue;
+      // Recupera a corrente até HOJE: pula as ocorrências perdidas e cria a mais
+      // recente devida (<= hoje) — assim a rotina (ex.: dias de semana) reaparece
+      // no dia certo em vez de empilhar backlog atrasado um a um.
+      for (let g = 0; g < 500; g++) { const p2 = proximoVencimento(ult.recorrencia, prox); if (!p2 || p2 > hoje) break; prox = p2; }
       const chave = `rect-${maeId}-${prox}`;
       const jaTem = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
       if (!jaTem.empty) continue;
