@@ -37,7 +37,7 @@ const BOBINAS: { id: string; label: string; b: Bobina }[] = [
 const lerLS = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const gravarLS = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* sem storage */ } };
 
-type Passo = "inicio" | "ambiente" | "local" | "produto" | "confirmar" | "baixa";
+type Passo = "inicio" | "restaurante" | "ambiente" | "local" | "produto" | "confirmar" | "baixa";
 
 // Cores dos botões de equipamento por método de conservação (congelado, etc.).
 const CORES_METODO: Record<string, string> = {
@@ -75,8 +75,11 @@ type Props = {
 
 export function EtiquetasTab(props: Props) {
   const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos, pularInicio, onSair, ambienteIds, modoProducao, restaurantesAlvo, restaurantes } = props;
-  const [passo, setPasso] = useState<Passo>(() => (pularInicio ? calcStartEmissao(locais).passo : "inicio"));
-  const [ambienteId, setAmbienteId] = useState<string>(() => (pularInicio ? calcStartEmissao(locais).ambienteId : ""));   // "" = sem ambiente
+  // Modo produção com 2+ restaurantes: escolhe o restaurante ANTES de tudo (ele
+  // decide o CNPJ e filtra os produtos). Com 1 só, pula direto.
+  const precisaRest = !!modoProducao && (restaurantesAlvo || []).filter((id) => (restaurantes || []).some((r) => r.id === id)).length > 1;
+  const [passo, setPasso] = useState<Passo>(() => (!pularInicio ? "inicio" : precisaRest ? "restaurante" : calcStartEmissao(locais).passo));
+  const [ambienteId, setAmbienteId] = useState<string>(() => (pularInicio && !precisaRest ? calcStartEmissao(locais).ambienteId : ""));   // "" = sem ambiente
   const [local, setLocal] = useState<LocalEstoque | null>(null);
   const [produto, setProduto] = useState<ProdutoEtiqueta | null>(null);
   const [copias, setCopias] = useState(1);
@@ -179,15 +182,24 @@ export function EtiquetasTab(props: Props) {
   if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão para etiquetas.</div>;
 
   const ir = (p: Passo) => { setPasso(p); setMsg(null); setBusca(""); };
+  // Escolheu o restaurante-alvo → segue pro 1º passo de verdade (ambiente/local).
+  const escolherRestaurante = (id: string) => {
+    setAlvoId(id);
+    const s = calcStartEmissao(locais);
+    setAmbienteId(s.ambienteId);
+    ir(s.passo);
+  };
   const voltar = () => {
     if (passo === "confirmar") ir("produto");
     else if (passo === "produto") { setLocal(null); ir("local"); }
     else if (passo === "local" && grupos.length > 1) ir("ambiente");
+    else if ((passo === "local" || passo === "ambiente") && precisaRest) ir("restaurante");
     else if (onSair) onSair();
     else ir("inicio");
   };
   // Com um só ambiente (ou nenhum), pula direto para os equipamentos.
   const comecarEmissao = () => {
+    if (precisaRest) { ir("restaurante"); return; }
     if (grupos.length === 1) { setAmbienteId(grupos[0].ambiente?.id || ""); ir("local"); }
     else ir(grupos.length === 0 ? "local" : "ambiente");
   };
@@ -339,6 +351,24 @@ export function EtiquetasTab(props: Props) {
   }
 
   // ── EMITIR 1: AMBIENTE ──
+  // ── EMITIR 0: RESTAURANTE (só modo produção com 2+) ──
+  if (passo === "restaurante") {
+    return (
+      <div className="max-w-2xl mx-auto">
+        {cabecalho("Etiqueta de qual restaurante?", "Define a empresa/CNPJ e os produtos")}
+        {avisoMsg}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {opcoesAlvo.map((r) => (
+            <button key={r.id} type="button" onClick={() => escolherRestaurante(r.id)}
+              className={`${btnQuadrado} bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100`}>
+              <div className="text-xl font-bold leading-tight">{r.nome}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (passo === "ambiente") {
     return (
       <div className="max-w-2xl mx-auto">
@@ -393,15 +423,10 @@ export function EtiquetasTab(props: Props) {
       <div className="max-w-2xl mx-auto">
         {cabecalho(local.nome, [nomeAmbiente, metodoLabel(local.metodoConservacao)].filter(Boolean).join(" · "))}
         {avisoMsg}
-        {modoProducao && opcoesAlvo.length > 1 && (
-          <div className="mb-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Etiqueta para qual restaurante?</div>
-            <div className="grid grid-cols-2 gap-2">
-              {opcoesAlvo.map((r) => (
-                <button key={r.id} type="button" onClick={() => setAlvoId(r.id)}
-                  className={`h-12 rounded-xl border text-sm font-semibold ${alvoId === r.id ? "bg-emerald-600 text-white border-emerald-600" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"}`}>{r.nome}</button>
-              ))}
-            </div>
+        {modoProducao && alvo && precisaRest && (
+          <div className="mb-3 flex items-center justify-between gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-semibold"><span className="w-2 h-2 rounded-full bg-emerald-500" /> {alvo.nome}</span>
+            <button type="button" onClick={() => ir("restaurante")} className="text-indigo-600 dark:text-indigo-400">trocar restaurante</button>
           </div>
         )}
         {produtosLocal.length > 8 && (
