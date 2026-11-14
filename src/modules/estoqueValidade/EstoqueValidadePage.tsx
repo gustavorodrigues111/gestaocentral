@@ -44,7 +44,7 @@ function PrinterCfgModal({ onClose }: { onClose: () => void }) {
 }
 import { useParams, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { provisionarAcesso, gerarSenhaInicial } from "../../core/auth/provisionar";
@@ -283,6 +283,32 @@ export function EstoqueValidadePage() {
   };
   // Com uma só máquina DISPONÍVEL, vincula sozinho (não precisa escolher no aparelho).
   useEffect(() => { if (naMaquininha && !maquina && maquinasDisponiveis.length === 1) parearMaquina(maquinasDisponiveis[0].id); }, [naMaquininha, maquina, maquinasDisponiveis.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-correção do restaurante: no modo produção a máquina vive num rid só, mas
+  // a conta abre em qualquer um dos restaurantes dela. Se o aparelho já está
+  // pareado (tem machineId) mas a máquina NÃO está na config do rid atual,
+  // procura em quais restaurantes da conta ela vive e troca pra lá sozinho.
+  useEffect(() => {
+    if (!naMaquininha || !machineId || !configLoaded || maquina) return;
+    let vivo = true;
+    (async () => {
+      for (const r of (me?.restaurantIds || [])) {
+        if (r === rid || !vivo) continue;
+        try {
+          const snap = await getDoc(doc(db, "estoqueConfig", r));
+          const ms = ((snap.data()?.maquinas || []) as Maquina[]);
+          if (ms.some((m) => m.id === machineId)) {
+            try { localStorage.setItem("etiq_kiosk_rid", r); } catch { /* sem storage */ }
+            window.dispatchEvent(new Event("etiq-kiosk-rid"));
+            setActiveId(r);
+            nav(`/r/${r}/estoqueValidade`, { replace: true });
+            return;
+          }
+        } catch { /* ignora e tenta o próximo */ }
+      }
+    })();
+    return () => { vivo = false; };
+  }, [naMaquininha, machineId, configLoaded, maquina, rid]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (maquina?.bobinaId) { try { localStorage.setItem("etiq_bobina", maquina.bobinaId); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-impressora")); }
   }, [maquina?.bobinaId]);
