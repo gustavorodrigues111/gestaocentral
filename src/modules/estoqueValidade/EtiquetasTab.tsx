@@ -21,6 +21,7 @@ import { agruparPorAmbiente, diasNoLocal, nomeCompleto, produtosDoLocal } from "
 import { EtiquetasEmitidas } from "./EtiquetasEmitidas";
 import { enfileirarEtiqueta } from "./filaImpressao";
 import type { ProdutoEtiqueta, EstoqueConfig } from "./EstoqueValidadePage";
+import { empresasDoProduto } from "./EstoqueValidadePage";
 
 // Medidas comuns. Na maquininha só cabem as de até 58 mm de largura.
 const BOBINAS: { id: string; label: string; b: Bobina }[] = [
@@ -148,7 +149,14 @@ export function EtiquetasTab(props: Props) {
   const equipamentos = useMemo(() => grupos.flatMap((g) => g.equipamentos), [grupos]);
   const grupoAtual = grupos.find((g) => (g.ambiente?.id || "") === ambienteId) || null;
   const nomeAmbiente = grupoAtual?.ambiente?.nome || (grupos.length > 1 ? "Sem ambiente" : "");
-  const produtosLocal = useMemo(() => (local ? produtosDoLocal(produtos, local).sort((a, b) => a.nome.localeCompare(b.nome)) : []), [produtos, local]);
+  // No modo produção, só os produtos do restaurante-alvo escolhido (evita
+  // etiqueta com CNPJ de outro restaurante).
+  const produtosLocal = useMemo(() => {
+    if (!local) return [];
+    let ps = produtosDoLocal(produtos, local);
+    if (modoProducao && alvoId) ps = ps.filter((p) => empresasDoProduto(p).includes(alvoId));
+    return ps.sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [produtos, local, modoProducao, alvoId]);
   const dias = produto && local ? diasNoLocal(produto, local) : null;
 
   const hoje = hojeSP();
@@ -385,6 +393,17 @@ export function EtiquetasTab(props: Props) {
       <div className="max-w-2xl mx-auto">
         {cabecalho(local.nome, [nomeAmbiente, metodoLabel(local.metodoConservacao)].filter(Boolean).join(" · "))}
         {avisoMsg}
+        {modoProducao && opcoesAlvo.length > 1 && (
+          <div className="mb-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Etiqueta para qual restaurante?</div>
+            <div className="grid grid-cols-2 gap-2">
+              {opcoesAlvo.map((r) => (
+                <button key={r.id} type="button" onClick={() => setAlvoId(r.id)}
+                  className={`h-12 rounded-xl border text-sm font-semibold ${alvoId === r.id ? "bg-emerald-600 text-white border-emerald-600" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"}`}>{r.nome}</button>
+              ))}
+            </div>
+          </div>
+        )}
         {produtosLocal.length > 8 && (
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto"
             className="w-full h-12 px-3 mb-3 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
@@ -417,15 +436,10 @@ export function EtiquetasTab(props: Props) {
         {avisoMsg}
         {aviso && <div className="mb-3 inline-block text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-2.5 py-1.5 rounded-lg">{aviso}</div>}
 
-        {modoProducao && opcoesAlvo.length > 1 && (
+        {modoProducao && alvo && (
           <div className="mb-4">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Etiqueta para</div>
-            <div className="grid grid-cols-2 gap-2">
-              {opcoesAlvo.map((r) => (
-                <button key={r.id} type="button" onClick={() => setAlvoId(r.id)}
-                  className={`h-12 rounded-xl border text-sm font-semibold ${alvoId === r.id ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"}`}>{r.nome}</button>
-              ))}
-            </div>
+            <div className="inline-flex items-center gap-2 h-10 px-3 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-sm font-semibold text-emerald-800 dark:text-emerald-300">{alvo.nome}</div>
           </div>
         )}
 

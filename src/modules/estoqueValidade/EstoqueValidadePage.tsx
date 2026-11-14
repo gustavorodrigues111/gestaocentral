@@ -78,7 +78,15 @@ export type ProdutoEtiqueta = {
   estoqueMinimo?: number | null; marcaFornecedor?: string | null; sif?: string | null;
   precoCusto?: number | null; qrTokenEstoque: string; ativo: boolean; criadoEm: string;
   locais?: string[];  // locais onde o produto fica (só os compatíveis com a matriz)
+  // Modo produção: restaurantes (empresas) a que o produto pertence — a etiqueta
+  // só pode sair pra um desses (evita CNPJ errado). Vazio/ausente = usa o
+  // restaurantId (produto de 1 restaurante só, retrocompat).
+  empresasIds?: string[];
 };
+// Empresas a que um produto pertence (fallback pro restaurantId legado).
+export function empresasDoProduto(p: Pick<ProdutoEtiqueta, "empresasIds" | "restaurantId">): string[] {
+  return p.empresasIds?.length ? p.empresasIds : [p.restaurantId];
+}
 // Máquina de etiqueta (maquininha/estação): config remota, editada no admin e
 // lida ao vivo pelo aparelho. Define quais AMBIENTES aparecem nela (catálogo por
 // localização), o tamanho do rolo e, no modo produção, quais restaurantes ela
@@ -357,6 +365,9 @@ export function EstoqueValidadePage() {
       estoqueMinimo: p.estoqueMinimo ?? null, marcaFornecedor: p.marcaFornecedor || null,
       sif: p.sif || null, precoCusto: p.precoCusto ?? null, ativo: p.ativo ?? true,
       locais: limparVinculos(p.locais || [], p.conservacao || {}, locais),
+      // Produção: a quais restaurantes (empresas) o produto pertence. Sem modo
+      // produção fica [rid] (1 restaurante só).
+      empresasIds: (maquina?.modoProducao && p.empresasIds?.length) ? p.empresasIds : [rid],
     };
     if (p.id) await updateDoc(doc(db, "produtosEtiqueta", p.id), dados);
     else await addDoc(collection(db, "produtosEtiqueta"), { restaurantId: rid, ...dados, qrTokenEstoque: novoToken(), criadoEm: new Date().toISOString() });
@@ -585,7 +596,7 @@ export function EstoqueValidadePage() {
       )}
 
       {localModal && <LocalModal local={localModal.local} locais={locaisVisiveis} config={config} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
-      {prodModal && <ProdutoModal key={prodModal.produto?.id || "novo"} produto={prodModal.produto} nomeInicial={prodModal.nomeInicial} localInicial={prodModal.localInicial} produtos={produtos} config={config} locais={locaisVisiveis} onClose={() => setProdModal(null)} onSalvar={salvarProduto}
+      {prodModal && <ProdutoModal key={prodModal.produto?.id || "novo"} produto={prodModal.produto} nomeInicial={prodModal.nomeInicial} localInicial={prodModal.localInicial} produtos={produtos} config={config} locais={locaisVisiveis} empresas={restaurantesVisiveis.map((r) => ({ id: r.id, nome: r.nome }))} modoProducao={!!maquina?.modoProducao} onClose={() => setProdModal(null)} onSalvar={salvarProduto}
         onUsarExistente={(p) => setProdModal({ produto: p, localInicial: prodModal.localInicial })} />}
       {vinculosLocal && <VinculosModal local={vinculosLocal} locais={locaisVisiveis} produtos={produtos} metodoLabel={config.metodos.find((m) => m.id === vinculosLocal.metodoConservacao)?.label || ""}
         onClose={() => setVinculosLocal(null)} onNovoProduto={(nome) => { setProdModal({ produto: null, nomeInicial: nome, localInicial: vinculosLocal.id }); setVinculosLocal(null); }} />}
@@ -1434,8 +1445,9 @@ function LocalModal({ local, locais, config, onClose, onSalvar }: {
   );
 }
 
-function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, locais, onClose, onSalvar, onUsarExistente }: {
+function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, locais, empresas, modoProducao, onClose, onSalvar, onUsarExistente }: {
   produto: ProdutoEtiqueta | null; nomeInicial?: string; localInicial?: string; produtos: ProdutoEtiqueta[];
+  empresas?: { id: string; nome: string }[]; modoProducao?: boolean;
   onUsarExistente: (p: ProdutoEtiqueta) => void; config: EstoqueConfig; locais: LocalEstoque[]; onClose: () => void; onSalvar: (p: Partial<ProdutoEtiqueta> & { id?: string }) => Promise<void>;
 }) {
   const [nome, setNome] = useState(produto?.nome || nomeInicial || "");
@@ -1449,6 +1461,9 @@ function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, lo
   const [ativo, setAtivo] = useState<boolean>(produto?.ativo ?? true);
   // Vindo da tela do equipamento, ele já vem marcado (vale depois de preencher o prazo).
   const [locaisSel, setLocaisSel] = useState<string[]>(() => Array.from(new Set([...(produto?.locais || []), ...(localInicial ? [localInicial] : [])])));
+  // Modo produção: a quais restaurantes (empresas) o produto pertence.
+  const [empresasSel, setEmpresasSel] = useState<string[]>(() => produto?.empresasIds?.length ? produto.empresasIds : (empresas?.length === 1 ? [empresas[0].id] : []));
+  const toggleEmpresa = (id: string) => setEmpresasSel((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   const similares = produto ? [] : parecidos(nome, produtos);
   const [salvando, setSalvando] = useState(false);
   const locaisAtivos = locais.filter((l) => l.ativo && !ehAmbiente(l)).sort((a, b) => nomeCompleto(a, locais).localeCompare(nomeCompleto(b, locais)));
@@ -1460,13 +1475,14 @@ function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, lo
     setCons((prev) => { const c = { ...prev }; if (v === "" || isNaN(n)) delete c[id]; else c[id] = n; return c; });
   }
   function toggleCat(c: string) { setCats((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]); }
+  const faltaEmpresa = !!modoProducao && (empresas?.length || 0) > 0 && empresasSel.length === 0;
   async function salvar() {
-    if (!nome.trim() || !temMetodo) return;
+    if (!nome.trim() || !temMetodo || faltaEmpresa) return;
     const igual = produtos.find((p) => p.id !== produto?.id && mesmoNome(p.nome, nome));
     if (igual && !confirm(`Já existe o produto "${igual.nome}". Cadastrar outro com o mesmo nome?`)) return;
     setSalvando(true);
     try {
-      await onSalvar({ id: produto?.id, nome: nome.trim(), categorias: cats, unidade, conservacao: cons, locais: locaisSel, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
+      await onSalvar({ id: produto?.id, nome: nome.trim(), categorias: cats, unidade, conservacao: cons, locais: locaisSel, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo, ...(modoProducao ? { empresasIds: empresasSel } : {}) });
     } finally { setSalvando(false); }
   }
   return (
@@ -1488,6 +1504,19 @@ function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, lo
             </div>
           )}
         </div>
+        {modoProducao && (empresas?.length || 0) > 0 && (
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Restaurante(s) desta etiqueta <span className="text-gray-400">(um ou mais)</span></label>
+            <div className="flex flex-wrap gap-1.5">
+              {(empresas || []).map((r) => {
+                const on = empresasSel.includes(r.id);
+                return <button key={r.id} type="button" onClick={() => toggleEmpresa(r.id)} className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? "bg-emerald-600 text-white border-emerald-600" : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{r.nome}</button>;
+              })}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">Só esses poderão emitir este produto (a etiqueta sai com o CNPJ do restaurante escolhido na hora).</p>
+            {faltaEmpresa && <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">Escolha pelo menos um restaurante.</p>}
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500 block mb-1">Unidade</label>
@@ -1547,7 +1576,7 @@ function ProdutoModal({ produto, nomeInicial, localInicial, produtos, config, lo
         </div>
         <div><label className="text-xs text-gray-500 block mb-1">Marca / Fornecedor <span className="text-gray-400">(opc.)</span></label><input value={marca} onChange={(e) => setMarca(e.target.value)} className={inp} /></div>
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativo</label>
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando || !nome.trim() || !temMetodo}>{salvando ? "Salvando…" : produto ? "Salvar" : "Criar"}</Button></div>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando || !nome.trim() || !temMetodo || faltaEmpresa}>{salvando ? "Salvando…" : produto ? "Salvar" : "Criar"}</Button></div>
       </div>
     </Modal>
   );
