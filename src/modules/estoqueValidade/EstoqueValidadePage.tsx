@@ -46,6 +46,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { provisionarAcesso, gerarSenhaInicial } from "../../core/auth/provisionar";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -89,6 +91,7 @@ export type Maquina = {
   id: string; nome: string; ambienteIds: string[];
   bobinaId?: string; modoProducao?: boolean; restaurantesAlvo?: string[]; operadores?: Operador[];
   deviceId?: string | null;   // aparelho que já vinculou esta máquina (some da lista de associar)
+  loginEmail?: string | null; // conta dedicada da máquina (login no aparelho)
 };
 
 // Id persistente deste aparelho (pra saber qual máquina ele já vinculou).
@@ -106,6 +109,61 @@ export async function hashPin(pin: string, salt: string): Promise<string> {
   const buf = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+// Perfil de acesso dedicado da máquina de etiquetas: só enxerga o módulo
+// Etiquetas (ver + operar: emitir e dar baixa). Id fixo pra ser idempotente —
+// uma máquina em qualquer restaurante usa o mesmo perfil.
+const PERFIL_MAQUINA_ID = "_maq_etiquetas";
+async function garantirPerfilMaquina(): Promise<string> {
+  const ref = doc(db, "accessProfiles", PERFIL_MAQUINA_ID);
+  await setDoc(ref, sanitizeForFirestore({
+    id: PERFIL_MAQUINA_ID,
+    nome: "Maquininha (Etiquetas)",
+    descricao: "Conta de aparelho — só emite e dá baixa em etiquetas de validade. Não enxerga mais nada do sistema.",
+    builtin: false,
+    maquinaEtiquetas: true,
+    restaurantId: null,
+    criadoEm: new Date().toISOString(),
+    permissions: { estoqueValidade: { ver: true, operar: true } },
+  }), { merge: true });
+  return PERFIL_MAQUINA_ID;
+}
+
+type ResultadoLoginMaquina =
+  | { ok: true; email: string; senha: string }
+  | { ok: false; erro: string };
+
+// Cria (ou recria) a conta dedicada da máquina: perfil + conta no Firebase Auth
+// + pessoa escopada aos restaurantes marcados na máquina. Devolve email/senha
+// pra digitar no aparelho no 1º acesso.
+async function criarLoginMaquina(m: Maquina, rid: string): Promise<ResultadoLoginMaquina> {
+  const alvos = Array.from(new Set(
+    (m.modoProducao && m.restaurantesAlvo?.length ? m.restaurantesAlvo : [rid]).filter(Boolean),
+  ));
+  if (alvos.length === 0) return { ok: false, erro: "A máquina precisa de pelo menos um restaurante." };
+  const perfilId = await garantirPerfilMaquina();
+  const slug = (m.nome || "maquina").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "").slice(0, 16) || "maquina";
+  const rand = Math.random().toString(36).slice(2, 6);
+  const email = `maq-${slug}-${rand}@maquina.planejamento.app`;
+  const senha = gerarSenhaInicial();
+  const prov = await provisionarAcesso(email, senha);
+  if (!prov.ok) return { ok: false, erro: prov.motivo === "email_em_uso" ? "Já existe login pra essa máquina. Clique em 'Refazer login' pra gerar outro." : ("Não deu pra criar o acesso: " + (prov.detalhe || prov.motivo)) };
+  const now = new Date().toISOString();
+  const profileIds: Record<string, string> = {};
+  const permissions: Record<string, Record<string, unknown>> = {};
+  for (const r of alvos) { profileIds[r] = perfilId; permissions[r] = { estoqueValidade: { ver: true, operar: true } }; }
+  try {
+    await addDoc(collection(db, "pessoas"), sanitizeForFirestore({
+      email, nome: `Maquininha · ${m.nome}`, cpf: null, cadastroIncompleto: false,
+      isMaster: false, temLogin: true, ehMaquina: true, maquinaId: m.id,
+      restaurantIds: alvos, profileIds, permissions, vinculos: {},
+      mustTrocarSenha: false, ativa: true, createdAt: now, acessoProvisionadoEm: now,
+    }));
+  } catch (e) {
+    return { ok: false, erro: "Conta criada, mas falhou ao gravar a pessoa: " + (e instanceof Error ? e.message : String(e)) };
+  }
+  return { ok: true, email, senha };
+}
+
 export type EstoqueConfig = { unidades: string[]; categorias: string[]; metodos: MetodoConservacao[]; maquinas?: Maquina[] };
 export type LoteEstoque = {
   id: string; restaurantId: string; produtoId: string; produtoNome: string;
@@ -469,7 +527,7 @@ export function EstoqueValidadePage() {
             : subCad === "bases"
             ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
             : subCad === "maquinas"
-            ? <MaquinasTab maquinas={config.maquinas || []} ambientes={agruparPorAmbiente(locais).map((g) => g.ambiente).filter((a): a is LocalEstoque => !!a).map((a) => ({ id: a.id, nome: a.nome }))} bobinas={BOBINAS_ETIQ} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome }))} podeEditar={podeEditar} onSalvar={(ms) => void salvarConfig({ maquinas: ms })} />
+            ? <MaquinasTab maquinas={config.maquinas || []} ambientes={agruparPorAmbiente(locais).map((g) => g.ambiente).filter((a): a is LocalEstoque => !!a).map((a) => ({ id: a.id, nome: a.nome }))} bobinas={BOBINAS_ETIQ} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome }))} rid={rid} podeEditar={podeEditar} onSalvar={(ms) => void salvarConfig({ maquinas: ms })} />
             : <ProdutosTab produtos={produtos} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
           {naMaquininha && (
             <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center space-y-3">
@@ -1076,9 +1134,9 @@ function BasesTab({ config, podeEditar, onSalvar }: { config: EstoqueConfig; pod
 
 // Máquinas de etiqueta (maquininhas/estações). Config remota: o que você marca
 // aqui aparece no aparelho sozinho (ambientes que ele mostra, tamanho, modo prod).
-function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, onSalvar }: {
+function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, rid, podeEditar, onSalvar }: {
   maquinas: Maquina[]; ambientes: { id: string; nome: string }[]; bobinas: [string, string][];
-  restaurantes: { id: string; nome: string }[]; podeEditar: boolean; onSalvar: (ms: Maquina[]) => void;
+  restaurantes: { id: string; nome: string }[]; rid: string; podeEditar: boolean; onSalvar: (ms: Maquina[]) => void;
 }) {
   const [editId, setEditId] = useState<string | null>(null);
   const upd = (id: string, patch: Partial<Maquina>) => onSalvar(maquinas.map((m) => (m.id === id ? { ...m, ...patch } : m)));
@@ -1093,7 +1151,7 @@ function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, o
       ) : (
         <div className="space-y-2">
           {maquinas.map((m) => (
-            <div key={m.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+            <button key={m.id} type="button" onClick={() => setEditId(m.id)} className="w-full flex items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-left hover:border-indigo-300 dark:hover:border-indigo-700 active:scale-[.99]">
               <div className="min-w-0">
                 <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{m.nome}{m.deviceId ? <span className="ml-2 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">● vinculada</span> : null}</div>
                 <div className="text-xs text-gray-400 truncate">
@@ -1102,14 +1160,14 @@ function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, o
                   {m.modoProducao ? " · modo produção" : ""}
                 </div>
               </div>
-              {podeEditar && <button type="button" onClick={() => setEditId(m.id)} className="shrink-0 h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 flex items-center justify-center" title="Editar"><Pencil size={15} /></button>}
-            </div>
+              <ChevronRight size={18} className="shrink-0 text-gray-300" />
+            </button>
           ))}
         </div>
       )}
       {podeEditar && <Button size="sm" onClick={addNova}>+ Adicionar nova máquina</Button>}
       {emEdicao && (
-        <MaquinaEditorModal maquina={emEdicao} ambientes={ambientes} bobinas={bobinas} restaurantes={restaurantes} podeEditar={podeEditar}
+        <MaquinaEditorModal maquina={emEdicao} ambientes={ambientes} bobinas={bobinas} restaurantes={restaurantes} rid={rid} podeEditar={podeEditar}
           onChange={(patch) => upd(emEdicao.id, patch)}
           onExcluir={() => { if (confirm(`Excluir a máquina "${emEdicao.nome}"?`)) { onSalvar(maquinas.filter((x) => x.id !== emEdicao.id)); setEditId(null); } }}
           onClose={() => setEditId(null)} />
@@ -1118,15 +1176,75 @@ function MaquinasTab({ maquinas, ambientes, bobinas, restaurantes, podeEditar, o
   );
 }
 
-function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, podeEditar, onChange, onExcluir, onClose }: {
+function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, rid, podeEditar, onChange, onExcluir, onClose }: {
   maquina: Maquina; ambientes: { id: string; nome: string }[]; bobinas: [string, string][];
-  restaurantes: { id: string; nome: string }[]; podeEditar: boolean;
+  restaurantes: { id: string; nome: string }[]; rid: string; podeEditar: boolean;
   onChange: (patch: Partial<Maquina>) => void; onExcluir: () => void; onClose: () => void;
 }) {
+  const [modo, setModo] = useState<"ver" | "editar">("ver");
+  const [criandoLogin, setCriandoLogin] = useState(false);
+  const [loginErro, setLoginErro] = useState("");
+  const [loginNovo, setLoginNovo] = useState<{ email: string; senha: string } | null>(null);
+  const criarLogin = async () => {
+    setCriandoLogin(true); setLoginErro(""); setLoginNovo(null);
+    const r = await criarLoginMaquina(m, rid);
+    setCriandoLogin(false);
+    if (r.ok) { setLoginNovo({ email: r.email, senha: r.senha }); onChange({ loginEmail: r.email }); }
+    else setLoginErro(r.erro);
+  };
   const toggleArr = (arr: string[] | undefined, v: string) => { const s = new Set(arr || []); if (s.has(v)) s.delete(v); else s.add(v); return [...s]; };
   const chip = (on: boolean, cor: string) => `px-2.5 py-1 rounded-full text-xs font-medium border ${on ? cor : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`;
+  const ambNome = (id: string) => ambientes.find((a) => a.id === id)?.nome || id;
+  const restNome = (id: string) => restaurantes.find((r) => r.id === id)?.nome || id;
+  const bobinaLabel = bobinas.find(([id]) => id === m.bobinaId)?.[1] || "Padrão do aparelho";
+  const Linha = ({ label, children }: { label: string; children: ReactNode }) => (
+    <div className="flex justify-between gap-3 py-1.5 text-sm border-b border-gray-100 dark:border-gray-800 last:border-0"><span className="text-gray-500 shrink-0">{label}</span><span className="text-right text-gray-900 dark:text-gray-100">{children}</span></div>
+  );
+  if (modo === "ver") {
+    return (
+      <Modal title={m.nome} onClose={onClose} maxWidth="max-w-md"
+        headerAction={podeEditar ? <button type="button" onClick={() => setModo("editar")} className="text-sm font-medium text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 px-1"><Pencil size={14} /> Editar</button> : undefined}>
+        <div>
+          <Linha label="Ambientes">{(m.ambienteIds || []).length ? (m.ambienteIds || []).map(ambNome).join(", ") : "—"}</Linha>
+          <Linha label="Tamanho da etiqueta">{bobinaLabel}</Linha>
+          <Linha label="Modo produção">{m.modoProducao ? "Sim" : "Não"}</Linha>
+          {m.modoProducao && <Linha label="Restaurantes">{(m.restaurantesAlvo || []).map(restNome).join(", ") || "—"}</Linha>}
+          <Linha label="Operadores">{m.operadores?.length ? m.operadores.map((o) => o.nome).join(", ") : "nenhum"}</Linha>
+          <Linha label="Vínculo">{m.deviceId ? "Vinculada a um aparelho" : "Não vinculada"}</Linha>
+          <Linha label="Login do aparelho">{m.loginEmail ? <span className="font-mono text-[11px] break-all">{m.loginEmail}</span> : "não criado"}</Linha>
+
+          {/* Conta dedicada da máquina — pra deslogar do seu login no aparelho */}
+          {podeEditar && (
+            <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/30 p-3">
+              {loginNovo ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Login da máquina criado ✓</div>
+                  <p className="text-xs text-gray-600 dark:text-gray-300">No aparelho, saia do seu login e entre com estes dados (só na 1ª vez — depois fica logado):</p>
+                  <div className="rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2.5 text-sm space-y-1">
+                    <div><span className="text-gray-400 text-xs">E-mail</span><br /><span className="font-mono break-all">{loginNovo.email}</span></div>
+                    <div><span className="text-gray-400 text-xs">Senha</span><br /><span className="font-mono text-lg tracking-wide">{loginNovo.senha}</span></div>
+                  </div>
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400">Anote a senha agora — ela não aparece de novo.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-600 dark:text-gray-300">{m.loginEmail
+                    ? "Essa máquina já tem um login. Você pode refazer (gera uma conta e senha novas) caso tenha perdido a senha."
+                    : "Cria uma conta só desta máquina, limitada aos restaurantes marcados — pra logar no aparelho sem usar seu login pessoal."}</p>
+                  <Button size="sm" onClick={() => void criarLogin()} disabled={criandoLogin}>{criandoLogin ? "Criando…" : m.loginEmail ? "Refazer login da máquina" : "Criar login da máquina"}</Button>
+                </div>
+              )}
+              {loginErro && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">{loginErro}</div>}
+            </div>
+          )}
+
+          {podeEditar && <div className="pt-4"><Button variant="secondary" onClick={() => setModo("editar")}><Pencil size={14} /> Editar configuração</Button></div>}
+        </div>
+      </Modal>
+    );
+  }
   return (
-    <Modal title="Máquina" onClose={onClose} maxWidth="max-w-md" headerAction={podeEditar ? <button type="button" onClick={onExcluir} className="text-gray-300 hover:text-rose-600 px-1" title="Excluir máquina"><Trash2 size={16} /></button> : undefined}>
+    <Modal title={`Editar — ${m.nome}`} onClose={() => setModo("ver")} maxWidth="max-w-md" headerAction={podeEditar ? <button type="button" onClick={onExcluir} className="text-gray-300 hover:text-rose-600 px-1" title="Excluir máquina"><Trash2 size={16} /></button> : undefined}>
       <div className="space-y-4">
         <div>
           <div className="text-xs text-gray-500 mb-1">Nome</div>
@@ -1163,7 +1281,7 @@ function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, pode
         {m.deviceId && podeEditar && (
           <div className="pt-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-400">Vinculada a um aparelho. <button type="button" onClick={() => onChange({ deviceId: null })} className="text-indigo-600 dark:text-indigo-400">Liberar</button> pra poder associar em outro.</div>
         )}
-        <div className="flex justify-end pt-1"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
+        <div className="flex justify-end pt-1"><Button onClick={() => setModo("ver")}>Concluir</Button></div>
       </div>
     </Modal>
   );
