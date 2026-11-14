@@ -322,6 +322,15 @@ export function EstoqueValidadePage() {
     return locais.filter((l) => (ehAmbiente(l) ? allow.has(l.id) : !!l.paiId && allow.has(l.paiId)));
   }, [naMaquininha, maquina, locais]);
 
+  // Produtos visíveis na maquininha = só os vinculados a um local liberado dela.
+  // Cada máquina vê só os seus produtos (sem config nova). Fora da maquininha,
+  // mostra todos.
+  const produtosVisiveis = useMemo(() => {
+    if (!naMaquininha) return produtos;
+    const ids = new Set(locaisVisiveis.map((l) => l.id));
+    return produtos.filter((p) => (p.locais || []).some((id) => ids.has(id)));
+  }, [naMaquininha, produtos, locaisVisiveis]);
+
   // ── Locais ──
   async function salvarLocal(l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) {
     if (l.id) await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo });
@@ -387,6 +396,13 @@ export function EstoqueValidadePage() {
 
   if (permLoading) return null;
   if (!podeVer) return <div className="p-6 text-sm text-gray-500">Você não tem acesso à Gestão de Estoques e Validades.</div>;
+
+  // Na maquininha, espera a config da máquina CHEGAR antes de montar a tela —
+  // senão pisca (lista completa, operador do topo some/volta) enquanto o
+  // Firestore resolve. Uma espera só mata todas as corridas de carregamento.
+  if (naMaquininha && !configLoaded) {
+    return <PageContainer><div className="py-16 text-center text-sm text-gray-400"><RefreshCw size={22} className="mx-auto mb-2 animate-spin opacity-60" /> Carregando a máquina…</div></PageContainer>;
+  }
 
   // Maquininha ainda não vinculada a uma máquina configurada (e há máquinas no
   // restaurante): pede pra escolher qual máquina é esta. Depois fica remoto.
@@ -529,12 +545,12 @@ export function EstoqueValidadePage() {
       {aba === "painel" && (naMaquininha
         ? <PainelMaquininha etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} />
         : <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />)}
-      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtos} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={respNome} responsavelUid={respUid} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locaisVisiveis} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
+      {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtosVisiveis} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={respNome} responsavelUid={respUid} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locaisVisiveis} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
         ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
       {aba === "baixa" && (naMaquininha
         ? <BaixaMaquininha rid={rid} etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} podeOperar={podeOperar} />
         : <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />)}
-      {aba === "entrada" && <EntradaTab produtos={produtos} locais={locaisVisiveis} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
+      {aba === "entrada" && <EntradaTab produtos={produtosVisiveis} locais={locaisVisiveis} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
         <div>
           <div className={naMaquininha ? "grid grid-cols-3 gap-2 mb-4" : "flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2"}>
@@ -551,7 +567,7 @@ export function EstoqueValidadePage() {
             ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
             : subCad === "maquinas"
             ? <MaquinasTab maquinas={config.maquinas || []} ambientes={agruparPorAmbiente(locais).map((g) => g.ambiente).filter((a): a is LocalEstoque => !!a).map((a) => ({ id: a.id, nome: a.nome }))} bobinas={BOBINAS_ETIQ} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome }))} rid={rid} podeEditar={podeEditar} onSalvar={(ms) => void salvarConfig({ maquinas: ms })} />
-            : <ProdutosTab produtos={produtos} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
+            : <ProdutosTab produtos={produtosVisiveis} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} naMaquininha={naMaquininha} />}
           {naMaquininha && (
             <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800 text-center space-y-3">
               {maquina && (
@@ -1104,8 +1120,8 @@ function LocaisTab({ locais, contarProdutos, onProdutos, metodoLabel, restaurant
 }
 
 // ═══ CADASTRO › PRODUTOS ═════════════════════════════════════════════════════
-function ProdutosTab({ produtos, config, podeEditar, onNovo, onEditar, onExcluir, onEtiqueta }: {
-  produtos: ProdutoEtiqueta[]; config: EstoqueConfig; podeEditar: boolean; onNovo: () => void; onEditar: (p: ProdutoEtiqueta) => void; onExcluir: (p: ProdutoEtiqueta) => void; onEtiqueta: (p: ProdutoEtiqueta) => void;
+function ProdutosTab({ produtos, config, podeEditar, onNovo, onEditar, onExcluir, onEtiqueta, naMaquininha }: {
+  produtos: ProdutoEtiqueta[]; config: EstoqueConfig; podeEditar: boolean; onNovo: () => void; onEditar: (p: ProdutoEtiqueta) => void; onExcluir: (p: ProdutoEtiqueta) => void; onEtiqueta: (p: ProdutoEtiqueta) => void; naMaquininha?: boolean;
 }) {
   const [busca, setBusca] = useState("");
   const lista = produtos.filter((p) => !busca.trim() || p.nome.toLowerCase().includes(busca.toLowerCase())).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -1117,7 +1133,9 @@ function ProdutosTab({ produtos, config, podeEditar, onNovo, onEditar, onExcluir
       </div>
       <div className="max-w-2xl mb-3"><SearchInput value={busca} onChange={setBusca} placeholder="Buscar produto…" /></div>
       {lista.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum produto. {podeEditar ? "Cadastre o primeiro." : ""}</div>
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">{naMaquininha
+          ? <>Nenhum produto nos locais desta máquina. {podeEditar ? "Cadastre um e vincule a um freezer/geladeira liberado." : ""}</>
+          : <>Nenhum produto. {podeEditar ? "Cadastre o primeiro." : ""}</>}</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
           {lista.map((p) => (
