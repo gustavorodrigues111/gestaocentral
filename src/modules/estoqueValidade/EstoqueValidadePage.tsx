@@ -65,7 +65,7 @@ import { buscarPorToken, tokenDoQr, etiquetaPorNumero, diasAteValidade, hojeSP, 
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
-import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, imprimirSeqTeste, imprimirTsplTeste, avancarEtiqueta } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, avancarEtiqueta, passoEtiquetaMm, salvarPassoEtiquetaMm } from "../../core/impressao/impressora";
 import { desenharEtiqueta, desenharEtiquetaLivre, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
@@ -1067,31 +1067,38 @@ function TesteImpressaoSeq() {
   const [aberto, setAberto] = useState(false);
   const [msg, setMsg] = useState("");
   const [ocupado, setOcupado] = useState<number | null>(null);
-  const imprimir = async (seq: number) => {
-    setOcupado(seq); setMsg("");
+  const bobinaAtual = () => {
+    let bid = "58x40"; try { bid = localStorage.getItem("etiq_bobina") || "58x40"; } catch { /* */ }
+    return BOBINAS_DIM[bid] || BOBINAS_DIM["58x40"];
+  };
+  const [passo, setPasso] = useState(() => passoEtiquetaMm(bobinaAtual()));
+  const salvar = (v: number) => { setPasso(v); if (v > 0) salvarPassoEtiquetaMm(v); };
+  const testar = async () => {
+    setOcupado(5); setMsg("");
     try {
-      let bid = "58x40"; try { bid = localStorage.getItem("etiq_bobina") || "58x40"; } catch { /* */ }
-      const bobina = BOBINAS_DIM[bid] || BOBINAS_DIM["58x40"];
+      const bobina = bobinaAtual();
       const canvas = await desenharEtiquetaLivre([
-        { tipo: "texto", texto: `SEQ ${seq}`, tam: 44, negrito: true, align: "c" },
-        { tipo: "texto", texto: "teste de alinhamento", tam: 20, align: "c" },
+        { tipo: "texto", texto: "ALINHAMENTO", tam: 34, negrito: true, align: "c" },
+        { tipo: "texto", texto: `passo ${passo} mm`, tam: 20, align: "c" },
       ], bobina, larguraPx(bobina, noAppSunmi()), "center");
-      const r = seq === 15 ? await imprimirTsplTeste(canvas, bobina) : await imprimirSeqTeste(canvas, seq);
-      setMsg(r.ok ? `${seq === 15 ? "TSPL" : `Seq ${seq}`} enviada — veja o que saiu.` : (r.erro || "Falhou."));
+      const r = await imprimirEtiqueta(canvas, 5, bobina);
+      setMsg(r.ok ? "5 enviadas. Se o desenho for escorregando, ajuste o passo e teste de novo." : (r.erro || "Falhou."));
     } finally { setOcupado(null); }
   };
   return (
     <div className="pt-3 mt-2 border-t border-gray-100 dark:border-gray-800">
-      <button type="button" onClick={() => setAberto((v) => !v)} className="text-[11px] text-gray-400 underline">Teste de impressão (resolver repetição)</button>
+      <button type="button" onClick={() => setAberto((v) => !v)} className="text-[11px] text-gray-400 underline">Calibrar alinhamento da etiqueta</button>
       {aberto && (
         <div className="mt-2 space-y-2 text-left">
-          <p className="text-[11px] text-gray-500">Imprima cada um e veja qual sai <b>certa</b> (alinhada e sem atraso). Depois me diz o número.</p>
-          <div className="grid grid-cols-4 gap-2">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17].map((n) => <button key={n} type="button" disabled={ocupado != null} onClick={() => void imprimir(n)} className={`h-11 rounded-lg text-sm font-semibold disabled:opacity-50 ${n >= 16 ? "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300" : n >= 13 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" : n >= 7 ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "bg-gray-100 dark:bg-gray-800"}`}>{ocupado === n ? "…" : `Seq ${n}`}</button>)}
+          <p className="text-[11px] text-gray-500">Imprima 5 de teste. Se o desenho for <b>escorregando</b> de uma etiqueta pra outra, ajuste o <b>passo</b> (altura do rótulo + o espaço entre etiquetas) em 0,5 mm e teste de novo, até as 5 saírem iguais.</p>
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-gray-500 flex-1">Passo (mm)</label>
+            <button type="button" onClick={() => salvar(Math.max(10, Math.round((passo - 0.5) * 10) / 10))} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">−</button>
+            <input type="number" step="0.5" value={passo} onChange={(e) => salvar(parseFloat(e.target.value) || passo)} className="w-20 h-10 px-2 text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+            <button type="button" onClick={() => salvar(Math.round((passo + 0.5) * 10) / 10)} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">+</button>
           </div>
-          <button type="button" disabled={ocupado != null} onClick={() => void imprimir(15)} className="w-full h-12 rounded-lg bg-purple-600 text-white font-semibold disabled:opacity-50">{ocupado === 15 ? "…" : "TSPL (comando bruto)"}</button>
-          <p className="text-[11px] text-gray-400"><b>16 e 17 (laranja)</b> são MODO RECIBO: coloque a impressora em modo recibo/contínuo nas configurações e teste. Sem recuo = pode não repetir.</p>
-          <button type="button" disabled={ocupado != null} onClick={async () => { setOcupado(99); setMsg(""); try { const r = await avancarEtiqueta(); setMsg(r.ok ? "Avançou uma etiqueta." : (r.erro || "Falhou.")); } finally { setOcupado(null); } }} className="w-full h-12 rounded-lg bg-slate-700 text-white font-semibold disabled:opacity-50">{ocupado === 99 ? "…" : "⏏ Avançar/ejetar etiqueta (solta a presa)"}</button>
+          <button type="button" disabled={ocupado != null} onClick={() => void testar()} className="w-full h-12 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-50">{ocupado === 5 ? "…" : "Imprimir 5 de teste"}</button>
+          <button type="button" disabled={ocupado != null} onClick={async () => { setOcupado(99); setMsg(""); try { const r = await avancarEtiqueta(); setMsg(r.ok ? "Avançou uma etiqueta." : (r.erro || "Falhou.")); } finally { setOcupado(null); } }} className="w-full h-11 rounded-lg bg-slate-700 text-white font-semibold disabled:opacity-50">{ocupado === 99 ? "…" : "⏏ Avançar/ejetar etiqueta (solta a presa)"}</button>
           {msg && <div className="text-[11px] text-gray-500">{msg}</div>}
         </div>
       )}

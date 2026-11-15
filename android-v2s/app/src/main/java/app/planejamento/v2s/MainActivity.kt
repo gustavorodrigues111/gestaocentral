@@ -3,27 +3,19 @@ package app.planejamento.v2s
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewGroup
-import android.view.WindowManager
-import android.widget.FrameLayout
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -48,19 +40,6 @@ class MainActivity : Activity() {
     private var arquivoCallback: ValueCallback<Array<Uri>>? = null
     private var pedidoCamera: PermissionRequest? = null
     private var leituraPendente: String? = null
-
-    // Economia de tela: após 45s sem toque, "apaga" a tela (cobre com preto e
-    // zera o brilho) pra não gastar/queimar o painel ligado o dia todo. Qualquer
-    // toque acorda na hora (e o toque que acorda não clica em nada).
-    private lateinit var telaOverlay: View
-    private var telaApagada = false
-    private val TELA_OCIOSA_MS = 45_000L
-    private val apagarRun = Runnable { apagarTela() }
-
-    // Admin de dispositivo: deixa desligar a tela DE VERDADE (dpm.lockNow()).
-    // Habilitado uma vez pelo usuário. Sem ele, cai no "escurecer" (overlay).
-    private lateinit var dpm: DevicePolicyManager
-    private lateinit var adminCn: ComponentName
 
     // Resiliência de rede: se a carga do site falhar (queda de internet), não
     // deixa o WebView preso na tela de erro — mostra uma tela amigável, tenta
@@ -105,19 +84,11 @@ class MainActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Sem FLAG_KEEP_SCREEN_ON e sem timer próprio: o desligamento da tela é do
+        // Android/maquininha (Configurações do aparelho), que reinicia no toque.
 
         web = WebView(this)
-        // Raiz = WebView + overlay preto (a "tela apagada") por cima.
-        val root = FrameLayout(this)
-        root.addView(web)
-        telaOverlay = View(this).apply {
-            setBackgroundColor(Color.BLACK)
-            visibility = View.GONE
-            isClickable = true   // enquanto visível, segura o toque (não vaza pro site)
-        }
-        root.addView(telaOverlay, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        setContentView(root)
+        setContentView(web)
 
         with(web.settings) {
             javaScriptEnabled = true
@@ -186,28 +157,6 @@ class MainActivity : Activity() {
         // Checa atualização do app pouco depois de abrir (silencioso: só avisa se houver).
         web.postDelayed({ Atualizador.verificar(this, true) }, 4000)
         tratarResultadoInstalacao(intent)
-
-        dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        adminCn = ComponentName(this, TelaAdminReceiver::class.java)
-        pedirAdminTelaUmaVez()
-        agendarApagar()
-    }
-
-    // Pede pra habilitar o admin (só pra apagar a tela) uma única vez. Se o
-    // usuário recusar, segue com o "escurecer" como alternativa.
-    private fun pedirAdminTelaUmaVez() {
-        if (dpm.isAdminActive(adminCn)) return
-        val prefs = getSharedPreferences("tela", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("pediuAdmin", false)) return
-        prefs.edit().putBoolean("pediuAdmin", true).apply()
-        web.postDelayed({
-            try {
-                val i = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-                    .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminCn)
-                    .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "Permite a maquininha APAGAR A TELA sozinha quando fica parada (economia). Só isso — não mexe em dados nem senha.")
-                startActivity(i)
-            } catch (_: Exception) { }
-        }, 1500)
     }
 
     // PackageInstaller devolve o pedido de confirmação de instalação aqui.
@@ -296,49 +245,7 @@ class MainActivity : Activity() {
     // volume viram o gatilho do leitor (o app consome a tecla, então o volume
     // não muda). Também cobre a tecla de scan dedicada (F1+/FOCUS/CAMERA) nas
     // versões Scanner. Liga/Desliga e digitação passam normalmente.
-    // ── Economia de tela (ociosidade) ────────────────────────────────────────
-    private fun agendarApagar() {
-        if (!::web.isInitialized) return
-        web.removeCallbacks(apagarRun)
-        web.postDelayed(apagarRun, TELA_OCIOSA_MS)
-    }
-    private fun apagarTela() {
-        // Com admin: desliga a tela DE VERDADE (acorda no botão físico).
-        if (::dpm.isInitialized && dpm.isAdminActive(adminCn)) {
-            try { dpm.lockNow(); return } catch (_: Exception) { }
-        }
-        // Sem admin: "escurece" (cobre de preto + brilho zero); toque acorda.
-        if (telaApagada) return
-        telaApagada = true
-        telaOverlay.visibility = View.VISIBLE
-        val lp = window.attributes; lp.screenBrightness = 0f; window.attributes = lp
-    }
-    private fun acordar() {
-        if (telaApagada) {
-            telaApagada = false
-            telaOverlay.visibility = View.GONE
-            val lp = window.attributes
-            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE   // -1 = volta ao brilho do sistema
-            window.attributes = lp
-        }
-        agendarApagar()
-    }
-
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (telaApagada) {
-            if (ev.action == MotionEvent.ACTION_DOWN) acordar()
-            return true   // o toque que acorda não clica em nada
-        }
-        agendarApagar()
-        return super.dispatchTouchEvent(ev)
-    }
-
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (telaApagada) {
-            if (event.action == KeyEvent.ACTION_DOWN) acordar()
-            return true
-        }
-        agendarApagar()
         if (ehTeclaScan(event)) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 runOnUiThread { web.evaluateJavascript("window.__sunmiTeclaScan && window.__sunmiTeclaScan()", null) }
@@ -368,7 +275,6 @@ class MainActivity : Activity() {
             else @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(scanReceiver, filtro)
         } catch (_: Exception) { }
         try { (getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager).registerDefaultNetworkCallback(netCallback) } catch (_: Exception) { }
-        if (::telaOverlay.isInitialized) acordar()   // volta ligada e reinicia o cronômetro de ociosidade
     }
 
     override fun onStop() {
@@ -378,7 +284,6 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
-        web.removeCallbacks(apagarRun)
         ponte.desconectar()
         web.destroy()
         super.onDestroy()

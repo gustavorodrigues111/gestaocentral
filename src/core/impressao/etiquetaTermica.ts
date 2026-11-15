@@ -161,6 +161,27 @@ export function canvasParaBase64(canvas: HTMLCanvasElement): string {
   return canvas.toDataURL("image/png").split(",")[1] || "";
 }
 
+/**
+ * Envelopa o canvas numa altura fixa = PASSO da etiqueta (altura do rótulo + gap),
+ * com o conteúdo ancorado no topo e o restante em branco (o gap).
+ *
+ * Por que: na Sunmi em modo etiqueta, mandar o bitmap curto e depois "avançar N
+ * linhas" (lineWrap) descasa do passo físico do rótulo e a cada etiqueta sobra/
+ * falta um pouco — o desenho vai escorregando pra próxima. Se o bitmap já tem a
+ * altura exata do passo, cada printBitmap anda exatamente um rótulo: zero deriva.
+ * `passoDots` é calibrável (poucos pontos pra mais/menos) até parar de escorregar.
+ */
+export function enveloparComPasso(canvas: HTMLCanvasElement, passoDots: number): HTMLCanvasElement {
+  const alvo = Math.max(canvas.height, Math.round(passoDots));
+  if (alvo <= canvas.height) return canvas;
+  const out = document.createElement("canvas");
+  out.width = canvas.width; out.height = alvo;
+  const ctx = out.getContext("2d")!;
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(canvas, 0, 0);   // conteúdo no topo; o resto (gap) fica branco
+  return out;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 //  ETIQUETA LIVRE — montada no editor (texto em vários tamanhos, logo, fios).
 //  Sem rastreio: é só desenho + impressão. A altura CRESCE conforme o conteúdo

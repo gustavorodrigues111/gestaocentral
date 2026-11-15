@@ -72,13 +72,15 @@ class SunmiBridge(
         } catch (e: Exception) { falha(id, "Imagem da etiqueta inválida: ${e.message}"); return }
 
         try {
-            // MODO RECIBO (contínuo): imprime "puro" + um pequeno avanço, SEM
-            // labelLocate/labelOutput — que, em modo rótulo, faziam o recuo e saía a
-            // etiqueta ANTERIOR. A impressora precisa estar em "Tipo: recibo".
+            // MODO RECIBO (contínuo), SEM labelLocate/labelOutput — que, em modo
+            // rótulo, faziam o recuo (Velocidade de reversão) e saía a etiqueta
+            // ANTERIOR. O avanço por etiqueta NÃO é mais um lineWrap em "linhas"
+            // (medida solta que descasava do passo e ia escorregando): o bitmap já
+            // vem com a altura exata do passo (rótulo + gap, envelopado no lado web),
+            // então cada printBitmap anda exatamente uma etiqueta.
             p.enterPrinterBuffer(true)
             repeat(copias.coerceIn(1, 50)) {
                 p.printBitmap(bmp, null)
-                p.lineWrap(3, null)        // avança um pouco (gap entre etiquetas)
             }
             p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
                 override fun onRunResult(isSuccess: Boolean) { }
