@@ -112,14 +112,16 @@ class SunmiBridge(
             override fun onPrintResult(code: Int, msg: String?) { if (code == 0) ok(id) else falha(id, "Falhou ($code)") }
         }
         try {
-            // Seq 9/10: usa commitPrinterBuffer (imprime NA HORA) em vez de confiar
-            // no commit do exit — que estava segurando o envio anterior na fila.
-            if (seq == 9 || seq == 10) {
+            // Seq 9/10: commitPrinterBuffer (imprime na hora). 11/12: DRENA a fila
+            // (commita 2x) porque o buffer parece FIFO e sobra sempre um.
+            if (seq in 9..12) {
                 p.enterPrinterBuffer(true)
-                if (seq == 9) { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }
-                else { p.printBitmap(bmp, null); p.labelLocate(); p.labelOutput() }
-                p.commitPrinterBufferWithCallback(cb)   // imprime agora
-                try { p.exitPrinterBuffer(false) } catch (_: Exception) { }   // sai sem recommitar
+                if (seq == 10) { p.printBitmap(bmp, null); p.labelLocate(); p.labelOutput() }
+                else { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }
+                p.commitPrinterBufferWithCallback(cb)        // imprime agora
+                if (seq == 11) { try { p.commitPrinterBuffer() } catch (_: Exception) { } }                 // dreno extra
+                if (seq == 12) { try { p.commitPrinterBuffer(); p.commitPrinterBuffer() } catch (_: Exception) { } } // dreno duplo
+                try { p.exitPrinterBuffer(false) } catch (_: Exception) { }
                 return
             }
             p.enterPrinterBuffer(true)
