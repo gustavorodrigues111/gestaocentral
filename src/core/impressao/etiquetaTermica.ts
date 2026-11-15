@@ -167,11 +167,16 @@ export function canvasParaBase64(canvas: HTMLCanvasElement): string {
 //  (não fica presa à altura da bobina), com um mínimo igual à bobina.
 // ════════════════════════════════════════════════════════════════════════════
 export type AlinhEtiq = "l" | "c" | "r";   // esquerda | centro | direita
+export type TamFonte = number | "p" | "m" | "g" | "gg";  // px, ou nomes antigos
 export type ElementoLivre =
-  | { tipo: "texto"; texto: string; tam: "p" | "m" | "g" | "gg"; negrito?: boolean; centro?: boolean; align?: AlinhEtiq }
+  | { tipo: "texto"; texto: string; tam: TamFonte; negrito?: boolean; italico?: boolean; centro?: boolean; align?: AlinhEtiq }
   | { tipo: "logo"; url: string; alturaMm?: number; centro?: boolean; align?: AlinhEtiq }
   | { tipo: "fio" }
   | { tipo: "espaco"; mm?: number };
+
+const TAM_NOMES: Record<string, number> = { p: 18, m: 24, g: 32, gg: 44 };
+/** Resolve o tamanho da fonte em px (aceita número ou os nomes antigos). */
+export function pxFonte(t: TamFonte): number { return typeof t === "number" ? t : (TAM_NOMES[t] || 24); }
 
 // Posição X conforme alinhamento (fallback no `centro` antigo).
 function xAlinhado(align: AlinhEtiq | undefined, centro: boolean | undefined, W: number, w: number): number {
@@ -181,7 +186,6 @@ function xAlinhado(align: AlinhEtiq | undefined, centro: boolean | undefined, W:
   return 0;
 }
 
-const TAM_PX: Record<"p" | "m" | "g" | "gg", number> = { p: 18, m: 24, g: 32, gg: 44 };
 
 export type AlinhV = "top" | "center" | "bottom";
 /** Desenha uma etiqueta livre; altura cresce com o conteúdo. `vAlign` posiciona o
@@ -197,13 +201,13 @@ export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: 
   }
   // Medir com um contexto temporário.
   const medir = document.createElement("canvas").getContext("2d")! as Ctx;
-  const setFonte = (ctx: Ctx, px: number, peso: 400 | 600 | 700 | 800) => { ctx.font = `${peso} ${px}px ${FONTE}`; };
+  const setFonte = (ctx: Ctx, px: number, peso: 400 | 600 | 700 | 800, italico = false) => { ctx.font = `${italico ? "italic " : ""}${peso} ${px}px ${FONTE}`; };
   const alturaDe = (ctx: Ctx): number => {
     let h = 18;
     for (const e of elementos) {
       if (e.tipo === "texto") {
-        const px = TAM_PX[e.tam];
-        setFonte(ctx, px, e.negrito ? 800 : 600);
+        const px = pxFonte(e.tam);
+        setFonte(ctx, px, e.negrito ? 800 : 600, e.italico);
         const linhas = (e.texto || " ").split("\n").flatMap((t) => quebrar(ctx, t || " ", W));
         h += linhas.length * (px + 6);
       } else if (e.tipo === "logo") {
@@ -229,8 +233,8 @@ export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: 
   let y = 18 + (vAlign === "center" ? sobra / 2 : vAlign === "bottom" ? sobra : 0);
   for (const e of elementos) {
     if (e.tipo === "texto") {
-      const px = TAM_PX[e.tam];
-      setFonte(ctx, px, e.negrito ? 800 : 600);
+      const px = pxFonte(e.tam);
+      setFonte(ctx, px, e.negrito ? 800 : 600, e.italico);
       const linhas = (e.texto || " ").split("\n").flatMap((t) => quebrar(ctx, t || " ", W));
       for (const l of linhas) {
         const x = xAlinhado(e.align, e.centro, W, ctx.measureText(l).width);

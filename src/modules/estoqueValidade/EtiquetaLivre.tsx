@@ -9,7 +9,7 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where
 import { db } from "../../core/firebase/config";
 import { Tag, Trash2, ChevronUp, ChevronDown, Plus, Printer, Pencil, Image as ImageIcon, Home, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import { Button } from "../../core/ui/Button";
-import { desenharEtiquetaLivre, larguraPx, type ElementoLivre, type Bobina, type AlinhV } from "../../core/impressao/etiquetaTermica";
+import { desenharEtiquetaLivre, larguraPx, pxFonte, type ElementoLivre, type Bobina, type AlinhV, type TamFonte } from "../../core/impressao/etiquetaTermica";
 import { imprimirEtiquetas, destinoSalvo, noAppSunmi, type Destino } from "../../core/impressao/impressora";
 
 const BOBINAS: Record<string, Bobina> = {
@@ -23,9 +23,7 @@ function bobinaAtual(): { bobina: Bobina; largura: number } {
   return { bobina, largura: larguraPx(bobina, noAppSunmi()) };
 }
 
-type Tam = "p" | "m" | "g" | "gg";
-const TAM_LABEL: Record<Tam, string> = { p: "P", m: "M", g: "G", gg: "GG" };
-export type ElemCampo = { tipo: "campo"; rotulo: string; chave: string; tam: Tam; negrito?: boolean; centro?: boolean; align?: "l" | "c" | "r"; data?: boolean };
+export type ElemCampo = { tipo: "campo"; rotulo: string; chave: string; tam: TamFonte; negrito?: boolean; italico?: boolean; centro?: boolean; align?: "l" | "c" | "r"; data?: boolean };
 export type ElemTemplate = ElementoLivre | ElemCampo;
 export type EtiquetaLivreTemplate = { id: string; restaurantIds: string[]; nome: string; bobinaId?: string | null; vAlign?: AlinhV; elementos: ElemTemplate[]; criadoEm: string };
 export type LogoEtiqueta = { id: string; restaurantIds: string[]; nome: string; url: string; criadoEm: string };
@@ -65,7 +63,7 @@ function elementosParaImpressao(elementos: ElemTemplate[], valores: Record<strin
     if (e.tipo === "campo") {
       const bruto = valores[e.chave] || "";
       const texto = e.data && bruto ? fmtData(bruto) : bruto;
-      return { tipo: "texto", texto, tam: e.tam, negrito: e.negrito, centro: e.centro };
+      return { tipo: "texto", texto, tam: e.tam, negrito: e.negrito, italico: e.italico, centro: e.centro, align: e.align };
     }
     return e;
   });
@@ -147,7 +145,7 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
   onImprimir: (nome: string, els: ElemTemplate[], vAlign: AlinhV) => void;
 }) {
   const [nome, setNome] = useState(template?.nome || "");
-  const [els, setEls] = useState<ElemTemplate[]>(template?.elementos || [{ tipo: "texto", texto: "Novo texto", tam: "g" }]);
+  const [els, setEls] = useState<ElemTemplate[]>(template?.elementos || [{ tipo: "texto", texto: "Novo texto", tam: 32 }]);
   const [vAlign, setVAlign] = useState<AlinhV>(template?.vAlign || "top");
   const [preview, setPreview] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -172,9 +170,16 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
   }
 
   const inp = "w-full h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100";
-  const botTam = (e: ElemTemplate & { tam?: Tam }, i: number) => e.tam && (
-    <div className="flex gap-1">{(["p", "m", "g", "gg"] as Tam[]).map((t) => <button key={t} type="button" onClick={() => upd(i, { tam: t } as Partial<ElemTemplate>)} className={`h-8 w-8 rounded text-xs font-bold ${e.tam === t ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}>{TAM_LABEL[t]}</button>)}</div>
-  );
+  const botTam = (e: ElemTemplate & { tam?: TamFonte }, i: number) => e.tam !== undefined && (() => {
+    const px = pxFonte(e.tam);
+    const set = (v: number) => upd(i, { tam: Math.max(12, Math.min(72, v)) } as Partial<ElemTemplate>);
+    return <div className="inline-flex items-center gap-1">
+      <span className="text-[10px] text-gray-400">Fonte</span>
+      <button type="button" onClick={() => set(px - 3)} className="h-8 w-8 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-lg leading-none">–</button>
+      <span className="w-7 text-center text-xs font-semibold tabular-nums">{px}</span>
+      <button type="button" onClick={() => set(px + 3)} className="h-8 w-8 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-lg leading-none">+</button>
+    </div>;
+  })();
   const alinhBtns = (e: ElemTemplate & { align?: "l" | "c" | "r"; centro?: boolean }, i: number) => {
     const atual = e.align || (e.centro ? "c" : "l");
     const opts: [("l" | "c" | "r"), typeof AlignLeft][] = [["l", AlignLeft], ["c", AlignCenter], ["r", AlignRight]];
@@ -227,7 +232,10 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
               <div className="flex items-center gap-3 flex-wrap">
                 {botTam(e, i)}
                 {alinhBtns(e, i)}
-                {(e.tipo === "texto" || e.tipo === "campo") && <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300"><input type="checkbox" checked={!!e.negrito} onChange={(ev) => upd(i, { negrito: ev.target.checked } as Partial<ElemTemplate>)} /> Negrito</label>}
+                {(e.tipo === "texto" || e.tipo === "campo") && <>
+                  <button type="button" onClick={() => upd(i, { negrito: !e.negrito } as Partial<ElemTemplate>)} className={`h-8 w-8 rounded font-bold ${e.negrito ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}>N</button>
+                  <button type="button" onClick={() => upd(i, { italico: !e.italico } as Partial<ElemTemplate>)} className={`h-8 w-8 rounded italic font-serif ${e.italico ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}>I</button>
+                </>}
               </div>
             )}
           </div>
@@ -235,8 +243,8 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="secondary" onClick={() => add({ tipo: "texto", texto: "", tam: "m" })}><Plus size={14} /> Texto</Button>
-        <Button size="sm" variant="secondary" onClick={() => add({ tipo: "campo", rotulo: "", chave: novaChave(), tam: "m" })}><Plus size={14} /> Campo</Button>
+        <Button size="sm" variant="secondary" onClick={() => add({ tipo: "texto", texto: "", tam: 24 })}><Plus size={14} /> Texto</Button>
+        <Button size="sm" variant="secondary" onClick={() => add({ tipo: "campo", rotulo: "", chave: novaChave(), tam: 24 })}><Plus size={14} /> Campo</Button>
         <Button size="sm" variant="secondary" onClick={() => add({ tipo: "logo", url: "", alturaMm: 12, centro: true })}><ImageIcon size={14} /> Logo</Button>
         <Button size="sm" variant="secondary" onClick={() => add({ tipo: "fio" })}><Plus size={14} /> Linha</Button>
         {!naMaquininha && <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}><ImageIcon size={14} /> Subir logo</Button>}
