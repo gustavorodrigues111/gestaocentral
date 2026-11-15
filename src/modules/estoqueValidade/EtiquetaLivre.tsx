@@ -9,7 +9,7 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where
 import { db } from "../../core/firebase/config";
 import { Tag, Trash2, ChevronUp, ChevronDown, Plus, Printer, Pencil, Image as ImageIcon, Home, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import { Button } from "../../core/ui/Button";
-import { desenharEtiquetaLivre, larguraPx, type ElementoLivre, type Bobina } from "../../core/impressao/etiquetaTermica";
+import { desenharEtiquetaLivre, larguraPx, type ElementoLivre, type Bobina, type AlinhV } from "../../core/impressao/etiquetaTermica";
 import { imprimirEtiquetas, destinoSalvo, noAppSunmi, type Destino } from "../../core/impressao/impressora";
 
 const BOBINAS: Record<string, Bobina> = {
@@ -27,7 +27,7 @@ type Tam = "p" | "m" | "g" | "gg";
 const TAM_LABEL: Record<Tam, string> = { p: "P", m: "M", g: "G", gg: "GG" };
 export type ElemCampo = { tipo: "campo"; rotulo: string; chave: string; tam: Tam; negrito?: boolean; centro?: boolean; align?: "l" | "c" | "r"; data?: boolean };
 export type ElemTemplate = ElementoLivre | ElemCampo;
-export type EtiquetaLivreTemplate = { id: string; restaurantIds: string[]; nome: string; bobinaId?: string | null; elementos: ElemTemplate[]; criadoEm: string };
+export type EtiquetaLivreTemplate = { id: string; restaurantIds: string[]; nome: string; bobinaId?: string | null; vAlign?: AlinhV; elementos: ElemTemplate[]; criadoEm: string };
 export type LogoEtiqueta = { id: string; restaurantIds: string[]; nome: string; url: string; criadoEm: string };
 
 const novaChave = () => `c_${Math.random().toString(36).slice(2, 7)}`;
@@ -72,7 +72,7 @@ export function EtiquetaLivreScreen({ rids, podeEditar, naMaquininha, onSair }: 
   const [logos, setLogos] = useState<LogoEtiqueta[]>([]);
   const [modo, setModo] = useState<"lista" | "editar" | "imprimir">("lista");
   const [edit, setEdit] = useState<EtiquetaLivreTemplate | null>(null);
-  const [printAlvo, setPrintAlvo] = useState<{ nome: string; elementos: ElemTemplate[] } | null>(null);
+  const [printAlvo, setPrintAlvo] = useState<{ nome: string; elementos: ElemTemplate[]; vAlign: AlinhV } | null>(null);
   const ridsKey = rids.join(",");
 
   useEffect(() => {
@@ -84,8 +84,8 @@ export function EtiquetaLivreScreen({ rids, podeEditar, naMaquininha, onSair }: 
     return () => subs.forEach((u) => u());
   }, [ridsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (modo === "editar") return <EditorTemplate template={edit} rids={rids} bobina={bobina} largura={largura} logos={logos} onSubirLogo={subirLogo} onVoltar={() => setModo("lista")} onSalvar={salvarTemplate} onImprimir={(nome, els) => { setPrintAlvo({ nome, elementos: els }); setModo("imprimir"); }} />;
-  if (modo === "imprimir" && printAlvo) return <ImprimirTemplate nome={printAlvo.nome} elementos={printAlvo.elementos} bobina={bobina} largura={largura} onVoltar={() => setModo("lista")} />;
+  if (modo === "editar") return <EditorTemplate template={edit} rids={rids} bobina={bobina} largura={largura} logos={logos} naMaquininha={naMaquininha} onSubirLogo={subirLogo} onVoltar={() => setModo("lista")} onSalvar={salvarTemplate} onImprimir={(nome, els, vAlign) => { setPrintAlvo({ nome, elementos: els, vAlign }); setModo("imprimir"); }} />;
+  if (modo === "imprimir" && printAlvo) return <ImprimirTemplate nome={printAlvo.nome} elementos={printAlvo.elementos} vAlign={printAlvo.vAlign} bobina={bobina} largura={largura} onVoltar={() => setModo("lista")} />;
 
   return (
     <div className="max-w-2xl mx-auto space-y-3">
@@ -100,12 +100,12 @@ export function EtiquetaLivreScreen({ rids, podeEditar, naMaquininha, onSair }: 
         <div className="space-y-2">
           {templates.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map((t) => (
             <div key={t.id} className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
-              <button type="button" onClick={() => { setPrintAlvo({ nome: t.nome, elementos: t.elementos }); setModo("imprimir"); }} className="min-w-0 flex-1 text-left inline-flex items-center gap-2">
+              <button type="button" onClick={() => { setPrintAlvo({ nome: t.nome, elementos: t.elementos, vAlign: t.vAlign || "top" }); setModo("imprimir"); }} className="min-w-0 flex-1 text-left inline-flex items-center gap-2">
                 <Tag size={18} className="shrink-0 text-indigo-500" />
                 <span className="truncate font-medium text-gray-900 dark:text-gray-100">{t.nome}</span>
               </button>
               <div className="flex items-center gap-1 shrink-0">
-                <button type="button" onClick={() => { setPrintAlvo({ nome: t.nome, elementos: t.elementos }); setModo("imprimir"); }} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir</button>
+                <button type="button" onClick={() => { setPrintAlvo({ nome: t.nome, elementos: t.elementos, vAlign: t.vAlign || "top" }); setModo("imprimir"); }} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir</button>
                 {podeEditar && <button type="button" onClick={() => { setEdit(t); setModo("editar"); }} className="h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 inline-flex items-center justify-center"><Pencil size={15} /></button>}
                 {podeEditar && <button type="button" onClick={() => { if (confirm(`Excluir o modelo "${t.nome}"?`)) void deleteDoc(doc(db, "etiquetaLivreTemplates", t.id)); }} className="h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-300 hover:text-rose-600 inline-flex items-center justify-center"><Trash2 size={15} /></button>}
               </div>
@@ -125,22 +125,23 @@ export function EtiquetaLivreScreen({ rids, podeEditar, naMaquininha, onSair }: 
     } catch { return null; }
   }
 
-  async function salvarTemplate(t: { id?: string; nome: string; elementos: ElemTemplate[] }) {
-    if (t.id) await updateDoc(doc(db, "etiquetaLivreTemplates", t.id), { nome: t.nome, elementos: t.elementos });
-    else await addDoc(collection(db, "etiquetaLivreTemplates"), { restaurantIds: rids, nome: t.nome, elementos: t.elementos, criadoEm: new Date().toISOString() });
+  async function salvarTemplate(t: { id?: string; nome: string; elementos: ElemTemplate[]; vAlign: AlinhV }) {
+    if (t.id) await updateDoc(doc(db, "etiquetaLivreTemplates", t.id), { nome: t.nome, elementos: t.elementos, vAlign: t.vAlign });
+    else await addDoc(collection(db, "etiquetaLivreTemplates"), { restaurantIds: rids, nome: t.nome, elementos: t.elementos, vAlign: t.vAlign, criadoEm: new Date().toISOString() });
     setModo("lista");
   }
 }
 
 // ── Editor de modelo ──────────────────────────────────────────────────────────
-function EditorTemplate({ template, bobina, largura, logos, onSubirLogo, onVoltar, onSalvar, onImprimir }: {
-  template: EtiquetaLivreTemplate | null; rids: string[]; bobina: Bobina; largura: number; logos: LogoEtiqueta[];
+function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubirLogo, onVoltar, onSalvar, onImprimir }: {
+  template: EtiquetaLivreTemplate | null; rids: string[]; bobina: Bobina; largura: number; logos: LogoEtiqueta[]; naMaquininha?: boolean;
   onSubirLogo: (f: File) => Promise<LogoEtiqueta | null>; onVoltar: () => void;
-  onSalvar: (t: { id?: string; nome: string; elementos: ElemTemplate[] }) => Promise<void>;
-  onImprimir: (nome: string, els: ElemTemplate[]) => void;
+  onSalvar: (t: { id?: string; nome: string; elementos: ElemTemplate[]; vAlign: AlinhV }) => Promise<void>;
+  onImprimir: (nome: string, els: ElemTemplate[], vAlign: AlinhV) => void;
 }) {
   const [nome, setNome] = useState(template?.nome || "");
   const [els, setEls] = useState<ElemTemplate[]>(template?.elementos || [{ tipo: "texto", texto: "Novo texto", tam: "g" }]);
+  const [vAlign, setVAlign] = useState<AlinhV>(template?.vAlign || "top");
   const [preview, setPreview] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -148,9 +149,9 @@ function EditorTemplate({ template, bobina, largura, logos, onSubirLogo, onVolta
   useEffect(() => {
     let vivo = true;
     const amostra = elementosParaImpressao(els, Object.fromEntries(els.flatMap((e) => e.tipo === "campo" ? [[e.chave, `[${e.rotulo || "campo"}]`]] : [])));
-    desenharEtiquetaLivre(amostra, bobina, largura).then((c) => { if (vivo) setPreview(c.toDataURL("image/png")); }).catch(() => {});
+    desenharEtiquetaLivre(amostra, bobina, largura, vAlign).then((c) => { if (vivo) setPreview(c.toDataURL("image/png")); }).catch(() => {});
     return () => { vivo = false; };
-  }, [els, bobina, largura]);
+  }, [els, bobina, largura, vAlign]);
 
   const upd = (i: number, patch: Partial<ElemTemplate>) => setEls((p) => p.map((e, j) => (j === i ? { ...e, ...patch } as ElemTemplate : e)));
   const mover = (i: number, d: number) => setEls((p) => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
@@ -160,7 +161,7 @@ function EditorTemplate({ template, bobina, largura, logos, onSubirLogo, onVolta
   async function salvar() {
     if (!nome.trim()) return;
     setSalvando(true);
-    try { await onSalvar({ id: template?.id, nome: nome.trim(), elementos: els }); } finally { setSalvando(false); }
+    try { await onSalvar({ id: template?.id, nome: nome.trim(), elementos: els, vAlign }); } finally { setSalvando(false); }
   }
 
   const inp = "w-full h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100";
@@ -178,11 +179,16 @@ function EditorTemplate({ template, bobina, largura, logos, onSubirLogo, onVolta
       <div className="flex items-center justify-between gap-2">
         <button type="button" onClick={onVoltar} className="text-sm text-gray-500">← Voltar</button>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="secondary" onClick={() => onImprimir(nome.trim() || "Etiqueta", els)}><Printer size={14} /> Imprimir</Button>
+          <Button size="sm" variant="secondary" onClick={() => onImprimir(nome.trim() || "Etiqueta", els, vAlign)}><Printer size={14} /> Imprimir</Button>
           <Button size="sm" onClick={() => void salvar()} disabled={salvando || !nome.trim()}>{salvando ? "Salvando…" : "Salvar modelo"}</Button>
         </div>
       </div>
       <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do modelo (ex.: Identificação de caixa)" className={`${inp} h-11 font-semibold`} />
+
+      <div className="flex items-center gap-2 text-xs text-gray-500">
+        <span>Posição na etiqueta:</span>
+        {(["top", "center", "bottom"] as AlinhV[]).map((v) => <button key={v} type="button" onClick={() => setVAlign(v)} className={`h-8 px-3 rounded-lg ${vAlign === v ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}>{v === "top" ? "Em cima" : v === "center" ? "Centro" : "Embaixo"}</button>)}
+      </div>
 
       {preview && <div className="flex justify-center py-2"><img src={preview} alt="prévia" className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white" style={{ width: Math.min(300, largura) }} /></div>}
 
@@ -226,16 +232,16 @@ function EditorTemplate({ template, bobina, largura, logos, onSubirLogo, onVolta
         <Button size="sm" variant="secondary" onClick={() => add({ tipo: "campo", rotulo: "", chave: novaChave(), tam: "m" })}><Plus size={14} /> Campo</Button>
         <Button size="sm" variant="secondary" onClick={() => add({ tipo: "logo", url: "", alturaMm: 12, centro: true })}><ImageIcon size={14} /> Logo</Button>
         <Button size="sm" variant="secondary" onClick={() => add({ tipo: "fio" })}><Plus size={14} /> Linha</Button>
-        <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}><ImageIcon size={14} /> Subir logo</Button>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) { const l = await onSubirLogo(f); if (l) add({ tipo: "logo", url: l.url, alturaMm: 12, centro: true }); } }} />
+        {!naMaquininha && <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}><ImageIcon size={14} /> Subir logo</Button>}
+        {!naMaquininha && <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={async (ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) { const l = await onSubirLogo(f); if (l) add({ tipo: "logo", url: l.url, alturaMm: 12, align: "c" }); } }} />}
       </div>
     </div>
   );
 }
 
 // ── Imprimir (preenche os campos) ─────────────────────────────────────────────
-function ImprimirTemplate({ nome, elementos, bobina, largura, onVoltar }: {
-  nome: string; elementos: ElemTemplate[]; bobina: Bobina; largura: number; onVoltar: () => void;
+function ImprimirTemplate({ nome, elementos, vAlign, bobina, largura, onVoltar }: {
+  nome: string; elementos: ElemTemplate[]; vAlign: AlinhV; bobina: Bobina; largura: number; onVoltar: () => void;
 }) {
   const campos = useMemo(() => elementos.filter((e): e is ElemCampo => e.tipo === "campo"), [elementos]);
   const [valores, setValores] = useState<Record<string, string>>({});
@@ -247,7 +253,7 @@ function ImprimirTemplate({ nome, elementos, bobina, largura, onVoltar }: {
   useEffect(() => {
     let vivo = true;
     const els = elementosParaImpressao(elementos, Object.fromEntries(campos.map((c) => [c.chave, valores[c.chave] || `[${c.rotulo}]`])));
-    desenharEtiquetaLivre(els, bobina, largura).then((c) => { if (vivo) setPreview(c.toDataURL("image/png")); }).catch(() => {});
+    desenharEtiquetaLivre(els, bobina, largura, vAlign).then((c) => { if (vivo) setPreview(c.toDataURL("image/png")); }).catch(() => {});
     return () => { vivo = false; };
   }, [elementos, valores, bobina, largura, campos]);
 
@@ -255,7 +261,7 @@ function ImprimirTemplate({ nome, elementos, bobina, largura, onVoltar }: {
     setImprimindo(true); setMsg(null);
     try {
       const els = elementosParaImpressao(elementos, valores);
-      const canvases = await Promise.all(Array.from({ length: copias }, () => desenharEtiquetaLivre(els, bobina, largura)));
+      const canvases = await Promise.all(Array.from({ length: copias }, () => desenharEtiquetaLivre(els, bobina, largura, vAlign)));
       const r = await imprimirEtiquetas(canvases, bobina, destinoSalvo() as Destino);
       if (!r.ok) { setMsg({ ok: false, texto: r.erro || "Falha ao imprimir." }); return; }
       setMsg({ ok: true, texto: `${copias > 1 ? `${copias} etiquetas` : "Etiqueta"} impressa${copias > 1 ? "s" : ""}.` });

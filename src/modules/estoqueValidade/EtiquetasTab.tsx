@@ -179,7 +179,7 @@ export function EtiquetasTab(props: Props) {
     let vivo = true;
     const agora = new Date();
     const prom = alvoEhVenda
-      ? desenharEtiquetaLivre(elementosVenda({ produto: produto.nome, manipulacao: agora, validade: validadeDe(agora, dias) }), bobina, largura, true)
+      ? desenharEtiquetaLivre(elementosVenda({ produto: produto.nome, manipulacao: agora, validade: validadeDe(agora, dias) }), bobina, largura, "center")
       : desenharEtiqueta(blocosValidade({
           produto: produto.nome, metodo: metodoDoLocal, dias, manipulacao: agora, validade: validadeDe(agora, dias),
           responsavel, lote: novoCodigoLote(agora), empresa: empresaLabel, cnpj: cnpjLabel, codigo: codigoPrevia, qr: "https://planejamento.app/e/previa",
@@ -224,7 +224,7 @@ export function EtiquetasTab(props: Props) {
       // rastreada (não cria registro, não entra no controle de validades).
       if (alvoEhVenda) {
         const canvases = await Promise.all(Array.from({ length: copias }, () =>
-          desenharEtiquetaLivre(elementosVenda({ produto: produto.nome, manipulacao: agora, validade }), bobina, largura, true)));
+          desenharEtiquetaLivre(elementosVenda({ produto: produto.nome, manipulacao: agora, validade }), bobina, largura, "center")));
         const r = await imprimirEtiquetas(canvases, bobina, destino as Destino);
         if (!r.ok) { setMsg({ ok: false, texto: r.erro || "Falha ao imprimir." }); return; }
         setProduto(null); setCopias(1); setPasso("produto"); setBusca("");

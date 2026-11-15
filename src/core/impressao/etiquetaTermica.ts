@@ -183,9 +183,10 @@ function xAlinhado(align: AlinhEtiq | undefined, centro: boolean | undefined, W:
 
 const TAM_PX: Record<"p" | "m" | "g" | "gg", number> = { p: 18, m: 24, g: 32, gg: 44 };
 
-/** Desenha uma etiqueta livre; altura cresce com o conteúdo. Com `centrarV`,
- *  centraliza o conteúdo verticalmente quando a etiqueta é mais alta que ele. */
-export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: Bobina = BOBINA_PADRAO, largura: number = LARGURA_UTIL_PX, centrarV = false): Promise<HTMLCanvasElement> {
+export type AlinhV = "top" | "center" | "bottom";
+/** Desenha uma etiqueta livre; altura cresce com o conteúdo. `vAlign` posiciona o
+ *  conjunto quando a etiqueta é mais alta que o conteúdo (cima/centro/baixo). */
+export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: Bobina = BOBINA_PADRAO, largura: number = LARGURA_UTIL_PX, vAlign: AlinhV = "top"): Promise<HTMLCanvasElement> {
   const W = largura;
   // Pré-carrega as imagens (precisa pra medir a altura total antes de desenhar).
   const imgs = new Map<string, HTMLImageElement>();
@@ -224,7 +225,8 @@ export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: 
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#000"; ctx.textBaseline = "top";
   const fio = (yy: number) => ctx.fillRect(0, yy, W, FIO);
-  let y = 18 + (centrarV ? Math.max(0, (H - contentH) / 2) : 0);
+  const sobra = Math.max(0, H - contentH);
+  let y = 18 + (vAlign === "center" ? sobra / 2 : vAlign === "bottom" ? sobra : 0);
   for (const e of elementos) {
     if (e.tipo === "texto") {
       const px = TAM_PX[e.tam];
