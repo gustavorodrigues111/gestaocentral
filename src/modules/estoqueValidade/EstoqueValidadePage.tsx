@@ -65,8 +65,8 @@ import { buscarPorToken, tokenDoQr, etiquetaPorNumero, diasAteValidade, hojeSP, 
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
-import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp } from "../../core/impressao/impressora";
-import { desenharEtiqueta } from "../../core/impressao/etiquetaTermica";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, imprimirSeqTeste } from "../../core/impressao/impressora";
+import { desenharEtiqueta, desenharEtiquetaLivre, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
 // Conservação = validade APÓS ABERTO por método (dias). NÃO é a validade do
@@ -693,6 +693,7 @@ export function EstoqueValidadePage() {
                 <button type="button" onClick={() => { if (confirm("Sair da conta do aparelho? Você vai precisar entrar de novo (ex.: com a conta da maquininha).")) void signOut(); }} className="inline-flex items-center gap-1.5 text-xs text-rose-500"><LogOut size={13} /> Sair do app (trocar conta)</button>
               </div>
               <div className="text-[10px] text-gray-400 pt-1">Conta: {me?.nome || "—"}</div>
+              {podeEditar && <TesteImpressaoSeq />}
             </div>
           )}
         </div>
@@ -1055,6 +1056,42 @@ function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
         )}
       </div>
       {aberta && <BaixaEtiquetaModal etiqueta={aberta} usuario={usuario} onClose={() => { setAberta(null); setNum(""); setMsg(""); }} />}
+    </div>
+  );
+}
+
+// Diagnóstico do "sai a etiqueta anterior": imprime o mesmo teste com 6
+// sequências de comando diferentes; o operador vê qual sai certa.
+const BOBINAS_DIM: Record<string, Bobina> = { "58x40": { larguraMm: 58, alturaMm: 40 }, "55x55": { larguraMm: 55, alturaMm: 55 }, "58x60": { larguraMm: 58, alturaMm: 60 }, "60x40": { larguraMm: 60, alturaMm: 40 }, "60x60": { larguraMm: 60, alturaMm: 60 }, "100x50": { larguraMm: 100, alturaMm: 50 }, "100x100": { larguraMm: 100, alturaMm: 100 } };
+function TesteImpressaoSeq() {
+  const [aberto, setAberto] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [ocupado, setOcupado] = useState<number | null>(null);
+  const imprimir = async (seq: number) => {
+    setOcupado(seq); setMsg("");
+    try {
+      let bid = "58x40"; try { bid = localStorage.getItem("etiq_bobina") || "58x40"; } catch { /* */ }
+      const bobina = BOBINAS_DIM[bid] || BOBINAS_DIM["58x40"];
+      const canvas = await desenharEtiquetaLivre([
+        { tipo: "texto", texto: `SEQ ${seq}`, tam: 44, negrito: true, align: "c" },
+        { tipo: "texto", texto: "teste de alinhamento", tam: 20, align: "c" },
+      ], bobina, larguraPx(bobina, noAppSunmi()), "center");
+      const r = await imprimirSeqTeste(canvas, seq);
+      setMsg(r.ok ? `Seq ${seq} enviada — veja qual saiu certa.` : (r.erro || "Falhou."));
+    } finally { setOcupado(null); }
+  };
+  return (
+    <div className="pt-3 mt-2 border-t border-gray-100 dark:border-gray-800">
+      <button type="button" onClick={() => setAberto((v) => !v)} className="text-[11px] text-gray-400 underline">Teste de impressão (resolver repetição)</button>
+      {aberto && (
+        <div className="mt-2 space-y-2 text-left">
+          <p className="text-[11px] text-gray-500">Imprima cada um e veja qual sai <b>certa</b> (alinhada e sem atraso). Depois me diz o número.</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[1, 2, 3, 4, 5, 6].map((n) => <button key={n} type="button" disabled={ocupado != null} onClick={() => void imprimir(n)} className="h-11 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm font-semibold disabled:opacity-50">{ocupado === n ? "…" : `Seq ${n}`}</button>)}
+          </div>
+          {msg && <div className="text-[11px] text-gray-500">{msg}</div>}
+        </div>
+      )}
     </div>
   );
 }

@@ -95,6 +95,36 @@ class SunmiBridge(
         }
     }
 
+    // Diagnóstico do "sai a etiqueta anterior": imprime o mesmo bitmap com
+    // sequências de comandos diferentes pra descobrir qual sai certa no aparelho.
+    @JavascriptInterface
+    fun imprimirSeq(id: String, pngBase64: String, seq: Int) {
+        val p = impressora
+        if (p == null) { falha(id, erroConexao ?: "Impressora interna não conectada."); return }
+        val bmp: Bitmap = try {
+            val bytes = Base64.decode(pngBase64, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: run { falha(id, "Imagem inválida."); return }
+        } catch (e: Exception) { falha(id, "Imagem inválida: ${e.message}"); return }
+        try {
+            p.enterPrinterBuffer(true)
+            when (seq) {
+                1 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }                 // atual
+                2 -> { p.printBitmap(bmp, null); p.labelOutput() }                                    // sem locate
+                3 -> { p.labelLocate(); p.printBitmap(bmp, null) }                                    // sem output
+                4 -> { p.printBitmap(bmp, null); p.labelLocate(); p.labelOutput() }                   // locate depois
+                5 -> { p.labelOutput(); p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }  // ejeta a da câmara antes
+                6 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput(); p.labelOutput() }     // output duplo
+                else -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }
+            }
+            p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
+                override fun onRunResult(isSuccess: Boolean) { }
+                override fun onReturnString(result: String?) { }
+                override fun onRaiseException(code: Int, msg: String?) { falha(id, "Erro $code: ${msg ?: ""}") }
+                override fun onPrintResult(code: Int, msg: String?) { if (code == 0) ok(id) else falha(id, "Falhou ($code)") }
+            })
+        } catch (e: Exception) { falha(id, "Erro: ${e.message}") }
+    }
+
     @JavascriptInterface
     fun lerQr(id: String) = abrirLeitor(id)
 

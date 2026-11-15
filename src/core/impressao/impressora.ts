@@ -15,6 +15,7 @@ import { canvasParaBase64, type Bobina, BOBINA_PADRAO } from "./etiquetaTermica"
 type SunmiBridge = {
   status: () => string;                                     // {"conectada":bool,"estado":n,"modo":n,"modelo":"..."}
   imprimirEtiqueta: (id: string, pngBase64: string, copias: number) => void;
+  imprimirSeq?: (id: string, pngBase64: string, seq: number) => void;   // diagnóstico (0.2.16+)
   lerQr: (id: string) => void;
   verificarAtualizacao?: () => void;                        // checa/instala nova versão do app (só no app antigo pode faltar)
 };
@@ -137,6 +138,14 @@ export function destinoSalvo(): Destino {
   return disp[0];
 }
 export function salvarDestino(d: Destino) { try { localStorage.setItem(CHAVE_DESTINO, d); } catch { /* sem storage */ } }
+
+/** Diagnóstico: imprime o canvas com uma das sequências de comando (1..6). */
+export async function imprimirSeqTeste(canvas: HTMLCanvasElement, seq: number): Promise<ResultadoImpressao> {
+  if (!window.SunmiBridge?.imprimirSeq) return { ok: false, via: "sunmi", erro: "Atualize o app da maquininha (0.2.16+)." };
+  const png = canvasParaBase64(canvas);
+  const r = await chamar((id) => window.SunmiBridge!.imprimirSeq!(id, png, seq), 20000);
+  return { ok: r.ok, via: "sunmi", erro: r.erro };
+}
 
 /** Mesma imagem repetida N vezes (etiqueta fixa, testes). */
 export async function imprimirEtiqueta(canvas: HTMLCanvasElement, copias = 1, bobina: Bobina = BOBINA_PADRAO, destino: Destino = destinoSalvo()): Promise<ResultadoImpressao> {
