@@ -114,6 +114,8 @@ class SunmiBridge(
                 4 -> { p.printBitmap(bmp, null); p.labelLocate(); p.labelOutput() }                   // locate depois
                 5 -> { p.labelOutput(); p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }  // ejeta a da câmara antes
                 6 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput(); p.labelOutput() }     // output duplo
+                7 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput(); p.exitPrinterBuffer(true); p.enterPrinterBuffer(true) } // commit duplo (flush do buffer da firmware)
+                8 -> { p.printBitmap(bmp, null); p.exitPrinterBuffer(true); p.enterPrinterBuffer(true); p.labelLocate(); p.labelOutput() } // imprime, flush, depois posiciona/ejeta
                 else -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }
             }
             p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
