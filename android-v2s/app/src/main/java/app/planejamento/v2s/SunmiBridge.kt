@@ -72,16 +72,22 @@ class SunmiBridge(
         } catch (e: Exception) { falha(id, "Imagem da etiqueta inválida: ${e.message}"); return }
 
         try {
-            // Impressão DIRETA (sem enterPrinterBuffer): a transação de buffer da
-            // Sunmi, em modo etiqueta, segurava a imagem e saía a etiqueta ANTERIOR
-            // (defasada em uma). Imprime pote a pote e reporta ok no fim — o status
-            // (avisoStatus) já alerta falta de papel/tampa antes de chegar aqui.
-            try { p.printerInit(null) } catch (_: Exception) { }
+            // Precisa do buffer pra REALMENTE imprimir (sem ele sai em branco). Mas
+            // NÃO chamamos labelLocate() aqui: ele avança um gap ANTES de imprimir
+            // (feed a mais) e saía a etiqueta ANTERIOR. Só printBitmap + labelOutput.
+            p.enterPrinterBuffer(true)
             repeat(copias.coerceIn(1, 50)) {
                 p.printBitmap(bmp, null)
-                p.labelOutput()            // imprime/empurra a etiqueta até a serrilha
+                p.labelOutput()            // ejeta a etiqueta até a serrilha
             }
-            ok(id)
+            p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
+                override fun onRunResult(isSuccess: Boolean) { }
+                override fun onReturnString(result: String?) { }
+                override fun onRaiseException(code: Int, msg: String?) { falha(id, "Erro $code: ${msg ?: ""}") }
+                override fun onPrintResult(code: Int, msg: String?) {
+                    if (code == 0) ok(id) else falha(id, "Impressão falhou ($code): ${msg ?: ""}")
+                }
+            })
         } catch (e: Exception) {
             falha(id, "Erro ao imprimir: ${e.message}")
         }
