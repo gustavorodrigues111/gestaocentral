@@ -1,5 +1,5 @@
 // Regras e layout da etiqueta de validade (Tipo A). Sem React: testável.
-import type { BlocoEtiqueta } from "../../core/impressao/etiquetaTermica";
+import type { BlocoEtiqueta, ElementoLivre } from "../../core/impressao/etiquetaTermica";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
@@ -29,14 +29,19 @@ export type DadosEtiquetaValidade = {
 };
 
 /** Etiqueta de VENDA EXTERNA: só produto + datas (produção/validade). Sem
- *  empresa/CNPJ, sem responsável, sem lote/QR, sem código. Não é rastreada. */
-export function blocosVenda(d: { produto: string; manipulacao: Date; validade: Date }): BlocoEtiqueta[] {
+ *  empresa/CNPJ, sem responsável, sem lote/QR. Desenhada pelo renderizador livre
+ *  (cresce/centraliza) pra preencher bem a etiqueta. Não é rastreada. */
+export function elementosVenda(d: { produto: string; manipulacao: Date; validade: Date }): ElementoLivre[] {
+  const data = (x: Date) => `${String(x.getDate()).padStart(2, "0")}/${String(x.getMonth() + 1).padStart(2, "0")}/${x.getFullYear()}`;
   return [
-    { tipo: "titulo", texto: d.produto },
-    { tipo: "colunas", colunas: [
-      { rotulo: "Validade", valor: diaMes(d.validade), sub: `${diaSemana(d.validade)} · ${d.validade.getFullYear()}`, destaque: true },
-      { rotulo: "Produção", valor: diaMes(d.manipulacao), sub: `${d.manipulacao.getFullYear()}` },
-    ] },
+    { tipo: "texto", texto: d.produto, tam: "gg", negrito: true, align: "c" },
+    { tipo: "espaco", mm: 2 },
+    { tipo: "fio" },
+    { tipo: "espaco", mm: 2 },
+    { tipo: "texto", texto: "VÁLIDO ATÉ", tam: "p", align: "c" },
+    { tipo: "texto", texto: data(d.validade), tam: "gg", negrito: true, align: "c" },
+    { tipo: "espaco", mm: 3 },
+    { tipo: "texto", texto: `Produção: ${data(d.manipulacao)}`, tam: "m", align: "c" },
   ];
 }
 

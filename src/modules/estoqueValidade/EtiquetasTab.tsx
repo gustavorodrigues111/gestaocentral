@@ -12,10 +12,10 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
 import { Printer, Minus, Plus, ChevronLeft, ClipboardCheck, Settings2 } from "lucide-react";
-import { desenharEtiqueta, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
+import { desenharEtiqueta, desenharEtiquetaLivre, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 import { imprimirEtiquetas, statusSunmi, avisoStatus, destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
 import type { LocalEstoque } from "../../core/types";
-import { blocosValidade, blocosVenda, dataBR, diaSemana, novoCodigoLote, validadeDe, ymd } from "./etiquetaValidade";
+import { blocosValidade, elementosVenda, dataBR, diaSemana, novoCodigoLote, validadeDe, ymd } from "./etiquetaValidade";
 import { diasAteValidade, gravarEmissao, hojeSP, urlEtiqueta, siglaEtiqueta, codigoEtiqueta, proximosNumerosEtiqueta, type EtiquetaEmitida } from "./etiquetasRepo";
 import { agruparPorAmbiente, diasNoLocal, nomeCompleto, produtosDoLocal } from "./compatibilidade";
 import { EtiquetasEmitidas } from "./EtiquetasEmitidas";
@@ -178,13 +178,13 @@ export function EtiquetasTab(props: Props) {
     if (passo !== "confirmar" || !produto || !local || dias == null) return;
     let vivo = true;
     const agora = new Date();
-    const blocos = alvoEhVenda
-      ? blocosVenda({ produto: produto.nome, manipulacao: agora, validade: validadeDe(agora, dias) })
-      : blocosValidade({
+    const prom = alvoEhVenda
+      ? desenharEtiquetaLivre(elementosVenda({ produto: produto.nome, manipulacao: agora, validade: validadeDe(agora, dias) }), bobina, largura, true)
+      : desenharEtiqueta(blocosValidade({
           produto: produto.nome, metodo: metodoDoLocal, dias, manipulacao: agora, validade: validadeDe(agora, dias),
           responsavel, lote: novoCodigoLote(agora), empresa: empresaLabel, cnpj: cnpjLabel, codigo: codigoPrevia, qr: "https://planejamento.app/e/previa",
-        });
-    desenharEtiqueta(blocos, bobina, largura).then((c) => { if (vivo) setPrevia({ chave: chavePrevia, url: c.toDataURL("image/png") }); });
+        }), bobina, largura);
+    prom.then((c) => { if (vivo) setPrevia({ chave: chavePrevia, url: c.toDataURL("image/png") }); });
     return () => { vivo = false; };
   }, [passo, produto, local, dias, metodoDoLocal, responsavel, empresaLabel, cnpjLabel, bobina, largura, chavePrevia]);
 
@@ -224,7 +224,7 @@ export function EtiquetasTab(props: Props) {
       // rastreada (não cria registro, não entra no controle de validades).
       if (alvoEhVenda) {
         const canvases = await Promise.all(Array.from({ length: copias }, () =>
-          desenharEtiqueta(blocosVenda({ produto: produto.nome, manipulacao: agora, validade }), bobina, largura)));
+          desenharEtiquetaLivre(elementosVenda({ produto: produto.nome, manipulacao: agora, validade }), bobina, largura, true)));
         const r = await imprimirEtiquetas(canvases, bobina, destino as Destino);
         if (!r.ok) { setMsg({ ok: false, texto: r.erro || "Falha ao imprimir." }); return; }
         setProduto(null); setCopias(1); setPasso("produto"); setBusca("");
@@ -427,7 +427,8 @@ export function EtiquetasTab(props: Props) {
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {lista.map((l) => {
-              const n = produtosDoLocal(produtos, l).length;
+              // Conta só os produtos do alvo escolhido (igual à lista que abre).
+              const n = produtosDoLocal(produtos, l).filter((p) => !(modoProducao && alvoId) || empresasDoProduto(p).includes(alvoId)).length;
               return (
                 <button key={l.id} type="button" disabled={n === 0 && !podeEditar} onClick={() => { setLocal(l); ir("produto"); }}
                   className={`${btnQuadrado} ${corMetodo(l.metodoConservacao)} disabled:opacity-40`}>

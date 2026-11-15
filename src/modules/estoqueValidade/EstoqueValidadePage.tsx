@@ -650,7 +650,7 @@ export function EstoqueValidadePage() {
             <button type="button" onClick={() => setAba("etiquetas")} className="h-24 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={28} /><span className="text-lg font-semibold">Emitir etiqueta</span></button>
             <button type="button" onClick={() => setAba("baixa")} className="h-24 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><PackageMinus size={28} /><span className="text-lg font-semibold">Dar baixa</span></button>
             <button type="button" onClick={() => setAba("cadastro")} className="h-24 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><FolderOpen size={28} /><span className="text-lg font-semibold">Cadastro</span></button>
-            <button type="button" onClick={() => setAba("livre")} className="h-16 rounded-2xl bg-slate-600 text-white flex items-center justify-center gap-2 active:scale-[.98] shadow-sm"><Tag size={20} /><span className="font-semibold">Etiqueta livre</span></button>
+            <button type="button" onClick={() => setAba("livre")} className="h-24 rounded-2xl bg-slate-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={28} /><span className="text-lg font-semibold">Etiqueta livre</span></button>
           </div>
         </div>
       )}
