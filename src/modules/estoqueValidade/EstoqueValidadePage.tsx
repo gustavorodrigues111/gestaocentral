@@ -65,7 +65,7 @@ import { buscarPorToken, tokenDoQr, etiquetaPorNumero, diasAteValidade, hojeSP, 
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
-import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, imprimirSeqTeste, imprimirTsplTeste } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, imprimirSeqTeste, imprimirTsplTeste, avancarEtiqueta } from "../../core/impressao/impressora";
 import { desenharEtiqueta, desenharEtiquetaLivre, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
@@ -1087,10 +1087,11 @@ function TesteImpressaoSeq() {
         <div className="mt-2 space-y-2 text-left">
           <p className="text-[11px] text-gray-500">Imprima cada um e veja qual sai <b>certa</b> (alinhada e sem atraso). Depois me diz o número.</p>
           <div className="grid grid-cols-4 gap-2">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map((n) => <button key={n} type="button" disabled={ocupado != null} onClick={() => void imprimir(n)} className={`h-11 rounded-lg text-sm font-semibold disabled:opacity-50 ${n >= 13 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" : n >= 7 ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "bg-gray-100 dark:bg-gray-800"}`}>{ocupado === n ? "…" : `Seq ${n}`}</button>)}
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17].map((n) => <button key={n} type="button" disabled={ocupado != null} onClick={() => void imprimir(n)} className={`h-11 rounded-lg text-sm font-semibold disabled:opacity-50 ${n >= 16 ? "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300" : n >= 13 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" : n >= 7 ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "bg-gray-100 dark:bg-gray-800"}`}>{ocupado === n ? "…" : `Seq ${n}`}</button>)}
           </div>
           <button type="button" disabled={ocupado != null} onClick={() => void imprimir(15)} className="w-full h-12 rounded-lg bg-purple-600 text-white font-semibold disabled:opacity-50">{ocupado === 15 ? "…" : "TSPL (comando bruto)"}</button>
-          <p className="text-[11px] text-gray-400">O <b>TSPL (roxo)</b> pula o buffer do SDK. Pode não funcionar (Sunmi às vezes é só ESC/POS) — se sair <b>certa na hora</b>, achamos; se sair <b>em branco/lixo</b>, a impressora não aceita TSPL.</p>
+          <p className="text-[11px] text-gray-400"><b>16 e 17 (laranja)</b> são MODO RECIBO: coloque a impressora em modo recibo/contínuo nas configurações e teste. Sem recuo = pode não repetir.</p>
+          <button type="button" disabled={ocupado != null} onClick={async () => { setOcupado(99); setMsg(""); try { const r = await avancarEtiqueta(); setMsg(r.ok ? "Avançou uma etiqueta." : (r.erro || "Falhou.")); } finally { setOcupado(null); } }} className="w-full h-12 rounded-lg bg-slate-700 text-white font-semibold disabled:opacity-50">{ocupado === 99 ? "…" : "⏏ Avançar/ejetar etiqueta (solta a presa)"}</button>
           {msg && <div className="text-[11px] text-gray-500">{msg}</div>}
         </div>
       )}

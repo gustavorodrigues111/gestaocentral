@@ -124,6 +124,16 @@ class SunmiBridge(
                 try { p.exitPrinterBuffer(false) } catch (_: Exception) { }
                 return
             }
+            // Seq 16/17: MODO RECIBO (contínuo, sem recuo). Imprime "puro", sem
+            // labelLocate/labelOutput (que são de etiqueta e causam o recuo).
+            // Testar com a impressora em modo RECIBO nas configurações.
+            if (seq == 16 || seq == 17) {
+                p.enterPrinterBuffer(true)
+                p.printBitmap(bmp, null)
+                if (seq == 17) { p.lineWrap(3, null) }   // avança um pouco (gap)
+                p.exitPrinterBufferWithCallback(true, cb)
+                return
+            }
             // Seq 13/14: DRENO por ciclos completos de enter/exit (o buffer é FIFO e
             // sobra 1; cada exit-commit esvazia 1). 13 = 2 ciclos, 14 = 3 ciclos.
             if (seq == 13 || seq == 14) {
@@ -192,6 +202,26 @@ class SunmiBridge(
                 override fun onPrintResult(code: Int, msg: String?) { }
             })
         } catch (e: Exception) { falha(id, "Erro TSPL: ${e.message}") }
+    }
+
+    // Avança/ejeta uma etiqueta — empurra pra fora a que ficou "presa" na câmara
+    // por causa do recuo. Operador toca quando quer soltar a última.
+    @JavascriptInterface
+    fun avancarEtiqueta(id: String) {
+        val p = impressora
+        if (p == null) { falha(id, erroConexao ?: "Impressora interna não conectada."); return }
+        val cb = object : InnerResultCallback() {
+            override fun onRunResult(isSuccess: Boolean) { }
+            override fun onReturnString(result: String?) { }
+            override fun onRaiseException(code: Int, msg: String?) { falha(id, "Erro $code: ${msg ?: ""}") }
+            override fun onPrintResult(code: Int, msg: String?) { if (code == 0) ok(id) else falha(id, "Falhou ($code)") }
+        }
+        try {
+            p.enterPrinterBuffer(true)
+            p.labelLocate()
+            p.labelOutput()
+            p.exitPrinterBufferWithCallback(true, cb)
+        } catch (e: Exception) { falha(id, "Erro: ${e.message}") }
     }
 
     @JavascriptInterface

@@ -17,6 +17,7 @@ type SunmiBridge = {
   imprimirEtiqueta: (id: string, pngBase64: string, copias: number) => void;
   imprimirSeq?: (id: string, pngBase64: string, seq: number) => void;   // diagnóstico (0.2.16+)
   imprimirTspl?: (id: string, pngBase64: string, larguraMm: number, alturaMm: number, gapMm: number) => void;   // TSPL bruto (0.2.22+)
+  avancarEtiqueta?: (id: string) => void;   // ejeta a etiqueta presa na câmara (0.2.23+)
   lerQr: (id: string) => void;
   verificarAtualizacao?: () => void;                        // checa/instala nova versão do app (só no app antigo pode faltar)
 };
@@ -139,6 +140,13 @@ export function destinoSalvo(): Destino {
   return disp[0];
 }
 export function salvarDestino(d: Destino) { try { localStorage.setItem(CHAVE_DESTINO, d); } catch { /* sem storage */ } }
+
+/** Avança/ejeta uma etiqueta (empurra a que ficou presa na câmara pelo recuo). */
+export async function avancarEtiqueta(): Promise<ResultadoImpressao> {
+  if (!window.SunmiBridge?.avancarEtiqueta) return { ok: false, via: "sunmi", erro: "Atualize o app da maquininha (0.2.23+)." };
+  const r = await chamar((id) => window.SunmiBridge!.avancarEtiqueta!(id), 15000);
+  return { ok: r.ok, via: "sunmi", erro: r.erro };
+}
 
 /** Diagnóstico: imprime o canvas com uma das sequências de comando (1..6). */
 export async function imprimirSeqTeste(canvas: HTMLCanvasElement, seq: number): Promise<ResultadoImpressao> {
