@@ -45,7 +45,7 @@ function PrinterCfgModal({ onClose }: { onClose: () => void }) {
 import { useParams, useNavigate } from "react-router-dom";
 import QRCode from "qrcode";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { provisionarAcesso, gerarSenhaInicial } from "../../core/auth/provisionar";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -1352,6 +1352,41 @@ function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, rid,
     if (r.ok) { setLoginNovo({ email: r.email, senha: r.senha }); onChange({ loginEmail: r.email }); }
     else setLoginErro(r.erro);
   };
+  // Pareamento por QR: cria o pedido, a função cunha o token, mostra o QR.
+  const [pareando, setPareando] = useState(false);
+  const [pareErro, setPareErro] = useState("");
+  const [qrPareamento, setQrPareamento] = useState<string | null>(null);
+  const parearQR = async () => {
+    if (!m.loginEmail) { setPareErro("Crie o login da máquina primeiro."); return; }
+    const uid = auth.currentUser?.uid;
+    if (!uid) { setPareErro("Sessão expirada — recarregue e tente de novo."); return; }
+    setPareando(true); setPareErro(""); setQrPareamento(null);
+    try {
+      const ref = await addDoc(collection(db, "pareamentosMaquina"), sanitizeForFirestore({
+        loginEmail: m.loginEmail, machineId: m.id, rid,
+        criadoPorUid: uid, criadoPorEmail: auth.currentUser?.email || "",
+        status: "pendente", criadoEm: new Date().toISOString(),
+      }));
+      const timer = setTimeout(() => { unsub(); setPareando(false); setPareErro("Demorou demais — tente de novo."); void deleteDoc(ref).catch(() => {}); }, 30000);
+      const unsub = onSnapshot(ref, async (snap) => {
+        const d = snap.data() as { status?: string; customToken?: string; erro?: string } | undefined;
+        if (!d) return;
+        if (d.status === "pronto" && d.customToken) {
+          unsub(); clearTimeout(timer);
+          try {
+            const payload = JSON.stringify({ t: d.customToken, r: rid, v: 1 });
+            const url = await QRCode.toDataURL(payload, { errorCorrectionLevel: "L", margin: 1, width: 420 });
+            setQrPareamento(url);
+          } catch { setPareErro("Falha ao gerar o QR."); }
+          setPareando(false);
+          void deleteDoc(ref).catch(() => {});   // token já está no QR
+        } else if (d.status === "erro") {
+          unsub(); clearTimeout(timer); setPareErro(d.erro || "Falha ao parear."); setPareando(false);
+          void deleteDoc(ref).catch(() => {});
+        }
+      }, () => { setPareando(false); setPareErro("Erro ao acompanhar o pareamento."); });
+    } catch (e) { setPareando(false); setPareErro(e instanceof Error ? e.message : "Falha ao parear."); }
+  };
   const toggleArr = (arr: string[] | undefined, v: string) => { const s = new Set(arr || []); if (s.has(v)) s.delete(v); else s.add(v); return [...s]; };
   const chip = (on: boolean, cor: string) => `px-2.5 py-1 rounded-full text-xs font-medium border ${on ? cor : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`;
   const ambNome = (id: string) => ambientes.find((a) => a.id === id)?.nome || id;
@@ -1395,6 +1430,26 @@ function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, rid,
                 </div>
               )}
               {loginErro && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">{loginErro}</div>}
+
+              {/* Parear o aparelho por QR (loga sozinho, sem digitar) */}
+              {m.loginEmail && (
+                <div className="mt-3 pt-3 border-t border-indigo-200/60 dark:border-indigo-900/40">
+                  {qrPareamento ? (
+                    <div className="text-center space-y-2">
+                      <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Escaneie com a maquininha</div>
+                      <img src={qrPareamento} alt="QR de pareamento" className="mx-auto w-56 h-56 rounded-lg bg-white p-2" />
+                      <p className="text-[11px] text-gray-500">No aparelho: <b>Parear com QR</b> → aponte a câmera pra este código. Ele entra sozinho. Vale por 10 min e só uma vez.</p>
+                      <button type="button" onClick={() => setQrPareamento(null)} className="text-xs text-gray-400">fechar</button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-600 dark:text-gray-300">Pareie o aparelho sem digitar: gera um QR; a maquininha escaneia e entra sozinha pra sempre.</p>
+                      <Button size="sm" variant="secondary" onClick={() => void parearQR()} disabled={pareando}>{pareando ? "Gerando QR…" : "Parear aparelho (QR)"}</Button>
+                    </div>
+                  )}
+                  {pareErro && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">{pareErro}</div>}
+                </div>
+              )}
             </div>
           )}
 

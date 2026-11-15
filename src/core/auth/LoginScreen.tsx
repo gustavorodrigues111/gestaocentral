@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { House } from "lucide-react";
+import { House, QrCode } from "lucide-react";
 import { Link } from "react-router-dom";
-import { sendPasswordResetEmail } from "firebase/auth";
+import { sendPasswordResetEmail, signInWithCustomToken } from "firebase/auth";
 import { auth } from "../firebase/config";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
-import { detectSubdomain } from "../restaurant/subdomain";
+import { detectSubdomain, isEtiquetasKioskHost } from "../restaurant/subdomain";
+import { ScannerModal } from "../../modules/estoqueValidade/ScannerModal";
 
 export function LoginScreen() {
   const { signIn } = useAuth();
@@ -20,6 +21,25 @@ export function LoginScreen() {
   const [error, setError] = useState("");
   const [resetMsg, setResetMsg] = useState("");
   const [resetting, setResetting] = useState(false);
+  const ehKioskEtiq = isEtiquetasKioskHost();
+  const [scanPareamento, setScanPareamento] = useState(false);
+  const [pareErro, setPareErro] = useState("");
+  const [pareando, setPareando] = useState(false);
+  async function onScanPareamento(code: string) {
+    setPareErro("");
+    let payload: { t?: string; r?: string };
+    try { payload = JSON.parse(code); } catch { setPareErro("Este QR não é um código de pareamento."); return; }
+    if (!payload.t) { setPareErro("QR de pareamento inválido."); return; }
+    setScanPareamento(false); setPareando(true);
+    try {
+      if (payload.r) { try { localStorage.setItem("etiq_kiosk_rid", payload.r); } catch { /* sem storage */ } }
+      await signInWithCustomToken(auth, payload.t);
+      // Sucesso: o AuthContext resolve a conta da máquina e o quiosque abre.
+    } catch {
+      setPareando(false);
+      setPareErro("Não deu pra entrar com este QR (pode ter expirado — valem 10 min). Gere outro no planejamento.app.");
+    }
+  }
 
   async function handleReset() {
     const alvo = email.trim().toLowerCase();
@@ -119,6 +139,18 @@ export function LoginScreen() {
             {loading ? "Entrando..." : "Entrar"}
           </Button>
 
+          {ehKioskEtiq && (
+            <>
+              <div className="flex items-center gap-2 my-1"><div className="flex-1 border-t border-gray-200 dark:border-gray-800" /><span className="text-[11px] text-gray-400">ou</span><div className="flex-1 border-t border-gray-200 dark:border-gray-800" /></div>
+              <button type="button" onClick={() => { setPareErro(""); setScanPareamento(true); }} disabled={pareando}
+                className="w-full h-12 rounded-xl bg-indigo-600 text-white font-semibold inline-flex items-center justify-center gap-2 active:scale-[.99] disabled:opacity-60">
+                <QrCode size={18} /> {pareando ? "Entrando…" : "Parear com QR"}
+              </button>
+              {pareErro && <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2">{pareErro}</div>}
+              <p className="text-[11px] text-gray-400 text-center">Peça o QR no planejamento.app (Etiquetas › Cadastro › Máquinas › a máquina › Parear aparelho).</p>
+            </>
+          )}
+
           <button
             type="button"
             onClick={handleReset}
@@ -144,6 +176,7 @@ export function LoginScreen() {
           </div>
         </div>
       </form>
+      {scanPareamento && <ScannerModal titulo="Parear maquininha" placeholder='{"t":…}' onDetect={onScanPareamento} onClose={() => setScanPareamento(false)} />}
     </div>
   );
 }
