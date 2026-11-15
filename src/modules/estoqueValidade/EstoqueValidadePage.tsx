@@ -253,11 +253,6 @@ export function EstoqueValidadePage() {
   const [lotes, setLotes] = useState<LoteEstoque[]>([]);
   const [pendentes, setPendentes] = useState<EntradaPendente[]>([]);
   const [etiquetasAtivas, setEtiquetasAtivas] = useState<EtiquetaEmitida[]>([]);
-  const homeResumo = useMemo(() => {
-    let vencidas = 0, hoje = 0;
-    for (const e of etiquetasAtivas) { const d = diasAte(e.validade); if (d < 0) vencidas++; else if (d === 0) hoje++; }
-    return { vencidas, hoje, ativas: etiquetasAtivas.length };
-  }, [etiquetasAtivas]);
   const [config, setConfig] = useState<EstoqueConfig>(CONFIG_PADRAO);
   const [configLoaded, setConfigLoaded] = useState(false);
   // Máquina pareada neste aparelho (só a maquininha). A config dela (ambientes,
@@ -433,6 +428,20 @@ export function EstoqueValidadePage() {
     const ids = new Set(locaisVisiveis.map((l) => l.id));
     return etiquetasAtivas.filter((e) => !!e.localId && ids.has(e.localId));
   }, [naMaquininha, etiquetasAtivas, locaisVisiveis]);
+
+  // Resumo da home: conta SÓ as etiquetas visíveis desta máquina (não todas) —
+  // bate com o painel de detalhe. Mesma regra de dias do painel (hojeSP).
+  const homeResumo = useMemo(() => {
+    const hoje = hojeSP();
+    let vencidas = 0, hojeN = 0, amanha = 0;
+    for (const e of etiquetasVisiveis) {
+      const d = diasAteValidade(e.validade, hoje);
+      if (d < 0) vencidas++; else if (d === 0) hojeN++; else if (d === 1) amanha++;
+    }
+    return { vencidas, hoje: hojeN, amanha, ativas: etiquetasVisiveis.length };
+  }, [etiquetasVisiveis]);
+  // Filtro com que o painel abre quando se toca num card da home.
+  const [painelFiltro, setPainelFiltro] = useState<"todas" | "vencida" | "hoje" | "amanha">("todas");
 
   // ── Locais ──
   async function salvarLocal(l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) {
@@ -638,14 +647,21 @@ export function EstoqueValidadePage() {
 
       {naMaquininha && aba === "home" && (
         <div className="space-y-3 max-w-md mx-auto">
-          <button type="button" onClick={() => setAba("painel")}
-            className="w-full flex items-center justify-between gap-2 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-4 py-3 active:scale-[.99]">
-            <span className="text-sm text-gray-600 dark:text-gray-300 inline-flex items-center gap-2">
-              <BarChart3 size={18} className="text-indigo-500" />
-              <span><b className="text-rose-600 dark:text-rose-400">{homeResumo.vencidas}</b> vencidas · <b className="text-amber-600 dark:text-amber-400">{homeResumo.hoje}</b> hoje · <b className="text-gray-800 dark:text-gray-100">{homeResumo.ativas}</b> ativas</span>
-            </span>
-            <ChevronRight size={18} className="text-gray-400" />
-          </button>
+          {/* Resumo clicável: cada card abre o painel já filtrado naquele prazo. */}
+          <div className="grid grid-cols-4 gap-2">
+            {([
+              ["vencida", "Vencidas", homeResumo.vencidas, "bg-rose-600"],
+              ["hoje", "Vencem hoje", homeResumo.hoje, "bg-amber-500"],
+              ["amanha", "Amanhã", homeResumo.amanha, "bg-orange-500"],
+              ["todas", "Ativas", homeResumo.ativas, "bg-emerald-600"],
+            ] as [typeof painelFiltro, string, number, string][]).map(([k, l, c, bg]) => (
+              <button key={k} type="button" onClick={() => { setPainelFiltro(k); setAba("painel"); }}
+                className={`h-24 rounded-2xl text-white flex flex-col items-center justify-center gap-0.5 active:scale-[.97] shadow-sm ${c > 0 || k === "todas" ? bg : "bg-gray-300 dark:bg-gray-700"}`}>
+                <span className="text-3xl font-bold tabular-nums leading-none">{c}</span>
+                <span className="text-[11px] font-medium leading-tight text-center px-0.5 opacity-95">{l}</span>
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-1 gap-3">
             <button type="button" onClick={() => setAba("etiquetas")} className="h-24 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={28} /><span className="text-lg font-semibold">Emitir etiqueta</span></button>
             <button type="button" onClick={() => setAba("baixa")} className="h-24 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><PackageMinus size={28} /><span className="text-lg font-semibold">Dar baixa</span></button>
@@ -656,7 +672,7 @@ export function EstoqueValidadePage() {
       )}
       {aba === "livre" && <EtiquetaLivreScreen rids={ridsParaCarregar.filter((r) => r !== VENDA_EXTERNA)} podeEditar={podeEditar} naMaquininha={naMaquininha} onSair={() => setAba(naMaquininha ? "home" : "cadastro")} />}
       {aba === "painel" && (naMaquininha
-        ? <PainelMaquininha etiquetas={etiquetasVisiveis} usuario={{ uid: respUid, nome: respNome }} />
+        ? <PainelMaquininha etiquetas={etiquetasVisiveis} usuario={{ uid: respUid, nome: respNome }} filtroInicial={painelFiltro} />
         : <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />)}
       {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtosVisiveis} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={respNome} responsavelUid={respUid} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locaisVisiveis} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
         ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
@@ -949,8 +965,8 @@ function OperadorLock({ operadores, onAcessar, restauranteNome }: { operadores: 
 }
 
 // ═══ PAINEL NA MAQUININHA (filtra por prazo + toca pra dar baixa) ════════════
-function PainelMaquininha({ etiquetas, usuario }: { etiquetas: EtiquetaEmitida[]; usuario: { uid?: string | null; nome?: string | null } }) {
-  const [filtro, setFiltro] = useState<"todas" | "vencida" | "hoje" | "amanha">("todas");
+function PainelMaquininha({ etiquetas, usuario, filtroInicial = "todas" }: { etiquetas: EtiquetaEmitida[]; usuario: { uid?: string | null; nome?: string | null }; filtroInicial?: "todas" | "vencida" | "hoje" | "amanha" }) {
+  const [filtro, setFiltro] = useState<"todas" | "vencida" | "hoje" | "amanha">(filtroInicial);
   const [aberta, setAberta] = useState<EtiquetaEmitida | null>(null);
   const hoje = hojeSP();
   const comDias = useMemo(() => etiquetas.map((e) => ({ e, d: diasAteValidade(e.validade, hoje) })).sort((a, b) => a.d - b.d), [etiquetas, hoje]);
