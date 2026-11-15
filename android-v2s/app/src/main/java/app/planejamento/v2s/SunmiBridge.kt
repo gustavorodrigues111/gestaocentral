@@ -80,9 +80,8 @@ class SunmiBridge(
             repeat(copias.coerceIn(1, 50)) {
                 p.labelLocate()            // acha o início da etiqueta (sensor de gap)
                 p.printBitmap(bmp, null)
-                p.labelOutput()            // ejeta a etiqueta
+                p.labelOutput()            // ejeta a etiqueta até a serrilha
             }
-            p.labelOutput()                // avanço extra: traz a última até a serrilha
             p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
                 override fun onRunResult(isSuccess: Boolean) { }
                 override fun onReturnString(result: String?) { }
