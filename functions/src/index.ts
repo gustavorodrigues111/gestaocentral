@@ -305,3 +305,57 @@ export const recuperarRotinas = onSchedule(
     console.log(`[recuperarRotinas] rotinas recuperadas: ${criadas}`);
   },
 );
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Pareamento da maquininha (login sem senha, por QR).
+//
+//  O master (autenticado) cria um doc em `pareamentosMaquina` com o email da
+//  conta da máquina. Este gatilho (Admin SDK) confere que é master, busca o uid
+//  da conta e cunha um CUSTOM TOKEN, gravando de volta no doc. O admin lê o doc
+//  (é o dono) e mostra um QR com o token; a maquininha escaneia e faz
+//  signInWithCustomToken — fica logada pra sempre, sem digitar nada.
+//
+//  Segurança: o token é sensível (quem o tiver loga como a máquina). Fica só no
+//  doc do próprio criador (regra), expira em 10 min e é de uso único (o QR some
+//  depois). A conta da máquina só enxerga Etiquetas dos restaurantes dela.
+// ════════════════════════════════════════════════════════════════════════════
+export const processarPareamento = onDocumentCreated("pareamentosMaquina/{id}", async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+  const req = snap.data() as {
+    loginEmail?: string; machineId?: string; rid?: string;
+    criadoPorUid?: string; criadoPorEmail?: string; status?: string;
+  };
+  if (req.status && req.status !== "pendente") return; // idempotência
+
+  const db = admin.firestore();
+  const erro = (msg: string) =>
+    snap.ref.update({ status: "erro", erro: msg, resolvidoEm: new Date().toISOString() });
+
+  try {
+    const caller = await acharPessoaPorUid(db, req.criadoPorUid || "", req.criadoPorEmail);
+    if (!caller?.isMaster) { await erro("Só um master pode parear a maquininha."); return; }
+
+    const email = (req.loginEmail || "").trim().toLowerCase();
+    if (!email) { await erro("Esta máquina ainda não tem login. Crie o login da máquina antes de parear."); return; }
+
+    let userRec: admin.auth.UserRecord;
+    try {
+      userRec = await admin.auth().getUserByEmail(email);
+    } catch {
+      await erro("A conta de login desta máquina não existe mais. Recrie o login da máquina.");
+      return;
+    }
+
+    const token = await admin.auth().createCustomToken(userRec.uid, { maquina: req.machineId || "" });
+    await snap.ref.update({
+      status: "pronto",
+      customToken: token,
+      uid: userRec.uid,
+      expiraEm: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      resolvidoEm: new Date().toISOString(),
+    });
+  } catch (e) {
+    await erro(e instanceof Error ? e.message : "Erro inesperado ao parear.");
+  }
+});

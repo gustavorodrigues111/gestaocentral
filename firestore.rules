@@ -634,6 +634,19 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // ── /pareamentosMaquina ── pedido de pareamento da maquininha (processado
+    // por Cloud Function que cunha o custom token). O custom token é sensível, por
+    // isso o doc (com o token) só é lido pelo PRÓPRIO criador; a função escreve o
+    // token via Admin SDK (ignora estas regras). A maquininha NÃO lê este doc —
+    // recebe o token pelo QR.
+    match /pareamentosMaquina/{id} {
+      allow create: if authed()
+        && request.resource.data.criadoPorUid == request.auth.uid
+        && request.resource.data.status == "pendente";
+      allow read, delete: if authed() && resource.data.criadoPorUid == request.auth.uid;
+      allow update: if false;
+    }
+
     match /admissoes/{id} {
       allow read: if true;
       allow create, update, delete: if authed();
