@@ -133,13 +133,17 @@ export function destinosDisponiveis(): Destino[] {
   return ["navegador"];
 }
 
-// Passo da etiqueta na maquininha (mm): altura do rótulo + o espaço entre
-// etiquetas (gap). É o quanto o papel anda por etiqueta. Calibrável: ajuste em
-// passos de ~0,5 mm até as etiquetas pararem de escorregar uma pra outra.
+// Avanço por etiqueta na maquininha (mm): o quanto o papel anda por etiqueta.
+// Precisa ser MAIOR que o rótulo pra empurrar a etiqueta impressa até a serrilha
+// (sair pronta pra destacar). Nessa maquininha, em modo recibo (sem o recuo do
+// sensor de gap, que imprimia a ANTERIOR), esse avanço extra é o que faz a
+// etiqueta sair — e também o que, em lotes longos, escorrega um pouco. Calibrável:
+// menor = alinha melhor mas a última fica dentro (use o ejetar); maior = sai
+// sempre pronta pra destacar. Padrão: altura + ~10 mm (chega na serrilha).
 const CHAVE_PASSO = "etiq_passo_mm";
 export function passoEtiquetaMm(bobina: Bobina = BOBINA_PADRAO): number {
   try { const v = parseFloat(localStorage.getItem(CHAVE_PASSO) || ""); if (v > 0) return v; } catch { /* sem storage */ }
-  return bobina.alturaMm + 2;   // padrão: altura + 2 mm de gap
+  return bobina.alturaMm + 10;   // padrão: altura + ~10 mm pra alcançar a serrilha
 }
 export function salvarPassoEtiquetaMm(mm: number) { try { localStorage.setItem(CHAVE_PASSO, String(mm)); } catch { /* sem storage */ } }
 

@@ -1081,18 +1081,18 @@ function TesteImpressaoSeq() {
         { tipo: "texto", texto: "ALINHAMENTO", tam: 34, negrito: true, align: "c" },
         { tipo: "texto", texto: `passo ${passo} mm`, tam: 20, align: "c" },
       ], bobina, larguraPx(bobina, noAppSunmi()), "center");
-      const r = await imprimirEtiqueta(canvas, 5, bobina);
-      setMsg(r.ok ? "5 enviadas. Se o desenho for escorregando, ajuste o passo e teste de novo." : (r.erro || "Falhou."));
+      const r = await imprimirEtiqueta(canvas, 1, bobina);
+      setMsg(r.ok ? "Enviada. Tem que sair pronta pra destacar na serrilha." : (r.erro || "Falhou."));
     } finally { setOcupado(null); }
   };
   return (
     <div className="pt-3 mt-2 border-t border-gray-100 dark:border-gray-800">
-      <button type="button" onClick={() => setAberto((v) => !v)} className="text-[11px] text-gray-400 underline">Calibrar alinhamento da etiqueta</button>
+      <button type="button" onClick={() => setAberto((v) => !v)} className="text-[11px] text-gray-400 underline">Calibrar avanço da etiqueta</button>
       {aberto && (
         <div className="mt-2 space-y-2 text-left">
-          <p className="text-[11px] text-gray-500">Imprima 5 de teste. Se o desenho for <b>escorregando</b> de uma etiqueta pra outra, ajuste o <b>passo</b> (altura do rótulo + o espaço entre etiquetas) em 0,5 mm e teste de novo, até as 5 saírem iguais.</p>
+          <p className="text-[11px] text-gray-500">Imprima 1 de teste. Ela tem que <b>sair pronta pra destacar</b> na serrilha. Se ficar <b>presa dentro</b>, aumente o avanço; se avançar <b>demais</b> (desperdiça rótulo), diminua. Em lote longo, avanço menor alinha melhor mas a última fica dentro (use o ejetar).</p>
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-gray-500 flex-1">Passo (mm)</label>
+            <label className="text-[11px] text-gray-500 flex-1">Avanço por etiqueta (mm)</label>
             <button type="button" onClick={() => salvar(Math.max(10, Math.round((passo - 0.5) * 10) / 10))} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">−</button>
             <input type="number" step="0.5" value={passo} onChange={(e) => salvar(parseFloat(e.target.value) || passo)} className="w-20 h-10 px-2 text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
             <button type="button" onClick={() => salvar(Math.round((passo + 0.5) * 10) / 10)} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">+</button>
