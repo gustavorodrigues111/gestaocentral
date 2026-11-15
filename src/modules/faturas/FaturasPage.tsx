@@ -261,7 +261,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Folder size={15} /> Escolha o mês</h3>
           <div className="flex items-center gap-2 flex-wrap">
             {minhas.some(l => !l.ignorado) && (
-              <button type="button" onClick={() => void exportarFaturasXLSX(minhas.filter(l => !l.ignorado), catNome, "Todas as faturas")} title="Baixa todos os lançamentos de todos os meses num Excel (pra mandar pra skill de conciliação)" className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 inline-flex items-center gap-1"><Download size={12} /> Exportar tudo</button>
+              <button type="button" onClick={() => void exportarFaturasXLSX(minhas.filter(l => !l.ignorado), catNome, "Todas as faturas", (id) => restNome[id || ""] || "empresa")} title="Baixa todos os lançamentos de todos os meses num Excel (pra mandar pra skill de conciliação)" className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 inline-flex items-center gap-1"><Download size={12} /> Exportar tudo</button>
             )}
             {onSubir && <Button size="sm" className="inline-flex items-center gap-1" onClick={onSubir}><FileText size={14} /> Subir novas faturas</Button>}
           </div>

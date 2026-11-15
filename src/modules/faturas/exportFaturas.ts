@@ -26,12 +26,30 @@ function nomeArquivo(titulo: string, ext: string): string {
   return `${slug}_${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}.${ext}`;
 }
 
-export async function exportarFaturasXLSX(lancs: CartaoLancamento[], catNome: (id?: string | null) => string, titulo: string): Promise<void> {
+// A "classificação atual" (cruzamento que o usuário já fez): a(s) empresa(s) de
+// reembolso com %, ou "pendente"/"Meu". É o que a skill de conciliação aprende.
+function reembolsoDe(l: CartaoLancamento, empresaNome: (id?: string | null) => string): string {
+  if (l.destinoTipo === "pendente") return "pendente";
+  const rateio = l.rateio || [];
+  if (rateio.length) {
+    return rateio.map((p) => `${empresaNome(p.empresaId)}${p.percentual != null && p.percentual < 100 ? ` ${Math.round(p.percentual)}%` : ""}`).join(", ");
+  }
+  if (l.empresaAtribuidaId) return empresaNome(l.empresaAtribuidaId);
+  return "Meu (sem reembolso)";
+}
+
+export async function exportarFaturasXLSX(lancs: CartaoLancamento[], catNome: (id?: string | null) => string, titulo: string, empresaNome?: (id?: string | null) => string): Promise<void> {
   const XLSX = await import("xlsx");
-  const rows = [...lancs].sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((l) => linhaDe(l, catNome, false));
+  const comReemb = !!empresaNome;
+  const cols = comReemb ? [...COLS, "Reembolso (classificação atual)"] : COLS;
+  const rows = [...lancs].sort((a, b) => (a.data || "").localeCompare(b.data || "")).map((l) => {
+    const base = linhaDe(l, catNome, false);
+    return comReemb ? [...base, reembolsoDe(l, empresaNome!)] : base;
+  });
   const total = lancs.reduce((s, l) => s + (l.valor || 0), 0);
-  const ws = XLSX.utils.aoa_to_sheet([COLS, ...rows, ["", "", "", "", "TOTAL", total]]);
-  ws["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 22 }, { wch: 18 }, { wch: 10 }, { wch: 14 }];
+  const totalRow = comReemb ? ["", "", "", "", "TOTAL", total, ""] : ["", "", "", "", "TOTAL", total];
+  const ws = XLSX.utils.aoa_to_sheet([cols, ...rows, totalRow]);
+  ws["!cols"] = [{ wch: 12 }, { wch: 40 }, { wch: 22 }, { wch: 18 }, { wch: 10 }, { wch: 14 }, ...(comReemb ? [{ wch: 28 }] : [])];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Lançamentos");
   XLSX.writeFile(wb, nomeArquivo(titulo, "xlsx"));
