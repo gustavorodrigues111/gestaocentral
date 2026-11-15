@@ -79,9 +79,11 @@ class SunmiBridge(
             // Transação: tudo vai para o buffer e o resultado chega num único callback.
             p.enterPrinterBuffer(true)
             repeat(copias.coerceIn(1, 50)) {
-                p.labelLocate()            // avança até o início da etiqueta (sensor de gap)
+                // NÃO chamar labelLocate() aqui: ele avança até o próximo gap ANTES
+                // de imprimir, causando um feed a mais → saía a etiqueta ANTERIOR.
+                // O labelOutput() no fim já posiciona a próxima no gap certo.
                 p.printBitmap(bmp, null)
-                p.labelOutput()            // empurra a etiqueta até a serrilha para destacar
+                p.labelOutput()            // imprime/empurra a etiqueta até a serrilha
             }
             p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
                 override fun onRunResult(isSuccess: Boolean) { }
