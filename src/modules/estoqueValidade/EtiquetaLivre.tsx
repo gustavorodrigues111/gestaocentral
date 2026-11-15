@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { Tag, Trash2, ChevronUp, ChevronDown, Plus, Printer, Pencil, Image as ImageIcon, Home, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { Tag, Trash2, ChevronUp, ChevronDown, Plus, Printer, Pencil, Image as ImageIcon, Home, AlignLeft, AlignCenter, AlignRight, GripVertical, Copy } from "lucide-react";
 import { Button } from "../../core/ui/Button";
 import { desenharEtiquetaLivre, larguraPx, pxFonte, type ElementoLivre, type Bobina, type AlinhV, type TamFonte } from "../../core/impressao/etiquetaTermica";
 import { imprimirEtiquetas, destinoSalvo, noAppSunmi, type Destino } from "../../core/impressao/impressora";
@@ -29,6 +29,27 @@ export type EtiquetaLivreTemplate = { id: string; restaurantIds: string[]; nome:
 export type LogoEtiqueta = { id: string; restaurantIds: string[]; nome: string; url: string; criadoEm: string };
 
 const novaChave = () => `c_${Math.random().toString(36).slice(2, 7)}`;
+
+// Modelos de exemplo pra começar rápido (chaves regeradas ao aplicar).
+const PRESETS: { nome: string; vAlign: AlinhV; gerar: () => ElemTemplate[] }[] = [
+  { nome: "Identificação", vAlign: "center", gerar: () => [
+    { tipo: "campo", rotulo: "O que é", chave: novaChave(), tam: 36, negrito: true, align: "c" },
+    { tipo: "campo", rotulo: "Responsável", chave: novaChave(), tam: 22, align: "c" },
+    { tipo: "campo", rotulo: "Data", chave: novaChave(), tam: 22, align: "c", data: true },
+  ] },
+  { nome: "Abertura + validade", vAlign: "center", gerar: () => [
+    { tipo: "campo", rotulo: "Produto", chave: novaChave(), tam: 34, negrito: true, align: "c" },
+    { tipo: "fio" },
+    { tipo: "texto", texto: "Aberto em", tam: 18, align: "c" },
+    { tipo: "campo", rotulo: "Data de abertura", chave: novaChave(), tam: 28, negrito: true, align: "c", data: true },
+    { tipo: "texto", texto: "Validade", tam: 18, align: "c" },
+    { tipo: "campo", rotulo: "Validade", chave: novaChave(), tam: 28, negrito: true, align: "c", data: true },
+  ] },
+  { nome: "Só data", vAlign: "center", gerar: () => [
+    { tipo: "campo", rotulo: "Título", chave: novaChave(), tam: 30, negrito: true, align: "c" },
+    { tipo: "campo", rotulo: "Data", chave: novaChave(), tam: 40, negrito: true, align: "c", data: true },
+  ] },
+];
 
 // Logos que já vêm prontas no app (arquivos em /public/etiq-logos). Aparecem
 // pra todo mundo, sem precisar subir. Caminho relativo = mesma origem (sem CORS).
@@ -112,6 +133,7 @@ export function EtiquetaLivreScreen({ rids, podeEditar, naMaquininha, onSair }: 
               <div className="flex items-center gap-1 shrink-0">
                 <button type="button" onClick={() => { setPrintAlvo({ nome: t.nome, elementos: t.elementos, vAlign: t.vAlign || "top" }); setModo("imprimir"); }} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir</button>
                 {podeEditar && <button type="button" onClick={() => { setEdit(t); setModo("editar"); }} className="h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 inline-flex items-center justify-center"><Pencil size={15} /></button>}
+                {podeEditar && <button type="button" onClick={() => void addDoc(collection(db, "etiquetaLivreTemplates"), { restaurantIds: rids, nome: `${t.nome} (cópia)`, elementos: t.elementos, vAlign: t.vAlign || "top", criadoEm: new Date().toISOString() })} className="h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 inline-flex items-center justify-center" title="Duplicar"><Copy size={15} /></button>}
                 {podeEditar && <button type="button" onClick={() => { if (confirm(`Excluir o modelo "${t.nome}"?`)) void deleteDoc(doc(db, "etiquetaLivreTemplates", t.id)); }} className="h-9 w-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-300 hover:text-rose-600 inline-flex items-center justify-center"><Trash2 size={15} /></button>}
               </div>
             </div>
@@ -160,8 +182,11 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
 
   const upd = (i: number, patch: Partial<ElemTemplate>) => setEls((p) => p.map((e, j) => (j === i ? { ...e, ...patch } as ElemTemplate : e)));
   const mover = (i: number, d: number) => setEls((p) => { const n = [...p]; const j = i + d; if (j < 0 || j >= n.length) return p; [n[i], n[j]] = [n[j], n[i]]; return n; });
+  const moverPara = (from: number, to: number) => setEls((p) => { if (from === to) return p; const n = [...p]; const [x] = n.splice(from, 1); n.splice(to, 0, x); return n; });
   const remover = (i: number) => setEls((p) => p.filter((_, j) => j !== i));
+  const duplicar = (i: number) => setEls((p) => { const c = { ...p[i] } as ElemTemplate; if (c.tipo === "campo") c.chave = novaChave(); return [...p.slice(0, i + 1), c, ...p.slice(i + 1)]; });
   const add = (e: ElemTemplate) => setEls((p) => [...p, e]);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   async function salvar() {
     if (!nome.trim()) return;
@@ -197,21 +222,30 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
       </div>
       <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do modelo (ex.: Identificação de caixa)" className={`${inp} h-11 font-semibold`} />
 
+      {!template && (
+        <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
+          <span>Começar de um exemplo:</span>
+          {PRESETS.map((p) => <button key={p.nome} type="button" onClick={() => { setEls(p.gerar()); setVAlign(p.vAlign); if (!nome.trim()) setNome(p.nome); }} className="h-8 px-3 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">{p.nome}</button>)}
+        </div>
+      )}
+
       <div className="flex items-center gap-2 text-xs text-gray-500">
         <span>Posição na etiqueta:</span>
         {(["top", "center", "bottom"] as AlinhV[]).map((v) => <button key={v} type="button" onClick={() => setVAlign(v)} className={`h-8 px-3 rounded-lg ${vAlign === v ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}>{v === "top" ? "Em cima" : v === "center" ? "Centro" : "Embaixo"}</button>)}
       </div>
 
-      {preview && <div className="flex justify-center py-2"><img src={preview} alt="prévia" className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white" style={{ width: Math.min(300, largura) }} /></div>}
+      {preview && <div className="sticky top-0 z-10 bg-white/90 dark:bg-gray-950/90 backdrop-blur flex justify-center py-2 -mx-1"><img src={preview} alt="prévia" className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white" style={{ width: Math.min(300, largura) }} /></div>}
 
       <div className="space-y-2">
         {els.map((e, i) => (
-          <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 space-y-2">
+          <div key={i} draggable onDragStart={() => setDragIdx(i)} onDragOver={(ev) => ev.preventDefault()} onDrop={() => { if (dragIdx != null) moverPara(dragIdx, i); setDragIdx(null); }}
+            className={`rounded-xl border bg-white dark:bg-gray-900 p-3 space-y-2 ${dragIdx === i ? "border-indigo-400 opacity-60" : "border-gray-200 dark:border-gray-800"}`}>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">{e.tipo === "texto" ? "Texto" : e.tipo === "campo" ? "Campo (preenche na hora)" : e.tipo === "logo" ? "Logo" : e.tipo === "fio" ? "Linha" : "Espaço"}</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400 inline-flex items-center gap-1.5"><GripVertical size={14} className="text-gray-300 cursor-grab" />{e.tipo === "texto" ? "Texto" : e.tipo === "campo" ? "Campo (preenche na hora)" : e.tipo === "logo" ? "Logo" : e.tipo === "fio" ? "Linha" : "Espaço"}</span>
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => mover(i, -1)} className="h-8 w-8 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 inline-flex items-center justify-center"><ChevronUp size={16} /></button>
                 <button type="button" onClick={() => mover(i, 1)} className="h-8 w-8 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 inline-flex items-center justify-center"><ChevronDown size={16} /></button>
+                <button type="button" onClick={() => duplicar(i)} className="h-8 w-8 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 inline-flex items-center justify-center" title="Duplicar"><Copy size={15} /></button>
                 <button type="button" onClick={() => remover(i)} className="h-8 w-8 rounded text-gray-300 hover:text-rose-600 inline-flex items-center justify-center"><Trash2 size={15} /></button>
               </div>
             </div>
