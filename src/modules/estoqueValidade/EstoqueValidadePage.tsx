@@ -1352,40 +1352,30 @@ function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, rid,
     if (r.ok) { setLoginNovo({ email: r.email, senha: r.senha }); onChange({ loginEmail: r.email }); }
     else setLoginErro(r.erro);
   };
-  // Pareamento por QR: cria o pedido, a função cunha o token, mostra o QR.
-  const [pareando, setPareando] = useState(false);
-  const [pareErro, setPareErro] = useState("");
-  const [qrPareamento, setQrPareamento] = useState<string | null>(null);
-  const parearQR = async () => {
-    if (!m.loginEmail) { setPareErro("Crie o login da máquina primeiro."); return; }
+  // Vincular aparelho: o master digita o código de 6 dígitos que a maquininha
+  // mostra; acha o pedido e aprova (a função cunha o token e o aparelho entra).
+  const [codigoVincular, setCodigoVincular] = useState("");
+  const [vinculando, setVinculando] = useState(false);
+  const [vincErro, setVincErro] = useState("");
+  const [vincOk, setVincOk] = useState(false);
+  const vincularAparelho = async () => {
+    const code = codigoVincular.trim();
+    if (!/^\d{6}$/.test(code)) { setVincErro("Digite o código de 6 dígitos que aparece na maquininha."); return; }
+    if (!m.loginEmail) { setVincErro("Crie o login da máquina primeiro."); return; }
     const uid = auth.currentUser?.uid;
-    if (!uid) { setPareErro("Sessão expirada — recarregue e tente de novo."); return; }
-    setPareando(true); setPareErro(""); setQrPareamento(null);
+    if (!uid) { setVincErro("Sessão expirada — recarregue e tente de novo."); return; }
+    setVinculando(true); setVincErro(""); setVincOk(false);
     try {
-      const ref = await addDoc(collection(db, "pareamentosMaquina"), sanitizeForFirestore({
-        loginEmail: m.loginEmail, machineId: m.id, rid,
-        criadoPorUid: uid, criadoPorEmail: auth.currentUser?.email || "",
-        status: "pendente", criadoEm: new Date().toISOString(),
-      }));
-      const timer = setTimeout(() => { unsub(); setPareando(false); setPareErro("Demorou demais — tente de novo."); void deleteDoc(ref).catch(() => {}); }, 30000);
-      const unsub = onSnapshot(ref, async (snap) => {
-        const d = snap.data() as { status?: string; customToken?: string; erro?: string } | undefined;
-        if (!d) return;
-        if (d.status === "pronto" && d.customToken) {
-          unsub(); clearTimeout(timer);
-          try {
-            const payload = JSON.stringify({ t: d.customToken, r: rid, v: 1 });
-            const url = await QRCode.toDataURL(payload, { errorCorrectionLevel: "L", margin: 1, width: 420 });
-            setQrPareamento(url);
-          } catch { setPareErro("Falha ao gerar o QR."); }
-          setPareando(false);
-          void deleteDoc(ref).catch(() => {});   // token já está no QR
-        } else if (d.status === "erro") {
-          unsub(); clearTimeout(timer); setPareErro(d.erro || "Falha ao parear."); setPareando(false);
-          void deleteDoc(ref).catch(() => {});
-        }
-      }, () => { setPareando(false); setPareErro("Erro ao acompanhar o pareamento."); });
-    } catch (e) { setPareando(false); setPareErro(e instanceof Error ? e.message : "Falha ao parear."); }
+      const snap = await getDocs(query(collection(db, "pareamentosMaquina"), where("codigo", "==", code), where("status", "==", "aguardando")));
+      if (snap.empty) { setVincErro("Código não encontrado (ou já expirou). Confira o que aparece na maquininha."); setVinculando(false); return; }
+      const alvo = snap.docs.sort((a, b) => String(b.data().criadoEm || "").localeCompare(String(a.data().criadoEm || "")))[0];
+      await updateDoc(alvo.ref, {
+        status: "aprovado", loginEmail: m.loginEmail, machineId: m.id, rid,
+        aprovadoPorUid: uid, aprovadoPorEmail: auth.currentUser?.email || "", aprovadoEm: new Date().toISOString(),
+      });
+      setVincOk(true); setCodigoVincular("");
+    } catch (e) { setVincErro(e instanceof Error ? e.message : "Falha ao vincular."); }
+    setVinculando(false);
   };
   const toggleArr = (arr: string[] | undefined, v: string) => { const s = new Set(arr || []); if (s.has(v)) s.delete(v); else s.add(v); return [...s]; };
   const chip = (on: boolean, cor: string) => `px-2.5 py-1 rounded-full text-xs font-medium border ${on ? cor : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`;
@@ -1431,23 +1421,21 @@ function MaquinaEditorModal({ maquina: m, ambientes, bobinas, restaurantes, rid,
               )}
               {loginErro && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">{loginErro}</div>}
 
-              {/* Parear o aparelho por QR (loga sozinho, sem digitar) */}
+              {/* Vincular aparelho por código (a maquininha mostra; você digita aqui) */}
               {m.loginEmail && (
                 <div className="mt-3 pt-3 border-t border-indigo-200/60 dark:border-indigo-900/40">
-                  {qrPareamento ? (
-                    <div className="text-center space-y-2">
-                      <div className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Escaneie com a maquininha</div>
-                      <img src={qrPareamento} alt="QR de pareamento" className="mx-auto w-56 h-56 rounded-lg bg-white p-2" />
-                      <p className="text-[11px] text-gray-500">No aparelho: <b>Parear com QR</b> → aponte a câmera pra este código. Ele entra sozinho. Vale por 10 min e só uma vez.</p>
-                      <button type="button" onClick={() => setQrPareamento(null)} className="text-xs text-gray-400">fechar</button>
-                    </div>
+                  {vincOk ? (
+                    <div className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">✓ Aparelho vinculado! A maquininha vai entrar sozinha em instantes.</div>
                   ) : (
                     <div className="space-y-2">
-                      <p className="text-xs text-gray-600 dark:text-gray-300">Pareie o aparelho sem digitar: gera um QR; a maquininha escaneia e entra sozinha pra sempre.</p>
-                      <Button size="sm" variant="secondary" onClick={() => void parearQR()} disabled={pareando}>{pareando ? "Gerando QR…" : "Parear aparelho (QR)"}</Button>
+                      <p className="text-xs text-gray-600 dark:text-gray-300">Na maquininha, toque em <b>"Parear esta maquininha"</b> — vai aparecer um código de 6 dígitos. Digite ele aqui:</p>
+                      <div className="flex items-center gap-2">
+                        <input value={codigoVincular} onChange={(e) => setCodigoVincular(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="000000" className="flex-1 min-w-0 h-11 px-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-center text-2xl tracking-[0.3em] tabular-nums" />
+                        <Button size="sm" onClick={() => void vincularAparelho()} disabled={vinculando || codigoVincular.length !== 6}>{vinculando ? "…" : "Vincular"}</Button>
+                      </div>
                     </div>
                   )}
-                  {pareErro && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">{pareErro}</div>}
+                  {vincErro && <div className="mt-2 text-xs text-rose-600 dark:text-rose-400">{vincErro}</div>}
                 </div>
               )}
             </div>

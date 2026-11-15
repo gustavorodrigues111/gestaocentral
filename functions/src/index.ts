@@ -307,37 +307,38 @@ export const recuperarRotinas = onSchedule(
 );
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Pareamento da maquininha (login sem senha, por QR).
+//  Pareamento da maquininha (login sem senha, por código).
 //
-//  O master (autenticado) cria um doc em `pareamentosMaquina` com o email da
-//  conta da máquina. Este gatilho (Admin SDK) confere que é master, busca o uid
-//  da conta e cunha um CUSTOM TOKEN, gravando de volta no doc. O admin lê o doc
-//  (é o dono) e mostra um QR com o token; a maquininha escaneia e faz
-//  signInWithCustomToken — fica logada pra sempre, sem digitar nada.
+//  Fluxo: o aparelho entra ANÔNIMO (app secundário), cria o pedido com o próprio
+//  uid anônimo e mostra um CÓDIGO. O master acha pelo código e APROVA (update),
+//  preenchendo a conta da máquina (loginEmail/machineId/rid). Este gatilho
+//  dispara no update "aprovado", confere que quem aprovou é master, cunha um
+//  CUSTOM TOKEN e grava no doc. O aparelho lê só o SEU doc (uid anônimo) e faz
+//  signInWithCustomToken — fica logado pra sempre, sem digitar senha.
 //
-//  Segurança: o token é sensível (quem o tiver loga como a máquina). Fica só no
-//  doc do próprio criador (regra), expira em 10 min e é de uso único (o QR some
-//  depois). A conta da máquina só enxerga Etiquetas dos restaurantes dela.
+//  Segurança: o token só é legível pelo dono anônimo (regra); expira em 10 min.
+//  A conta da máquina só enxerga Etiquetas dos restaurantes dela.
 // ════════════════════════════════════════════════════════════════════════════
-export const processarPareamento = onDocumentCreated("pareamentosMaquina/{id}", async (event) => {
-  const snap = event.data;
-  if (!snap) return;
-  const req = snap.data() as {
-    loginEmail?: string; machineId?: string; rid?: string;
-    criadoPorUid?: string; criadoPorEmail?: string; status?: string;
+export const processarPareamento = onDocumentWritten("pareamentosMaquina/{id}", async (event) => {
+  const after = event.data?.after;
+  if (!after || !after.exists) return;
+  const d = after.data() as {
+    status?: string; loginEmail?: string; machineId?: string;
+    aprovadoPorUid?: string; aprovadoPorEmail?: string; customToken?: string;
   };
-  if (req.status && req.status !== "pendente") return; // idempotência
+  // Só age quando o master acabou de APROVAR e ainda não há token (idempotência).
+  if (d.status !== "aprovado" || d.customToken) return;
 
   const db = admin.firestore();
   const erro = (msg: string) =>
-    snap.ref.update({ status: "erro", erro: msg, resolvidoEm: new Date().toISOString() });
+    after.ref.update({ status: "erro", erro: msg, resolvidoEm: new Date().toISOString() });
 
   try {
-    const caller = await acharPessoaPorUid(db, req.criadoPorUid || "", req.criadoPorEmail);
-    if (!caller?.isMaster) { await erro("Só um master pode parear a maquininha."); return; }
+    const caller = await acharPessoaPorUid(db, d.aprovadoPorUid || "", d.aprovadoPorEmail);
+    if (!caller?.isMaster) { await erro("Só um master pode vincular a maquininha."); return; }
 
-    const email = (req.loginEmail || "").trim().toLowerCase();
-    if (!email) { await erro("Esta máquina ainda não tem login. Crie o login da máquina antes de parear."); return; }
+    const email = (d.loginEmail || "").trim().toLowerCase();
+    if (!email) { await erro("Esta máquina ainda não tem login. Crie o login da máquina antes de vincular."); return; }
 
     let userRec: admin.auth.UserRecord;
     try {
@@ -347,8 +348,8 @@ export const processarPareamento = onDocumentCreated("pareamentosMaquina/{id}", 
       return;
     }
 
-    const token = await admin.auth().createCustomToken(userRec.uid, { maquina: req.machineId || "" });
-    await snap.ref.update({
+    const token = await admin.auth().createCustomToken(userRec.uid, { maquina: d.machineId || "" });
+    await after.ref.update({
       status: "pronto",
       customToken: token,
       uid: userRec.uid,
@@ -356,6 +357,6 @@ export const processarPareamento = onDocumentCreated("pareamentosMaquina/{id}", 
       resolvidoEm: new Date().toISOString(),
     });
   } catch (e) {
-    await erro(e instanceof Error ? e.message : "Erro inesperado ao parear.");
+    await erro(e instanceof Error ? e.message : "Erro inesperado ao vincular.");
   }
 });

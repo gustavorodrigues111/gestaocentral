@@ -639,12 +639,23 @@ service cloud.firestore {
     // isso o doc (com o token) só é lido pelo PRÓPRIO criador; a função escreve o
     // token via Admin SDK (ignora estas regras). A maquininha NÃO lê este doc —
     // recebe o token pelo QR.
+    // Pareamento da maquininha (login sem senha). O aparelho entra ANÔNIMO (num
+    // app secundário), cria o pedido com o PRÓPRIO uid anônimo e mostra um código.
+    // O master acha pelo código (list) e aprova (update), preenchendo a conta da
+    // máquina. A Cloud Function cunha o token via Admin SDK e grava no doc. O
+    // aparelho lê SÓ O SEU doc (pelo uid anônimo) e faz login. O token nunca fica
+    // legível por terceiros (só o dono anônimo lê).
     match /pareamentosMaquina/{id} {
       allow create: if authed()
-        && request.resource.data.criadoPorUid == request.auth.uid
-        && request.resource.data.status == "pendente";
-      allow read, delete: if authed() && resource.data.criadoPorUid == request.auth.uid;
-      allow update: if false;
+        && request.resource.data.anonUid == request.auth.uid
+        && request.resource.data.status == "aguardando";
+      allow get: if authed() && resource.data.anonUid == request.auth.uid;
+      allow list: if isMaster();
+      allow update: if isMaster()
+        && resource.data.status == "aguardando"
+        && request.resource.data.status == "aprovado"
+        && request.resource.data.anonUid == resource.data.anonUid;
+      allow delete: if authed() && (resource.data.anonUid == request.auth.uid || isMaster());
     }
 
     match /admissoes/{id} {

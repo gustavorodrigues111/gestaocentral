@@ -1,13 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { House, QrCode } from "lucide-react";
+import { House, Smartphone } from "lucide-react";
 import { Link } from "react-router-dom";
-import { sendPasswordResetEmail, signInWithCustomToken } from "firebase/auth";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase/config";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { detectSubdomain, isEtiquetasKioskHost } from "../restaurant/subdomain";
-import { ScannerModal } from "../../modules/estoqueValidade/ScannerModal";
+import { iniciarPareamento } from "./pareamentoMaquina";
 
 export function LoginScreen() {
   const { signIn } = useAuth();
@@ -22,23 +22,21 @@ export function LoginScreen() {
   const [resetMsg, setResetMsg] = useState("");
   const [resetting, setResetting] = useState(false);
   const ehKioskEtiq = isEtiquetasKioskHost();
-  const [scanPareamento, setScanPareamento] = useState(false);
   const [pareErro, setPareErro] = useState("");
-  const [pareando, setPareando] = useState(false);
-  async function onScanPareamento(code: string) {
-    setPareErro("");
-    let payload: { t?: string; r?: string };
-    try { payload = JSON.parse(code); } catch { setPareErro("Este QR não é um código de pareamento."); return; }
-    if (!payload.t) { setPareErro("QR de pareamento inválido."); return; }
-    setScanPareamento(false); setPareando(true);
-    try {
-      if (payload.r) { try { localStorage.setItem("etiq_kiosk_rid", payload.r); } catch { /* sem storage */ } }
-      await signInWithCustomToken(auth, payload.t);
-      // Sucesso: o AuthContext resolve a conta da máquina e o quiosque abre.
-    } catch {
-      setPareando(false);
-      setPareErro("Não deu pra entrar com este QR (pode ter expirado — valem 10 min). Gere outro no planejamento.app.");
-    }
+  const [pareCodigo, setPareCodigo] = useState("");       // código mostrado na tela
+  const [pareando, setPareando] = useState(false);        // aguardando aprovação
+  const [cancelarPare, setCancelarPare] = useState<(() => void) | null>(null);
+  async function iniciarPareamentoMaquina() {
+    setPareErro(""); setPareCodigo(""); setPareando(true);
+    const cancelar = await iniciarPareamento({
+      onCodigo: (c) => setPareCodigo(c),
+      onErro: (msg) => { setPareErro(msg); setPareando(false); setPareCodigo(""); setCancelarPare(null); },
+      onSucesso: () => { /* a instância primária logou; o app troca de tela sozinho */ },
+    });
+    setCancelarPare(() => cancelar);
+  }
+  function pararPareamento() {
+    cancelarPare?.(); setCancelarPare(null); setPareando(false); setPareCodigo(""); setPareErro("");
   }
 
   async function handleReset() {
@@ -142,12 +140,21 @@ export function LoginScreen() {
           {ehKioskEtiq && (
             <>
               <div className="flex items-center gap-2 my-1"><div className="flex-1 border-t border-gray-200 dark:border-gray-800" /><span className="text-[11px] text-gray-400">ou</span><div className="flex-1 border-t border-gray-200 dark:border-gray-800" /></div>
-              <button type="button" onClick={() => { setPareErro(""); setScanPareamento(true); }} disabled={pareando}
-                className="w-full h-12 rounded-xl bg-indigo-600 text-white font-semibold inline-flex items-center justify-center gap-2 active:scale-[.99] disabled:opacity-60">
-                <QrCode size={18} /> {pareando ? "Entrando…" : "Parear com QR"}
-              </button>
+              {pareCodigo ? (
+                <div className="text-center rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/60 dark:bg-indigo-950/30 p-4">
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">No planejamento.app, digite este código pra vincular esta máquina:</div>
+                  <div className="text-4xl font-black tracking-[0.2em] text-indigo-700 dark:text-indigo-300 my-1 tabular-nums">{pareCodigo}</div>
+                  <div className="text-[11px] text-gray-500 inline-flex items-center justify-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" /> Aguardando aprovação…</div>
+                  <button type="button" onClick={pararPareamento} className="block mx-auto mt-2 text-xs text-gray-400">cancelar</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => void iniciarPareamentoMaquina()} disabled={pareando}
+                  className="w-full h-12 rounded-xl bg-indigo-600 text-white font-semibold inline-flex items-center justify-center gap-2 active:scale-[.99] disabled:opacity-60">
+                  <Smartphone size={18} /> {pareando ? "Gerando código…" : "Parear esta maquininha"}
+                </button>
+              )}
               {pareErro && <div className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2">{pareErro}</div>}
-              <p className="text-[11px] text-gray-400 text-center">Peça o QR no planejamento.app (Etiquetas › Cadastro › Máquinas › a máquina › Parear aparelho).</p>
+              {!pareCodigo && <p className="text-[11px] text-gray-400 text-center">Gera um código aqui; você digita ele no planejamento.app (Etiquetas › Cadastro › Máquinas › a máquina › Vincular aparelho).</p>}
             </>
           )}
 
@@ -176,7 +183,6 @@ export function LoginScreen() {
           </div>
         </div>
       </form>
-      {scanPareamento && <ScannerModal titulo="Parear maquininha" placeholder='{"t":…}' onDetect={onScanPareamento} onClose={() => setScanPareamento(false)} />}
     </div>
   );
 }
