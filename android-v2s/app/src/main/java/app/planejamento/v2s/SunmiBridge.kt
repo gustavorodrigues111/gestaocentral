@@ -72,15 +72,13 @@ class SunmiBridge(
         } catch (e: Exception) { falha(id, "Imagem da etiqueta inválida: ${e.message}"); return }
 
         try {
-            // Precisa do buffer (sem ele sai branco) E do labelLocate (sem ele
-            // desalinha — é quem acha o gap). O "repete a anterior" é mecânico: a
-            // etiqueta impressa fica presa dentro e destaca-se a anterior. Por isso
-            // um labelOutput() EXTRA no fim, pra empurrar a última até a serrilha.
+            // MODO RECIBO (contínuo): imprime "puro" + um pequeno avanço, SEM
+            // labelLocate/labelOutput — que, em modo rótulo, faziam o recuo e saía a
+            // etiqueta ANTERIOR. A impressora precisa estar em "Tipo: recibo".
             p.enterPrinterBuffer(true)
             repeat(copias.coerceIn(1, 50)) {
-                p.labelLocate()            // acha o início da etiqueta (sensor de gap)
                 p.printBitmap(bmp, null)
-                p.labelOutput()            // ejeta a etiqueta até a serrilha
+                p.lineWrap(3, null)        // avança um pouco (gap entre etiquetas)
             }
             p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
                 override fun onRunResult(isSuccess: Boolean) { }
