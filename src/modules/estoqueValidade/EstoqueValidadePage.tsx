@@ -420,6 +420,14 @@ export function EstoqueValidadePage() {
     return produtos.filter((p) => (p.locais || []).some((id) => ids.has(id)));
   }, [naMaquininha, produtos, locaisVisiveis]);
 
+  // Etiquetas ativas visíveis na maquininha = só as dos locais liberados dela.
+  // Etiqueta em local não vinculado a esta máquina não aparece (painel e baixa).
+  const etiquetasVisiveis = useMemo(() => {
+    if (!naMaquininha) return etiquetasAtivas;
+    const ids = new Set(locaisVisiveis.map((l) => l.id));
+    return etiquetasAtivas.filter((e) => !!e.localId && ids.has(e.localId));
+  }, [naMaquininha, etiquetasAtivas, locaisVisiveis]);
+
   // ── Locais ──
   async function salvarLocal(l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) {
     if (l.id) await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, metodoConservacao: l.metodoConservacao ?? null, ativo: l.ativo });
@@ -640,12 +648,12 @@ export function EstoqueValidadePage() {
         </div>
       )}
       {aba === "painel" && (naMaquininha
-        ? <PainelMaquininha etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} />
+        ? <PainelMaquininha etiquetas={etiquetasVisiveis} usuario={{ uid: respUid, nome: respNome }} />
         : <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />)}
       {aba === "etiquetas" && <EtiquetasTab rid={rid} produtos={produtosVisiveis} config={config} empresa={restaurante?.razaoSocial || restaurante?.nome || ""} cnpj={restaurante?.cnpj || null} responsavel={respNome} responsavelUid={respUid} podeOperar={podeOperar} ativas={etiquetasAtivas} locais={locaisVisiveis} podeEditar={podeEditar} onGerenciarProdutos={(l) => setVinculosLocal(l)} pularInicio={naMaquininha} onSair={() => setAba("home")}
         ambienteIds={maquina?.ambienteIds} modoProducao={!!maquina?.modoProducao} restaurantesAlvo={maquina?.restaurantesAlvo || []} restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome, razaoSocial: r.razaoSocial ?? null, cnpj: r.cnpj ?? null }))} />}
       {aba === "baixa" && (naMaquininha
-        ? <BaixaMaquininha rid={rid} etiquetas={etiquetasAtivas} usuario={{ uid: respUid, nome: respNome }} podeOperar={podeOperar} />
+        ? <BaixaMaquininha rid={rid} etiquetas={etiquetasVisiveis} usuario={{ uid: respUid, nome: respNome }} podeOperar={podeOperar} />
         : <BaixaTab rid={rid} usuario={{ uid: me?.id || null, nome: me?.nome || null }} etiquetas={etiquetasAtivas} produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />)}
       {aba === "entrada" && <EntradaTab produtos={produtosVisiveis} locais={locaisVisiveis} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
@@ -978,13 +986,15 @@ function PainelMaquininha({ etiquetas, usuario }: { etiquetas: EtiquetaEmitida[]
 function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
   rid: string; etiquetas: EtiquetaEmitida[]; usuario: { uid?: string | null; nome?: string | null }; podeOperar: boolean;
 }) {
-  const [scan, setScan] = useState(false);
   const [aberta, setAberta] = useState<EtiquetaEmitida | null>(null);
   const [num, setNum] = useState("");
   const [msg, setMsg] = useState("");
 
+  // Leitura por câmera FORA da baixa: a V2S trava/fecha o app ao abrir a câmera.
+  // A baixa aqui é só por NÚMERO (digita o número grande da etiqueta). Um leitor
+  // a laser por broadcast (quando o aparelho tiver) ainda cai aqui sem câmera.
   function aoLerQr(code: string) {
-    setScan(false); setMsg("");
+    setMsg("");
     const token = tokenDoQr(code);
     if (token) {
       const e = etiquetas.find((x) => x.qrToken === token);
@@ -994,16 +1004,15 @@ function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
     }
     setMsg("QR não reconhecido.");
   }
-  async function abrirLeitor() { if (noAppSunmi()) { const v = await lerQrNativo(); if (v) { aoLerQr(v); return; } } setScan(true); }
   function buscarNumero() {
     const n = parseInt((num || "").replace(/\D/g, ""), 10);
     if (!n) { setMsg("Digite o número da etiqueta."); return; }
     const e = etiquetaPorNumero(etiquetas, n);
     if (e) { setAberta(e); setNum(""); setMsg(""); } else setMsg(`Nenhuma etiqueta ativa com o número ${String(n).padStart(5, "0")}.`);
   }
-  const abrirRef = useRef(abrirLeitor); abrirRef.current = abrirLeitor;
   const aoLerRef = useRef(aoLerQr); aoLerRef.current = aoLerQr;
-  useEffect(() => { if (!noAppSunmi()) return; const d1 = armarTeclaScan(() => void abrirRef.current()); const d2 = armarCodigoScan((c) => aoLerRef.current(c)); return () => { d1(); d2(); }; }, []);
+  // Só o leitor a laser por broadcast (sem câmera). Botão físico NÃO abre câmera.
+  useEffect(() => { if (!noAppSunmi()) return; const d2 = armarCodigoScan((c) => aoLerRef.current(c)); return () => { d2(); }; }, []);
 
   if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão pra dar baixa.</div>;
   const ordenadas = etiquetas.slice().sort((a, b) => a.validade.localeCompare(b.validade));
@@ -1013,9 +1022,8 @@ function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
     : ordenadas.slice(0, 15);
   return (
     <div className="space-y-4 max-w-md mx-auto">
-      <button type="button" onClick={() => void abrirLeitor()} className="w-full h-16 rounded-2xl bg-indigo-600 text-white text-lg font-semibold inline-flex items-center justify-center gap-2 active:bg-indigo-700 shadow-sm"><Camera size={22} /> Ler QR da etiqueta</button>
       <div>
-        <div className="text-xs text-gray-500 mb-1 text-center">ou digite o número que está grande na etiqueta</div>
+        <div className="text-xs text-gray-500 mb-1 text-center">Digite o número que está grande na etiqueta</div>
         <div className="flex gap-2">
           <input value={num === "" ? "" : num.padStart(5, "0")} onChange={(e) => { const d = e.target.value.replace(/\D/g, ""); const n = parseInt(d.slice(-5) || "0", 10); setNum(n > 0 ? String(n) : ""); }} inputMode="numeric" placeholder="00000"
             className="flex-1 min-w-0 h-14 px-3 text-3xl tracking-[0.2em] text-center rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 tabular-nums" />
@@ -1038,8 +1046,7 @@ function BaixaMaquininha({ rid, etiquetas, usuario, podeOperar }: {
           </div>
         )}
       </div>
-      {scan && <ScannerModal titulo="Ler QR da etiqueta" onDetect={aoLerQr} onClose={() => setScan(false)} />}
-      {aberta && <BaixaEtiquetaModal etiqueta={aberta} usuario={usuario} onClose={() => setAberta(null)} />}
+      {aberta && <BaixaEtiquetaModal etiqueta={aberta} usuario={usuario} onClose={() => { setAberta(null); setNum(""); setMsg(""); }} />}
     </div>
   );
 }
