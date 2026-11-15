@@ -241,8 +241,6 @@ export function EstoqueValidadePage() {
   const naMaquininha = noAppSunmi();
   const [menuAberto, setMenuAberto] = useState(false);
   const [printerCfg, setPrinterCfg] = useState(false);
-  const [trocaRest, setTrocaRest] = useState(false);
-  const trocarRestaurante = (id: string) => { try { localStorage.setItem("etiq_kiosk_rid", id); } catch { /* sem storage */ } window.dispatchEvent(new Event("etiq-kiosk-rid")); setActiveId(id); setTrocaRest(false); setAba("home"); nav(`/r/${id}/estoqueValidade`, { replace: true }); };
   useEffect(() => { if (naMaquininha) setAba("home"); else if (naKiosk) setAba("etiquetas"); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
@@ -556,11 +554,7 @@ export function EstoqueValidadePage() {
           <div className="relative flex items-center justify-between gap-2 mb-4">
             <Tag size={24} className="text-indigo-500 shrink-0" />
             <div className="flex items-center gap-1.5 min-w-0">
-              <button type="button" onClick={() => { if (restaurantesVisiveis.length > 1) setTrocaRest((v) => !v); }}
-                className="h-10 min-w-0 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
-                <span className="truncate">{restaurante?.nome || "Restaurante"}</span>
-                {restaurantesVisiveis.length > 1 && <ChevronDown size={15} className="shrink-0 text-gray-400" />}
-              </button>
+              <span className="h-10 min-w-0 px-1 text-sm font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center truncate" title={maquina?.nome || restaurante?.nome || ""}>{maquina?.nome || restaurante?.nome || "Etiquetas"}</span>
               {operadorAtivo && (
                 <button type="button" onClick={() => setOperadorMenu((v) => !v)}
                   className="h-10 shrink-0 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
@@ -568,17 +562,6 @@ export function EstoqueValidadePage() {
                 </button>
               )}
             </div>
-            {trocaRest && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setTrocaRest(false)} />
-                <div className="absolute right-0 top-14 z-50 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
-                  <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">Trocar restaurante</div>
-                  {restaurantesVisiveis.map((r) => (
-                    <button key={r.id} type="button" onClick={() => trocarRestaurante(r.id)} className={`w-full text-left px-3 py-2 text-sm ${r.id === rid ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{r.nome}</button>
-                  ))}
-                </div>
-              </>
-            )}
             {operadorMenu && operadorAtivo && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setOperadorMenu(false)} />
