@@ -105,7 +105,23 @@ class SunmiBridge(
             val bytes = Base64.decode(pngBase64, Base64.DEFAULT)
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: run { falha(id, "Imagem inválida."); return }
         } catch (e: Exception) { falha(id, "Imagem inválida: ${e.message}"); return }
+        val cb = object : InnerResultCallback() {
+            override fun onRunResult(isSuccess: Boolean) { }
+            override fun onReturnString(result: String?) { }
+            override fun onRaiseException(code: Int, msg: String?) { falha(id, "Erro $code: ${msg ?: ""}") }
+            override fun onPrintResult(code: Int, msg: String?) { if (code == 0) ok(id) else falha(id, "Falhou ($code)") }
+        }
         try {
+            // Seq 9/10: usa commitPrinterBuffer (imprime NA HORA) em vez de confiar
+            // no commit do exit — que estava segurando o envio anterior na fila.
+            if (seq == 9 || seq == 10) {
+                p.enterPrinterBuffer(true)
+                if (seq == 9) { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }
+                else { p.printBitmap(bmp, null); p.labelLocate(); p.labelOutput() }
+                p.commitPrinterBufferWithCallback(cb)   // imprime agora
+                try { p.exitPrinterBuffer(false) } catch (_: Exception) { }   // sai sem recommitar
+                return
+            }
             p.enterPrinterBuffer(true)
             when (seq) {
                 1 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }                 // atual
@@ -114,16 +130,11 @@ class SunmiBridge(
                 4 -> { p.printBitmap(bmp, null); p.labelLocate(); p.labelOutput() }                   // locate depois
                 5 -> { p.labelOutput(); p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }  // ejeta a da câmara antes
                 6 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput(); p.labelOutput() }     // output duplo
-                7 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput(); p.exitPrinterBuffer(true); p.enterPrinterBuffer(true) } // commit duplo (flush do buffer da firmware)
-                8 -> { p.printBitmap(bmp, null); p.exitPrinterBuffer(true); p.enterPrinterBuffer(true); p.labelLocate(); p.labelOutput() } // imprime, flush, depois posiciona/ejeta
+                7 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput(); p.exitPrinterBuffer(true); p.enterPrinterBuffer(true) } // commit duplo
+                8 -> { p.printBitmap(bmp, null); p.exitPrinterBuffer(true); p.enterPrinterBuffer(true); p.labelLocate(); p.labelOutput() } // imprime, flush, posiciona/ejeta
                 else -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }
             }
-            p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
-                override fun onRunResult(isSuccess: Boolean) { }
-                override fun onReturnString(result: String?) { }
-                override fun onRaiseException(code: Int, msg: String?) { falha(id, "Erro $code: ${msg ?: ""}") }
-                override fun onPrintResult(code: Int, msg: String?) { if (code == 0) ok(id) else falha(id, "Falhou ($code)") }
-            })
+            p.exitPrinterBufferWithCallback(true, cb)
         } catch (e: Exception) { falha(id, "Erro: ${e.message}") }
     }
 

@@ -1087,9 +1087,9 @@ function TesteImpressaoSeq() {
         <div className="mt-2 space-y-2 text-left">
           <p className="text-[11px] text-gray-500">Imprima cada um e veja qual sai <b>certa</b> (alinhada e sem atraso). Depois me diz o número.</p>
           <div className="grid grid-cols-4 gap-2">
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <button key={n} type="button" disabled={ocupado != null} onClick={() => void imprimir(n)} className={`h-11 rounded-lg text-sm font-semibold disabled:opacity-50 ${n >= 7 ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "bg-gray-100 dark:bg-gray-800"}`}>{ocupado === n ? "…" : `Seq ${n}`}</button>)}
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <button key={n} type="button" disabled={ocupado != null} onClick={() => void imprimir(n)} className={`h-11 rounded-lg text-sm font-semibold disabled:opacity-50 ${n >= 9 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" : n >= 7 ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "bg-gray-100 dark:bg-gray-800"}`}>{ocupado === n ? "…" : `Seq ${n}`}</button>)}
           </div>
-          <p className="text-[11px] text-gray-400">As 7 e 8 (azuis) são a pista nova: forçam um flush do buffer.</p>
+          <p className="text-[11px] text-gray-400"><b>9 e 10 (verdes)</b> são a pista mais forte: imprimem na hora (commit direto).</p>
           {msg && <div className="text-[11px] text-gray-500">{msg}</div>}
         </div>
       )}
