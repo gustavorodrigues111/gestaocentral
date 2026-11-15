@@ -124,6 +124,18 @@ class SunmiBridge(
                 try { p.exitPrinterBuffer(false) } catch (_: Exception) { }
                 return
             }
+            // Seq 13/14: DRENO por ciclos completos de enter/exit (o buffer é FIFO e
+            // sobra 1; cada exit-commit esvazia 1). 13 = 2 ciclos, 14 = 3 ciclos.
+            if (seq == 13 || seq == 14) {
+                p.enterPrinterBuffer(true)
+                p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput()
+                p.exitPrinterBuffer(true)                     // commit 1
+                p.enterPrinterBuffer(true); p.exitPrinterBuffer(true)   // commit 2 (dreno)
+                if (seq == 14) { p.enterPrinterBuffer(true); p.exitPrinterBuffer(true) }  // commit 3
+                p.enterPrinterBuffer(true)
+                p.exitPrinterBufferWithCallback(true, cb)     // fecha + callback
+                return
+            }
             p.enterPrinterBuffer(true)
             when (seq) {
                 1 -> { p.labelLocate(); p.printBitmap(bmp, null); p.labelOutput() }                 // atual
