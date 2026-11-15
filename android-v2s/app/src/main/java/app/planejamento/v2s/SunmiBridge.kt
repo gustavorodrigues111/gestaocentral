@@ -72,6 +72,10 @@ class SunmiBridge(
         } catch (e: Exception) { falha(id, "Imagem da etiqueta inválida: ${e.message}"); return }
 
         try {
+            // printerInit zera o estado da cabeça: sem isso, a Sunmi às vezes imprime
+            // a etiqueta ANTERIOR (buffer defasado em uma) e só manda a certa no
+            // próximo clique. Faz o init fora da transação de buffer.
+            try { p.printerInit(null) } catch (_: Exception) { }
             // Transação: tudo vai para o buffer e o resultado chega num único callback.
             p.enterPrinterBuffer(true)
             repeat(copias.coerceIn(1, 50)) {
