@@ -15,13 +15,13 @@ import { Printer, Minus, Plus, ChevronLeft, ClipboardCheck, Settings2 } from "lu
 import { desenharEtiqueta, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 import { imprimirEtiquetas, statusSunmi, avisoStatus, destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
 import type { LocalEstoque } from "../../core/types";
-import { blocosValidade, dataBR, diaSemana, novoCodigoLote, validadeDe, ymd } from "./etiquetaValidade";
+import { blocosValidade, blocosVenda, dataBR, diaSemana, novoCodigoLote, validadeDe, ymd } from "./etiquetaValidade";
 import { diasAteValidade, gravarEmissao, hojeSP, urlEtiqueta, siglaEtiqueta, codigoEtiqueta, proximosNumerosEtiqueta, type EtiquetaEmitida } from "./etiquetasRepo";
 import { agruparPorAmbiente, diasNoLocal, nomeCompleto, produtosDoLocal } from "./compatibilidade";
 import { EtiquetasEmitidas } from "./EtiquetasEmitidas";
 import { enfileirarEtiqueta } from "./filaImpressao";
 import type { ProdutoEtiqueta, EstoqueConfig } from "./EstoqueValidadePage";
-import { empresasDoProduto } from "./EstoqueValidadePage";
+import { empresasDoProduto, VENDA_EXTERNA, VENDA_EXTERNA_LABEL } from "./EstoqueValidadePage";
 
 // Medidas comuns. Na maquininha só cabem as de até 58 mm de largura.
 const BOBINAS: { id: string; label: string; b: Bobina }[] = [
@@ -75,9 +75,10 @@ type Props = {
 
 export function EtiquetasTab(props: Props) {
   const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos, pularInicio, onSair, ambienteIds, modoProducao, restaurantesAlvo, restaurantes } = props;
-  // Modo produção com 2+ restaurantes: escolhe o restaurante ANTES de tudo (ele
-  // decide o CNPJ e filtra os produtos). Com 1 só, pula direto.
-  const precisaRest = !!modoProducao && (restaurantesAlvo || []).filter((id) => (restaurantes || []).some((r) => r.id === id)).length > 1;
+  // Modo produção: escolhe o alvo ANTES de tudo (restaurante → CNPJ e produtos,
+  // ou "Venda externa" → sem identificação). Mostra o passo quando há ao menos
+  // 1 restaurante (sempre há a opção Venda externa junto).
+  const precisaRest = !!modoProducao && (restaurantesAlvo || []).filter((id) => (restaurantes || []).some((r) => r.id === id)).length > 0;
   const [passo, setPasso] = useState<Passo>(() => (!pularInicio ? "inicio" : precisaRest ? "restaurante" : calcStartEmissao(locais).passo));
   const [ambienteId, setAmbienteId] = useState<string>(() => (pularInicio && !precisaRest ? calcStartEmissao(locais).ambienteId : ""));   // "" = sem ambiente
   const [local, setLocal] = useState<LocalEstoque | null>(null);
@@ -136,8 +137,12 @@ export function EtiquetasTab(props: Props) {
     if (ambienteIds && ambienteIds.length) gs = gs.filter((g) => ambienteIds.includes(g.ambiente?.id || ""));
     return gs;
   }, [locais, ambienteIds]);
-  // Modo produção: restaurante-alvo da etiqueta (empresa/CNPJ que vão impressos).
-  const opcoesAlvo = useMemo(() => (restaurantes || []).filter((r) => (restaurantesAlvo || []).includes(r.id)), [restaurantes, restaurantesAlvo]);
+  // Modo produção: restaurante-alvo da etiqueta (empresa/CNPJ que vão impressos)
+  // + "Venda externa" (sem identificação, não rastreada).
+  const opcoesAlvo = useMemo(() => {
+    const reais = (restaurantes || []).filter((r) => (restaurantesAlvo || []).includes(r.id));
+    return [...reais, { id: VENDA_EXTERNA, nome: VENDA_EXTERNA_LABEL, razaoSocial: null as string | null, cnpj: null as string | null }];
+  }, [restaurantes, restaurantesAlvo]);
   const [alvoId, setAlvoId] = useState("");
   useEffect(() => {
     if (modoProducao && opcoesAlvo.length && !opcoesAlvo.some((r) => r.id === alvoId)) {
@@ -145,8 +150,9 @@ export function EtiquetasTab(props: Props) {
     }
   }, [modoProducao, opcoesAlvo, alvoId, rid]);
   const alvo = opcoesAlvo.find((r) => r.id === alvoId) || null;
-  const empresaLabel = modoProducao && alvo ? (alvo.razaoSocial || alvo.nome) : empresa;
-  const cnpjLabel = modoProducao && alvo ? (alvo.cnpj ?? null) : cnpj;
+  const alvoEhVenda = alvoId === VENDA_EXTERNA;
+  const empresaLabel = alvoEhVenda ? "" : (modoProducao && alvo ? (alvo.razaoSocial || alvo.nome) : empresa);
+  const cnpjLabel = alvoEhVenda ? null : (modoProducao && alvo ? (alvo.cnpj ?? null) : cnpj);
   const sigla = siglaEtiqueta(modoProducao && alvo ? alvo.nome : empresa);
   const codigoPrevia = codigoEtiqueta(sigla, proximosNumerosEtiqueta(ativas, 1)[0] || 1);
   const equipamentos = useMemo(() => grupos.flatMap((g) => g.equipamentos), [grupos]);
@@ -172,10 +178,13 @@ export function EtiquetasTab(props: Props) {
     if (passo !== "confirmar" || !produto || !local || dias == null) return;
     let vivo = true;
     const agora = new Date();
-    desenharEtiqueta(blocosValidade({
-      produto: produto.nome, metodo: metodoDoLocal, dias, manipulacao: agora, validade: validadeDe(agora, dias),
-      responsavel, lote: novoCodigoLote(agora), empresa: empresaLabel, cnpj: cnpjLabel, codigo: codigoPrevia, qr: "https://planejamento.app/e/previa",
-    }), bobina, largura).then((c) => { if (vivo) setPrevia({ chave: chavePrevia, url: c.toDataURL("image/png") }); });
+    const blocos = alvoEhVenda
+      ? blocosVenda({ produto: produto.nome, manipulacao: agora, validade: validadeDe(agora, dias) })
+      : blocosValidade({
+          produto: produto.nome, metodo: metodoDoLocal, dias, manipulacao: agora, validade: validadeDe(agora, dias),
+          responsavel, lote: novoCodigoLote(agora), empresa: empresaLabel, cnpj: cnpjLabel, codigo: codigoPrevia, qr: "https://planejamento.app/e/previa",
+        });
+    desenharEtiqueta(blocos, bobina, largura).then((c) => { if (vivo) setPrevia({ chave: chavePrevia, url: c.toDataURL("image/png") }); });
     return () => { vivo = false; };
   }, [passo, produto, local, dias, metodoDoLocal, responsavel, empresaLabel, cnpjLabel, bobina, largura, chavePrevia]);
 
@@ -210,6 +219,19 @@ export function EtiquetasTab(props: Props) {
     try {
       const agora = new Date();
       const validade = validadeDe(agora, dias);
+
+      // Venda externa: só produto + datas, sem empresa/CNPJ/responsável e NÃO
+      // rastreada (não cria registro, não entra no controle de validades).
+      if (alvoEhVenda) {
+        const canvases = await Promise.all(Array.from({ length: copias }, () =>
+          desenharEtiqueta(blocosVenda({ produto: produto.nome, manipulacao: agora, validade }), bobina, largura)));
+        const r = await imprimirEtiquetas(canvases, bobina, destino as Destino);
+        if (!r.ok) { setMsg({ ok: false, texto: r.erro || "Falha ao imprimir." }); return; }
+        setProduto(null); setCopias(1); setPasso("produto"); setBusca("");
+        setMsg({ ok: true, texto: `${copias > 1 ? `${copias} etiquetas` : "Etiqueta"} de venda de ${produto.nome}. Validade ${dataBR(validade)}.` });
+        return;
+      }
+
       const lote = novoCodigoLote(agora);
       const metodo = metodoLabel(local.metodoConservacao);
       // 1 registro por etiqueta física (mesmo lote, QR próprio): a baixa é pote a pote.
@@ -360,12 +382,16 @@ export function EtiquetasTab(props: Props) {
         {cabecalho("Etiqueta de qual restaurante?", "Define a empresa/CNPJ e os produtos")}
         {avisoMsg}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {opcoesAlvo.map((r) => (
+          {opcoesAlvo.map((r) => {
+            const ehVenda = r.id === VENDA_EXTERNA;
+            return (
             <button key={r.id} type="button" onClick={() => escolherRestaurante(r.id)}
-              className={`${btnQuadrado} bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100`}>
+              className={`${btnQuadrado} ${ehVenda ? "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-100" : "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100"}`}>
               <div className="text-xl font-bold leading-tight">{r.nome}</div>
+              {ehVenda && <div className="text-[11px] opacity-70 mt-0.5">sem empresa/CNPJ · não rastreada</div>}
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -466,7 +492,7 @@ export function EtiquetasTab(props: Props) {
         {modoProducao && alvo && (
           <div className="mb-4">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-1.5">Etiqueta para</div>
-            <div className="inline-flex items-center gap-2 h-10 px-3 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-sm font-semibold text-emerald-800 dark:text-emerald-300">{alvo.nome}</div>
+            <div className={`inline-flex items-center gap-2 h-10 px-3 rounded-xl border text-sm font-semibold ${alvoEhVenda ? "border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300" : "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300"}`}>{alvo.nome}{alvoEhVenda ? " · sem identificação" : ""}</div>
           </div>
         )}
 

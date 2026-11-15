@@ -84,6 +84,11 @@ export type ProdutoEtiqueta = {
   restaurantIds?: string[];
   empresasIds?: string[];
 };
+// "Restaurante" virtual pra etiqueta de venda externa (sem identificação de
+// empresa/responsável, não rastreada). Produtos podem ser vinculados a ele.
+export const VENDA_EXTERNA = "__venda_externa__";
+export const VENDA_EXTERNA_LABEL = "Venda externa";
+
 // Restaurantes a que um produto pertence (fallback: empresasIds antigo → restaurantId).
 export function ridsDoProduto(p: Pick<ProdutoEtiqueta, "restaurantIds" | "empresasIds" | "restaurantId">): string[] {
   return p.restaurantIds?.length ? p.restaurantIds : (p.empresasIds?.length ? p.empresasIds : (p.restaurantId ? [p.restaurantId] : []));
@@ -691,7 +696,7 @@ export function EstoqueValidadePage() {
       )}
 
       {localModal && <LocalModal local={localModal.local} locais={locaisVisiveis} config={config} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
-      {prodModal && <ProdutoModal key={prodModal.produto?.id || "novo"} produto={prodModal.produto} nomeInicial={prodModal.nomeInicial} localInicial={prodModal.localInicial} produtos={produtos} config={config} locais={locaisVisiveis} empresas={restaurantesVisiveis.map((r) => ({ id: r.id, nome: r.nome }))} modoProducao={!!maquina?.modoProducao} onClose={() => setProdModal(null)} onSalvar={salvarProduto}
+      {prodModal && <ProdutoModal key={prodModal.produto?.id || "novo"} produto={prodModal.produto} nomeInicial={prodModal.nomeInicial} localInicial={prodModal.localInicial} produtos={produtos} config={config} locais={locaisVisiveis} empresas={[...restaurantesVisiveis.map((r) => ({ id: r.id, nome: r.nome })), { id: VENDA_EXTERNA, nome: VENDA_EXTERNA_LABEL }]} modoProducao={!!maquina?.modoProducao} onClose={() => setProdModal(null)} onSalvar={salvarProduto}
         onUsarExistente={(p) => setProdModal({ produto: p, localInicial: prodModal.localInicial })} />}
       {vinculosLocal && <VinculosModal local={vinculosLocal} locais={locaisVisiveis} produtos={produtos} metodoLabel={config.metodos.find((m) => m.id === vinculosLocal.metodoConservacao)?.label || ""}
         onClose={() => setVinculosLocal(null)} onNovoProduto={(nome) => { setProdModal({ produto: null, nomeInicial: nome, localInicial: vinculosLocal.id }); setVinculosLocal(null); }} />}

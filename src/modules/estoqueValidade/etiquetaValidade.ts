@@ -28,6 +28,18 @@ export type DadosEtiquetaValidade = {
   lote: string; empresa: string; cnpj?: string | null; qr: string; codigo?: string | null;
 };
 
+/** Etiqueta de VENDA EXTERNA: só produto + datas (produção/validade). Sem
+ *  empresa/CNPJ, sem responsável, sem lote/QR, sem código. Não é rastreada. */
+export function blocosVenda(d: { produto: string; manipulacao: Date; validade: Date }): BlocoEtiqueta[] {
+  return [
+    { tipo: "titulo", texto: d.produto },
+    { tipo: "colunas", colunas: [
+      { rotulo: "Validade", valor: diaMes(d.validade), sub: `${diaSemana(d.validade)} · ${d.validade.getFullYear()}`, destaque: true },
+      { rotulo: "Produção", valor: diaMes(d.manipulacao), sub: `${d.manipulacao.getFullYear()}` },
+    ] },
+  ];
+}
+
 /** Campos da RDC 216 (produto, manipulação, validade, responsável) + lote e QR. */
 export function blocosValidade(d: DadosEtiquetaValidade): BlocoEtiqueta[] {
   return [
