@@ -60,6 +60,7 @@ import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { EtiquetasTab } from "./EtiquetasTab";
 import { BaixaEtiquetaModal, ResumoEtiquetas } from "./EtiquetasEmitidas";
 import { ScannerModal } from "./ScannerModal";
+import { EtiquetaLivreScreen } from "./EtiquetaLivre";
 import { buscarPorToken, tokenDoQr, etiquetaPorNumero, diasAteValidade, hojeSP, type EtiquetaEmitida } from "./etiquetasRepo";
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
@@ -236,7 +237,7 @@ export function EstoqueValidadePage() {
   const podeOperar = can("estoqueValidade", "operar") || can("estoqueValidade", "editar");
   const podeEditar = can("estoqueValidade", "editar");
 
-  const [aba, setAba] = useTabPersistida<"home" | "painel" | "etiquetas" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
+  const [aba, setAba] = useTabPersistida<"home" | "painel" | "etiquetas" | "baixa" | "entrada" | "cadastro" | "livre">("estoqueValidade", "painel");
   const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases" | "maquinas">("locais");
   // No app do caixa (kiosk), a navegação vira um MENU (como o Comandas) e abre
   // direto nas Etiquetas (emitir/dar baixa), em vez da barra de abas do admin.
@@ -343,10 +344,10 @@ export function EstoqueValidadePage() {
   // em modo produção = o rid + todos os restaurantes-alvo (dados de cada um).
   const ridsParaCarregar = useMemo(() => {
     if (!rid) return [] as string[];
-    if (naMaquininha && maquina?.modoProducao && maquina.restaurantesAlvo?.length) {
-      return Array.from(new Set([rid, ...maquina.restaurantesAlvo]));
-    }
-    return [rid];
+    const base = (naMaquininha && maquina?.modoProducao && maquina.restaurantesAlvo?.length)
+      ? [rid, ...maquina.restaurantesAlvo] : [rid];
+    // Inclui "venda externa" pra carregar os produtos marcados só pra ela.
+    return Array.from(new Set([...base, VENDA_EXTERNA]));
   }, [rid, naMaquininha, maquina]);
   const ridsKey = ridsParaCarregar.join(",");
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
@@ -558,7 +559,7 @@ export function EstoqueValidadePage() {
     return <OperadorLock operadores={maquina!.operadores!} onAcessar={acessarOperador} restauranteNome={restaurante?.nome} />;
   }
 
-  const ABAS = [["painel", "Painel", BarChart3], ["etiquetas", "Etiquetas", Printer], ["baixa", "Baixa", PackageMinus], ["entrada", "Entrada", PackagePlus], ["cadastro", "Cadastro", FolderOpen]] as const;
+  const ABAS = [["painel", "Painel", BarChart3], ["etiquetas", "Etiquetas", Printer], ["baixa", "Baixa", PackageMinus], ["entrada", "Entrada", PackagePlus], ["cadastro", "Cadastro", FolderOpen], ["livre", "Etiqueta livre", Tag]] as const;
 
   return (
     <PageContainer>
@@ -649,9 +650,11 @@ export function EstoqueValidadePage() {
             <button type="button" onClick={() => setAba("etiquetas")} className="h-24 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={28} /><span className="text-lg font-semibold">Emitir etiqueta</span></button>
             <button type="button" onClick={() => setAba("baixa")} className="h-24 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><PackageMinus size={28} /><span className="text-lg font-semibold">Dar baixa</span></button>
             <button type="button" onClick={() => setAba("cadastro")} className="h-24 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><FolderOpen size={28} /><span className="text-lg font-semibold">Cadastro</span></button>
+            <button type="button" onClick={() => setAba("livre")} className="h-16 rounded-2xl bg-slate-600 text-white flex items-center justify-center gap-2 active:scale-[.98] shadow-sm"><Tag size={20} /><span className="font-semibold">Etiqueta livre</span></button>
           </div>
         </div>
       )}
+      {aba === "livre" && <EtiquetaLivreScreen rids={ridsParaCarregar.filter((r) => r !== VENDA_EXTERNA)} podeEditar={podeEditar} naMaquininha={naMaquininha} onSair={() => setAba(naMaquininha ? "home" : "cadastro")} />}
       {aba === "painel" && (naMaquininha
         ? <PainelMaquininha etiquetas={etiquetasVisiveis} usuario={{ uid: respUid, nome: respNome }} />
         : <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} etiquetas={etiquetasAtivas} onAbrirEtiquetas={() => { try { localStorage.setItem("etiq_visao", "emitidas"); } catch { /* sem storage */ } setAba("etiquetas"); }} />)}

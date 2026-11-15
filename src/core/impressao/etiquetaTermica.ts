@@ -160,3 +160,81 @@ export async function desenharEtiqueta(blocos: BlocoEtiqueta[], bobina: Bobina =
 export function canvasParaBase64(canvas: HTMLCanvasElement): string {
   return canvas.toDataURL("image/png").split(",")[1] || "";
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+//  ETIQUETA LIVRE — montada no editor (texto em vários tamanhos, logo, fios).
+//  Sem rastreio: é só desenho + impressão. A altura CRESCE conforme o conteúdo
+//  (não fica presa à altura da bobina), com um mínimo igual à bobina.
+// ════════════════════════════════════════════════════════════════════════════
+export type ElementoLivre =
+  | { tipo: "texto"; texto: string; tam: "p" | "m" | "g" | "gg"; negrito?: boolean; centro?: boolean }
+  | { tipo: "logo"; url: string; alturaMm?: number; centro?: boolean }
+  | { tipo: "fio" }
+  | { tipo: "espaco"; mm?: number };
+
+const TAM_PX: Record<"p" | "m" | "g" | "gg", number> = { p: 18, m: 24, g: 32, gg: 44 };
+
+/** Desenha uma etiqueta livre; altura cresce com o conteúdo. */
+export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: Bobina = BOBINA_PADRAO, largura: number = LARGURA_UTIL_PX): Promise<HTMLCanvasElement> {
+  const W = largura;
+  // Pré-carrega as imagens (precisa pra medir a altura total antes de desenhar).
+  const imgs = new Map<string, HTMLImageElement>();
+  for (const e of elementos) {
+    if (e.tipo === "logo" && e.url && !imgs.has(e.url)) {
+      try { imgs.set(e.url, await carregarImagem(e.url)); } catch { /* ignora logo quebrada */ }
+    }
+  }
+  // Medir com um contexto temporário.
+  const medir = document.createElement("canvas").getContext("2d")! as Ctx;
+  const setFonte = (ctx: Ctx, px: number, peso: 400 | 600 | 700 | 800) => { ctx.font = `${peso} ${px}px ${FONTE}`; };
+  const alturaDe = (ctx: Ctx): number => {
+    let h = 18;
+    for (const e of elementos) {
+      if (e.tipo === "texto") {
+        const px = TAM_PX[e.tam];
+        setFonte(ctx, px, e.negrito ? 800 : 600);
+        const linhas = (e.texto || " ").split("\n").flatMap((t) => quebrar(ctx, t || " ", W));
+        h += linhas.length * (px + 6);
+      } else if (e.tipo === "logo") {
+        const img = imgs.get(e.url);
+        const altPx = Math.round((e.alturaMm ?? 12) * PONTOS_POR_MM);
+        if (img) h += altPx + 8; else h += 4;
+      } else if (e.tipo === "fio") h += FIO + 14;
+      else if (e.tipo === "espaco") h += Math.round((e.mm ?? 3) * PONTOS_POR_MM);
+    }
+    return h + 16;
+  };
+  const Hmin = Math.round(bobina.alturaMm * PONTOS_POR_MM) - 2 * MARGEM_Y;
+  const H = Math.max(Hmin, alturaDe(medir));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d")! as Ctx;
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#000"; ctx.textBaseline = "top";
+  const fio = (yy: number) => ctx.fillRect(0, yy, W, FIO);
+  let y = 18;
+  for (const e of elementos) {
+    if (e.tipo === "texto") {
+      const px = TAM_PX[e.tam];
+      setFonte(ctx, px, e.negrito ? 800 : 600);
+      const linhas = (e.texto || " ").split("\n").flatMap((t) => quebrar(ctx, t || " ", W));
+      for (const l of linhas) {
+        const x = e.centro ? Math.max(0, (W - ctx.measureText(l).width) / 2) : 0;
+        ctx.fillText(l, x, y); y += px + 6;
+      }
+    } else if (e.tipo === "logo") {
+      const img = imgs.get(e.url);
+      if (img) {
+        const altPx = Math.round((e.alturaMm ?? 12) * PONTOS_POR_MM);
+        const larPx = Math.min(W, Math.round((img.width / img.height) * altPx));
+        const x = e.centro ? Math.max(0, (W - larPx) / 2) : 0;
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(img, x, y, larPx, altPx);
+        y += altPx + 8;
+      }
+    } else if (e.tipo === "fio") { fio(y + 6); y += FIO + 14; }
+    else if (e.tipo === "espaco") y += Math.round((e.mm ?? 3) * PONTOS_POR_MM);
+  }
+  return canvas;
+}

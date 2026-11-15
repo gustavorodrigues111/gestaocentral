@@ -325,6 +325,8 @@ service cloud.firestore {
     match /etiquetaFila/{id}        { allow read, write: if authed(); }
     match /entradasPendentes/{id}   { allow read, write: if authed(); }
     match /estoqueConfig/{id}        { allow read, write: if authed(); }
+    match /etiquetaLivreTemplates/{id} { allow read, write: if authed(); }
+    match /etiquetaLivreLogos/{id}    { allow read, write: if authed(); }
     match /fechamentoConfig/{id}     { allow read, write: if authed(); }
     match /fechamentoMes/{id}        { allow read, write: if authed(); }
     match /lotesPrevisao/{id}        { allow read, write: if authed(); }
