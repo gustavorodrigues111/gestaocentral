@@ -65,7 +65,7 @@ import { buscarPorToken, tokenDoQr, etiquetaPorNumero, diasAteValidade, hojeSP, 
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
-import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, imprimirSeqTeste } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, imprimirSeqTeste, imprimirTsplTeste } from "../../core/impressao/impressora";
 import { desenharEtiqueta, desenharEtiquetaLivre, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
@@ -1076,8 +1076,8 @@ function TesteImpressaoSeq() {
         { tipo: "texto", texto: `SEQ ${seq}`, tam: 44, negrito: true, align: "c" },
         { tipo: "texto", texto: "teste de alinhamento", tam: 20, align: "c" },
       ], bobina, larguraPx(bobina, noAppSunmi()), "center");
-      const r = await imprimirSeqTeste(canvas, seq);
-      setMsg(r.ok ? `Seq ${seq} enviada — veja qual saiu certa.` : (r.erro || "Falhou."));
+      const r = seq === 15 ? await imprimirTsplTeste(canvas, bobina) : await imprimirSeqTeste(canvas, seq);
+      setMsg(r.ok ? `${seq === 15 ? "TSPL" : `Seq ${seq}`} enviada — veja o que saiu.` : (r.erro || "Falhou."));
     } finally { setOcupado(null); }
   };
   return (
@@ -1089,7 +1089,8 @@ function TesteImpressaoSeq() {
           <div className="grid grid-cols-4 gap-2">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].map((n) => <button key={n} type="button" disabled={ocupado != null} onClick={() => void imprimir(n)} className={`h-11 rounded-lg text-sm font-semibold disabled:opacity-50 ${n >= 13 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" : n >= 7 ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300" : "bg-gray-100 dark:bg-gray-800"}`}>{ocupado === n ? "…" : `Seq ${n}`}</button>)}
           </div>
-          <p className="text-[11px] text-gray-400"><b>13 e 14 (verdes)</b> drenam a fila por ciclos completos — última tentativa de software.</p>
+          <button type="button" disabled={ocupado != null} onClick={() => void imprimir(15)} className="w-full h-12 rounded-lg bg-purple-600 text-white font-semibold disabled:opacity-50">{ocupado === 15 ? "…" : "TSPL (comando bruto)"}</button>
+          <p className="text-[11px] text-gray-400">O <b>TSPL (roxo)</b> pula o buffer do SDK. Pode não funcionar (Sunmi às vezes é só ESC/POS) — se sair <b>certa na hora</b>, achamos; se sair <b>em branco/lixo</b>, a impressora não aceita TSPL.</p>
           {msg && <div className="text-[11px] text-gray-500">{msg}</div>}
         </div>
       )}

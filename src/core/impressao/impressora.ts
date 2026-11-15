@@ -16,6 +16,7 @@ type SunmiBridge = {
   status: () => string;                                     // {"conectada":bool,"estado":n,"modo":n,"modelo":"..."}
   imprimirEtiqueta: (id: string, pngBase64: string, copias: number) => void;
   imprimirSeq?: (id: string, pngBase64: string, seq: number) => void;   // diagnóstico (0.2.16+)
+  imprimirTspl?: (id: string, pngBase64: string, larguraMm: number, alturaMm: number, gapMm: number) => void;   // TSPL bruto (0.2.22+)
   lerQr: (id: string) => void;
   verificarAtualizacao?: () => void;                        // checa/instala nova versão do app (só no app antigo pode faltar)
 };
@@ -144,6 +145,14 @@ export async function imprimirSeqTeste(canvas: HTMLCanvasElement, seq: number): 
   if (!window.SunmiBridge?.imprimirSeq) return { ok: false, via: "sunmi", erro: "Atualize o app da maquininha (0.2.16+)." };
   const png = canvasParaBase64(canvas);
   const r = await chamar((id) => window.SunmiBridge!.imprimirSeq!(id, png, seq), 20000);
+  return { ok: r.ok, via: "sunmi", erro: r.erro };
+}
+
+/** Diagnóstico: imprime via TSPL bruto (pula o buffer do SDK). */
+export async function imprimirTsplTeste(canvas: HTMLCanvasElement, bobina: Bobina, gapMm = 2): Promise<ResultadoImpressao> {
+  if (!window.SunmiBridge?.imprimirTspl) return { ok: false, via: "sunmi", erro: "Atualize o app da maquininha (0.2.22+)." };
+  const png = canvasParaBase64(canvas);
+  const r = await chamar((id) => window.SunmiBridge!.imprimirTspl!(id, png, Math.round(bobina.larguraMm), Math.round(bobina.alturaMm), gapMm), 20000);
   return { ok: r.ok, via: "sunmi", erro: r.erro };
 }
 

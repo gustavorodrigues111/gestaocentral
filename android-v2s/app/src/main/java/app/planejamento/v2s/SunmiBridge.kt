@@ -152,6 +152,48 @@ class SunmiBridge(
         } catch (e: Exception) { falha(id, "Erro: ${e.message}") }
     }
 
+    // TSPL bruto via sendRAWData: pula o buffer do SDK (que imprime o job
+    // anterior). Converte o bitmap pra 1bpp e manda SIZE/GAP/BITMAP/PRINT.
+    @JavascriptInterface
+    fun imprimirTspl(id: String, pngBase64: String, larguraMm: Int, alturaMm: Int, gapMm: Int) {
+        val p = impressora
+        if (p == null) { falha(id, erroConexao ?: "Impressora interna não conectada."); return }
+        val bmp: Bitmap = try {
+            val bytes = Base64.decode(pngBase64, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: run { falha(id, "Imagem inválida."); return }
+        } catch (e: Exception) { falha(id, "Imagem inválida: ${e.message}"); return }
+        try {
+            val w = bmp.width; val h = bmp.height
+            val wb = (w + 7) / 8
+            val data = ByteArray(wb * h)
+            for (y in 0 until h) {
+                for (xb in 0 until wb) {
+                    var b = 0
+                    for (bit in 0 until 8) {
+                        val x = xb * 8 + bit
+                        // bit 1 = branco (não imprime); 0 = preto (imprime)
+                        val branco = if (x < w) {
+                            val px = bmp.getPixel(x, y)
+                            val lum = (0.299 * ((px shr 16) and 0xFF) + 0.587 * ((px shr 8) and 0xFF) + 0.114 * (px and 0xFF))
+                            lum > 128
+                        } else true
+                        if (branco) b = b or (0x80 shr bit)
+                    }
+                    data[y * wb + xb] = b.toByte()
+                }
+            }
+            val header = "SIZE $larguraMm mm,$alturaMm mm\r\nGAP $gapMm mm,0 mm\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nCLS\r\nBITMAP 0,0,$wb,$h,0,".toByteArray(Charsets.US_ASCII)
+            val footer = "\r\nPRINT 1,1\r\n".toByteArray(Charsets.US_ASCII)
+            val out = header + data + footer
+            p.sendRAWData(out, object : InnerResultCallback() {
+                override fun onRunResult(isSuccess: Boolean) { if (isSuccess) ok(id) else falha(id, "RAW falhou") }
+                override fun onReturnString(result: String?) { }
+                override fun onRaiseException(code: Int, msg: String?) { falha(id, "Erro $code: ${msg ?: ""}") }
+                override fun onPrintResult(code: Int, msg: String?) { }
+            })
+        } catch (e: Exception) { falha(id, "Erro TSPL: ${e.message}") }
+    }
+
     @JavascriptInterface
     fun lerQr(id: String) = abrirLeitor(id)
 
