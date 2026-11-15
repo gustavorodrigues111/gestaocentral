@@ -65,7 +65,7 @@ import { buscarPorToken, tokenDoQr, etiquetaPorNumero, diasAteValidade, hojeSP, 
 import { VinculosModal } from "./VinculosModal";
 import { mesmoNome, parecidos } from "./similaridade";
 import { METODO_POR_TIPO, agruparPorAmbiente, compativel, ehAmbiente, limparVinculos, nomeCompleto } from "./compatibilidade";
-import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, avancarEtiqueta, passoEtiquetaMm, salvarPassoEtiquetaMm } from "../../core/impressao/impressora";
+import { noAppSunmi, lerQrNativo, imprimirEtiqueta, armarTeclaScan, armarCodigoScan, verificarAtualizacaoApp, avancarEtiqueta, avancoEtiquetaLinhas, salvarAvancoEtiquetaLinhas } from "../../core/impressao/impressora";
 import { desenharEtiqueta, desenharEtiquetaLivre, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
@@ -1071,18 +1071,18 @@ function TesteImpressaoSeq() {
     let bid = "58x40"; try { bid = localStorage.getItem("etiq_bobina") || "58x40"; } catch { /* */ }
     return BOBINAS_DIM[bid] || BOBINAS_DIM["58x40"];
   };
-  const [passo, setPasso] = useState(() => passoEtiquetaMm(bobinaAtual()));
-  const salvar = (v: number) => { setPasso(v); if (v > 0) salvarPassoEtiquetaMm(v); };
+  const [avanco, setAvanco] = useState(() => avancoEtiquetaLinhas());
+  const salvar = (v: number) => { const n = Math.max(0, Math.round(v)); setAvanco(n); salvarAvancoEtiquetaLinhas(n); };
   const testar = async () => {
     setOcupado(5); setMsg("");
     try {
       const bobina = bobinaAtual();
       const canvas = await desenharEtiquetaLivre([
         { tipo: "texto", texto: "ALINHAMENTO", tam: 34, negrito: true, align: "c" },
-        { tipo: "texto", texto: `passo ${passo} mm`, tam: 20, align: "c" },
+        { tipo: "texto", texto: `avanço ${avanco}`, tam: 20, align: "c" },
       ], bobina, larguraPx(bobina, noAppSunmi()), "center");
       const r = await imprimirEtiqueta(canvas, 1, bobina);
-      setMsg(r.ok ? "Enviada. Tem que sair pronta pra destacar na serrilha." : (r.erro || "Falhou."));
+      setMsg(r.ok ? "Enviada. Tem que sair pronta pra destacar." : (r.erro || "Falhou."));
     } finally { setOcupado(null); }
   };
   return (
@@ -1090,14 +1090,14 @@ function TesteImpressaoSeq() {
       <button type="button" onClick={() => setAberto((v) => !v)} className="text-[11px] text-gray-400 underline">Calibrar avanço da etiqueta</button>
       {aberto && (
         <div className="mt-2 space-y-2 text-left">
-          <p className="text-[11px] text-gray-500">Imprima 1 de teste. Ela tem que <b>sair pronta pra destacar</b> na serrilha. Se ficar <b>presa dentro</b>, aumente o avanço; se avançar <b>demais</b> (desperdiça rótulo), diminua. Em lote longo, avanço menor alinha melhor mas a última fica dentro (use o ejetar).</p>
+          <p className="text-[11px] text-gray-500">Rolo <b>contínuo</b>: imprima 1 de teste. Ela tem que <b>sair pronta pra destacar</b>. Se ficar <b>presa dentro</b>, aumente o avanço; se <b>sobrar papel demais</b>, diminua.</p>
           <div className="flex items-center gap-2">
-            <label className="text-[11px] text-gray-500 flex-1">Avanço por etiqueta (mm)</label>
-            <button type="button" onClick={() => salvar(Math.max(10, Math.round((passo - 0.5) * 10) / 10))} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">−</button>
-            <input type="number" step="0.5" value={passo} onChange={(e) => salvar(parseFloat(e.target.value) || passo)} className="w-20 h-10 px-2 text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
-            <button type="button" onClick={() => salvar(Math.round((passo + 0.5) * 10) / 10)} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">+</button>
+            <label className="text-[11px] text-gray-500 flex-1">Avanço no final (toques)</label>
+            <button type="button" onClick={() => salvar(avanco - 1)} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">−</button>
+            <input type="number" step="1" value={avanco} onChange={(e) => salvar(parseInt(e.target.value, 10) || 0)} className="w-20 h-10 px-2 text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+            <button type="button" onClick={() => salvar(avanco + 1)} className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-gray-800 text-lg font-bold">+</button>
           </div>
-          <button type="button" disabled={ocupado != null} onClick={() => void testar()} className="w-full h-12 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-50">{ocupado === 5 ? "…" : "Imprimir 5 de teste"}</button>
+          <button type="button" disabled={ocupado != null} onClick={() => void testar()} className="w-full h-12 rounded-lg bg-emerald-600 text-white font-semibold disabled:opacity-50">{ocupado === 5 ? "…" : "Imprimir 1 de teste"}</button>
           <button type="button" disabled={ocupado != null} onClick={async () => { setOcupado(99); setMsg(""); try { const r = await avancarEtiqueta(); setMsg(r.ok ? "Avançou uma etiqueta." : (r.erro || "Falhou.")); } finally { setOcupado(null); } }} className="w-full h-11 rounded-lg bg-slate-700 text-white font-semibold disabled:opacity-50">{ocupado === 99 ? "…" : "⏏ Avançar/ejetar etiqueta (solta a presa)"}</button>
           {msg && <div className="text-[11px] text-gray-500">{msg}</div>}
         </div>

@@ -8,13 +8,13 @@
 //     diálogo de impressão do navegador
 //  Futuro: ponte TSPL da estação (LP01/Elgin), já prevista na Produção SISP.
 // ════════════════════════════════════════════════════════════════════════════
-import { canvasParaBase64, enveloparComPasso, PONTOS_POR_MM, type Bobina, BOBINA_PADRAO } from "./etiquetaTermica";
+import { canvasParaBase64, type Bobina, BOBINA_PADRAO } from "./etiquetaTermica";
 
 // Interface exposta pelo app Android (MainActivity → @JavascriptInterface).
 // Métodos síncronos devolvem JSON; impressão e leitura respondem por callback.
 type SunmiBridge = {
   status: () => string;                                     // {"conectada":bool,"estado":n,"modo":n,"modelo":"..."}
-  imprimirEtiqueta: (id: string, pngBase64: string, copias: number) => void;
+  imprimirEtiqueta: (id: string, pngBase64: string, copias: number, avancoLinhas?: number) => void;
   imprimirSeq?: (id: string, pngBase64: string, seq: number) => void;   // diagnóstico (0.2.16+)
   imprimirTspl?: (id: string, pngBase64: string, larguraMm: number, alturaMm: number, gapMm: number) => void;   // TSPL bruto (0.2.22+)
   avancarEtiqueta?: (id: string) => void;   // ejeta a etiqueta presa na câmara (0.2.23+)
@@ -133,19 +133,16 @@ export function destinosDisponiveis(): Destino[] {
   return ["navegador"];
 }
 
-// Avanço por etiqueta na maquininha (mm): o quanto o papel anda por etiqueta.
-// Precisa ser MAIOR que o rótulo pra empurrar a etiqueta impressa até a serrilha
-// (sair pronta pra destacar). Nessa maquininha, em modo recibo (sem o recuo do
-// sensor de gap, que imprimia a ANTERIOR), esse avanço extra é o que faz a
-// etiqueta sair — e também o que, em lotes longos, escorrega um pouco. Calibrável:
-// menor = alinha melhor mas a última fica dentro (use o ejetar); maior = sai
-// sempre pronta pra destacar. Padrão: altura + ~10 mm (chega na serrilha).
-const CHAVE_PASSO = "etiq_passo_mm";
-export function passoEtiquetaMm(bobina: Bobina = BOBINA_PADRAO): number {
-  try { const v = parseFloat(localStorage.getItem(CHAVE_PASSO) || ""); if (v > 0) return v; } catch { /* sem storage */ }
-  return bobina.alturaMm + 10;   // padrão: altura + ~10 mm pra alcançar a serrilha
+// Avanço no final de cada etiqueta, em "toques" (linhas do lineWrap). Com rolo
+// CONTÍNUO (sem gap) é só o quanto de bobina sobra no fim pra destacar — maior =
+// mais papel avança. Sem gap não há recuo nem deriva. Ajustável no calibrador.
+// Padrão 3 (= comportamento do "seq 17" que saía certo).
+const CHAVE_AVANCO = "etiq_avanco_linhas";
+export function avancoEtiquetaLinhas(): number {
+  try { const v = parseInt(localStorage.getItem(CHAVE_AVANCO) || "", 10); if (v >= 0) return v; } catch { /* sem storage */ }
+  return 3;
 }
-export function salvarPassoEtiquetaMm(mm: number) { try { localStorage.setItem(CHAVE_PASSO, String(mm)); } catch { /* sem storage */ } }
+export function salvarAvancoEtiquetaLinhas(n: number) { try { localStorage.setItem(CHAVE_AVANCO, String(Math.max(0, Math.round(n)))); } catch { /* sem storage */ } }
 
 const CHAVE_DESTINO = "etiq_destino";
 export function destinoSalvo(): Destino {
@@ -189,12 +186,12 @@ export async function imprimirEtiquetas(canvases: HTMLCanvasElement[], bobina: B
   if (!canvases.length) return { ok: true, via: destino };
   if (destino === "sunmi") {
     if (!window.SunmiBridge) return { ok: false, via: "sunmi", erro: "Maquininha não detectada. Abra pelo app da maquininha." };
-    // Envelopa cada etiqueta na altura exata do passo (rótulo + gap): o printBitmap
-    // anda um passo certinho e o desenho não escorrega pra próxima etiqueta.
-    const passoDots = Math.round(passoEtiquetaMm(bobina) * PONTOS_POR_MM);
+    // Rolo contínuo: imprime o bitmap e avança `av` toques no fim (lineWrap) pra
+    // sobrar bobina e destacar — sem gap, sem recuo, sem deriva ("seq 17").
+    const av = avancoEtiquetaLinhas();
     for (let i = 0; i < canvases.length; i++) {
-      const png = canvasParaBase64(enveloparComPasso(canvases[i], passoDots));
-      const r = await chamar((id) => window.SunmiBridge!.imprimirEtiqueta(id, png, 1), 20000);
+      const png = canvasParaBase64(canvases[i]);
+      const r = await chamar((id) => window.SunmiBridge!.imprimirEtiqueta(id, png, 1, av), 20000);
       if (!r.ok) return { ok: false, via: "sunmi", erro: `Etiqueta ${i + 1} de ${canvases.length}: ${r.erro || "falhou"}` };
     }
     return { ok: true, via: "sunmi" };

@@ -62,8 +62,12 @@ class SunmiBridge(
         return j.toString()
     }
 
+    // Compat: versão antiga de 3 args usa um avanço padrão.
     @JavascriptInterface
-    fun imprimirEtiqueta(id: String, pngBase64: String, copias: Int) {
+    fun imprimirEtiqueta(id: String, pngBase64: String, copias: Int) = imprimirEtiqueta(id, pngBase64, copias, 3)
+
+    @JavascriptInterface
+    fun imprimirEtiqueta(id: String, pngBase64: String, copias: Int, avancoLinhas: Int) {
         val p = impressora
         if (p == null) { falha(id, erroConexao ?: "Impressora interna não conectada."); return }
         val bmp: Bitmap = try {
@@ -72,15 +76,16 @@ class SunmiBridge(
         } catch (e: Exception) { falha(id, "Imagem da etiqueta inválida: ${e.message}"); return }
 
         try {
-            // MODO RECIBO (contínuo), SEM labelLocate/labelOutput — que, em modo
-            // rótulo, faziam o recuo (Velocidade de reversão) e saía a etiqueta
-            // ANTERIOR. O avanço por etiqueta NÃO é mais um lineWrap em "linhas"
-            // (medida solta que descasava do passo e ia escorregando): o bitmap já
-            // vem com a altura exata do passo (rótulo + gap, envelopado no lado web),
-            // então cada printBitmap anda exatamente uma etiqueta.
+            // MODO RECIBO (contínuo), SEM labelLocate/labelOutput — que, em rolo
+            // picotado, faziam o recuo (Velocidade de reversão) e saía a etiqueta
+            // ANTERIOR. Com rolo CONTÍNUO não há gap: imprime o bitmap e avança
+            // `avancoLinhas` (lineWrap) pra sobrar bobina e destacar na serrilha.
+            // É o comportamento do "seq 17", com o avanço ajustável pelo site.
+            val av = avancoLinhas.coerceIn(0, 30)
             p.enterPrinterBuffer(true)
             repeat(copias.coerceIn(1, 50)) {
                 p.printBitmap(bmp, null)
+                if (av > 0) p.lineWrap(av, null)
             }
             p.exitPrinterBufferWithCallback(true, object : InnerResultCallback() {
                 override fun onRunResult(isSuccess: Boolean) { }
