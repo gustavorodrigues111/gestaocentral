@@ -9,7 +9,7 @@
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw, Home, ChevronRight, ChevronDown, Smartphone, User, LogOut } from "lucide-react";
+import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand, Menu, RefreshCw, Home, ChevronRight, Smartphone, User, LogOut } from "lucide-react";
 import { isComandasKioskHost, isEtiquetasKioskHost } from "../../core/restaurant/subdomain";
 import { APP_VERSION_LABEL } from "../../core/version";
 import { destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
@@ -325,9 +325,8 @@ export function EstoqueValidadePage() {
   const [operadorId, setOperadorId] = useState<string>(() => { try { return localStorage.getItem("etiq_operador") || ""; } catch { return ""; } });
   const operadorAtivo = maquina?.operadores?.find((o) => o.id === operadorId) || null;
   const temOperadores = !!(maquina?.operadores && maquina.operadores.length);
-  const [operadorMenu, setOperadorMenu] = useState(false);
   const acessarOperador = (id: string) => { try { localStorage.setItem("etiq_operador", id); } catch { /* sem storage */ } setOperadorId(id); };
-  const sairOperador = () => { try { localStorage.removeItem("etiq_operador"); } catch { /* sem storage */ } setOperadorId(""); setOperadorMenu(false); };
+  const sairOperador = () => { try { localStorage.removeItem("etiq_operador"); } catch { /* sem storage */ } setOperadorId(""); };
   const respNome = operadorAtivo ? operadorAtivo.nome : (me?.nome || "");
   const respUid = operadorAtivo ? operadorAtivo.id : (me?.id || null);
   // Na maquininha, limita a troca de restaurante aos restaurantes da máquina
@@ -574,28 +573,13 @@ export function EstoqueValidadePage() {
     <PageContainer>
       {naMaquininha ? (
         aba === "home" ? (
-          <div className="relative flex items-center justify-between gap-2 mb-4">
-            <Tag size={24} className="text-indigo-500 shrink-0" />
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="h-10 min-w-0 px-1 text-sm font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center truncate" title={maquina?.nome || restaurante?.nome || ""}>{maquina?.nome || restaurante?.nome || "Etiquetas"}</span>
-              {operadorAtivo && (
-                <button type="button" onClick={() => setOperadorMenu((v) => !v)}
-                  className="h-10 shrink-0 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-sm font-medium text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5 active:scale-95">
-                  <User size={15} className="shrink-0 text-gray-400" /><span className="truncate max-w-[72px]">{operadorAtivo.nome.split(" ")[0]}</span><ChevronDown size={14} className="shrink-0 text-gray-400" />
-                </button>
-              )}
-            </div>
-            {operadorMenu && operadorAtivo && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setOperadorMenu(false)} />
-                <div className="absolute right-0 top-14 z-50 w-48 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
-                  <div className="px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{operadorAtivo.nome}</div>
-                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
-                  <button type="button" onClick={sairOperador} className="w-full text-left px-3 py-2 text-sm text-rose-600 dark:text-rose-400 inline-flex items-center gap-2"><LogOut size={15} /> Sair</button>
-                </div>
-              </>
-            )}
-          </div>
+          operadorAtivo ? (
+            // Nome do usuário em largura total: tocar = sair direto pro seletor.
+            <button type="button" onClick={sairOperador} title="Trocar/sair de usuário"
+              className="w-full mb-4 max-w-md mx-auto h-11 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 font-semibold inline-flex items-center justify-center gap-2 active:scale-[.99]">
+              <User size={17} className="text-gray-400" /> <span className="truncate max-w-[200px]">{operadorAtivo.nome}</span> <LogOut size={15} className="text-gray-400 ml-0.5" />
+            </button>
+          ) : <div className="mb-1" />
         ) : (
           <button type="button" onClick={() => setAba("home")}
             className="w-full mb-3 h-12 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 text-sky-800 dark:text-sky-200 font-semibold inline-flex items-center justify-center gap-2 active:scale-[.99]"><Home size={18} /> Retornar ao início</button>
@@ -651,7 +635,7 @@ export function EstoqueValidadePage() {
           <div className="grid grid-cols-4 gap-2">
             {([
               ["vencida", "Vencidas", homeResumo.vencidas, "bg-rose-600"],
-              ["hoje", "Vencem hoje", homeResumo.hoje, "bg-amber-500"],
+              ["hoje", "Hoje", homeResumo.hoje, "bg-amber-500"],
               ["amanha", "Amanhã", homeResumo.amanha, "bg-orange-500"],
               ["todas", "Ativas", homeResumo.ativas, "bg-emerald-600"],
             ] as [typeof painelFiltro, string, number, string][]).map(([k, l, c, bg]) => (
@@ -667,6 +651,11 @@ export function EstoqueValidadePage() {
             <button type="button" onClick={() => setAba("baixa")} className="h-24 rounded-2xl bg-rose-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><PackageMinus size={28} /><span className="text-lg font-semibold">Dar baixa</span></button>
             <button type="button" onClick={() => setAba("cadastro")} className="h-24 rounded-2xl bg-amber-500 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><FolderOpen size={28} /><span className="text-lg font-semibold">Cadastro</span></button>
             <button type="button" onClick={() => setAba("livre")} className="h-24 rounded-2xl bg-slate-600 text-white flex flex-col items-center justify-center gap-1.5 active:scale-[.98] shadow-sm"><Tag size={28} /><span className="text-lg font-semibold">Etiqueta livre</span></button>
+          </div>
+          {/* Nome da maquininha no rodapé, pequeno e centralizado. */}
+          <div className="pt-1 flex items-center justify-center gap-1.5 text-gray-400">
+            <Tag size={13} className="text-indigo-400" />
+            <span className="text-[11px] font-medium truncate max-w-[220px]">{maquina?.nome || restaurante?.nome || "Etiquetas"}</span>
           </div>
         </div>
       )}
@@ -975,7 +964,7 @@ function PainelMaquininha({ etiquetas, usuario, filtroInicial = "todas" }: { eti
   const lista = comDias.filter(({ d }) => filtro === "todas" ? true : filtro === "vencida" ? d < 0 : filtro === "hoje" ? d === 0 : d === 1);
   const tiles: [typeof filtro, string, number, string][] = [
     ["vencida", "Vencidas", n.vencida, "text-rose-600 dark:text-rose-400"],
-    ["hoje", "Vencem hoje", n.hojeN, "text-amber-600 dark:text-amber-400"],
+    ["hoje", "Hoje", n.hojeN, "text-amber-600 dark:text-amber-400"],
     ["amanha", "Amanhã", n.amanha, "text-orange-600 dark:text-orange-400"],
     ["todas", "Ativas", etiquetas.length, "text-gray-900 dark:text-gray-100"],
   ];
