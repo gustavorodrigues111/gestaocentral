@@ -32,6 +32,13 @@ export type LogoEtiqueta = { id: string; restaurantIds: string[]; nome: string; 
 
 const novaChave = () => `c_${Math.random().toString(36).slice(2, 7)}`;
 
+// Logos que já vêm prontas no app (arquivos em /public/etiq-logos). Aparecem
+// pra todo mundo, sem precisar subir. Caminho relativo = mesma origem (sem CORS).
+const LOGOS_FIXAS: LogoEtiqueta[] = [
+  { id: "_logo_lobozo", restaurantIds: [], nome: "Lobozó", url: "/etiq-logos/lobozo.png", criadoEm: "" },
+  { id: "_logo_sororoca", restaurantIds: [], nome: "Sororoca", url: "/etiq-logos/sororoca.png", criadoEm: "" },
+];
+
 // Logo guardado como imagem reduzida (data URL) no próprio doc — sem Storage,
 // sem CORS (que tainta o canvas na hora de imprimir). Reduz pra até `maxW` px.
 function arquivoParaDataUrl(file: File, maxW: number): Promise<string> {
@@ -84,7 +91,7 @@ export function EtiquetaLivreScreen({ rids, podeEditar, naMaquininha, onSair }: 
     return () => subs.forEach((u) => u());
   }, [ridsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (modo === "editar") return <EditorTemplate template={edit} rids={rids} bobina={bobina} largura={largura} logos={logos} naMaquininha={naMaquininha} onSubirLogo={subirLogo} onVoltar={() => setModo("lista")} onSalvar={salvarTemplate} onImprimir={(nome, els, vAlign) => { setPrintAlvo({ nome, elementos: els, vAlign }); setModo("imprimir"); }} />;
+  if (modo === "editar") return <EditorTemplate template={edit} rids={rids} bobina={bobina} largura={largura} logos={[...LOGOS_FIXAS, ...logos]} naMaquininha={naMaquininha} onSubirLogo={subirLogo} onVoltar={() => setModo("lista")} onSalvar={salvarTemplate} onImprimir={(nome, els, vAlign) => { setPrintAlvo({ nome, elementos: els, vAlign }); setModo("imprimir"); }} />;
   if (modo === "imprimir" && printAlvo) return <ImprimirTemplate nome={printAlvo.nome} elementos={printAlvo.elementos} vAlign={printAlvo.vAlign} bobina={bobina} largura={largura} onVoltar={() => setModo("lista")} />;
 
   return (
