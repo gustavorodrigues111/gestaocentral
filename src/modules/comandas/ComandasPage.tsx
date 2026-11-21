@@ -6,14 +6,14 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, LayoutGrid } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { APP_VERSION_LABEL } from "../../core/version";
-import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov, Cliente, ComandaLayout, ComandaMesa } from "../../core/types";
+import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
   ouvirComandas, salvarComanda, excluirComanda, criarPrintJob, superseedContaJobs,
@@ -23,7 +23,7 @@ import {
   ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
 } from "./comandasRepo";
 import { EstacaoImpressao, AppCaixaConfig } from "./EstacaoImpressao";
-import { MesaLayoutEditor, PlantaSalao, type MesaVista } from "./MesaLayoutEditor";
+import { MesaLayoutEditor } from "./MesaLayoutEditor";
 import { TefCobranca } from "./TefCobranca";
 import { montarNfce, nfceEmitir, nfceCancelar, lerNfce } from "./nfceClient";
 import QRCode from "qrcode";
@@ -128,8 +128,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const [, setRelogio] = useState(0);
   useEffect(() => { const t = setInterval(() => setRelogio((x) => x + 1), 1000); return () => clearInterval(t); }, []);
   // Modo de visualização da tela principal (persistido por dispositivo).
-  const [visao, setVisao] = useState<"cards" | "tempo" | "layout">(() => { try { return (localStorage.getItem("comandas_visao") as "cards" | "tempo" | "layout") || "cards"; } catch { return "cards"; } });
-  const mudarVisao = (v: "cards" | "tempo" | "layout") => { setVisao(v); try { localStorage.setItem("comandas_visao", v); } catch { /* */ } };
   const [layout, setLayout] = useState<ComandaLayout | null>(null);
   useEffect(() => { if (!rid) return; return ouvirLayout(rid, setLayout); }, [rid]);
   const [novaComanda, setNovaComanda] = useState<Comanda | null>(null);   // recém-criada (otimista, até o snapshot chegar)
@@ -319,43 +317,17 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
 
           {(caixa || abertas.length > 0) && (() => {
             const mUlt = (c: Comanda) => { const u = ultimoPedidoEm(c); return u ? (Date.now() - new Date(u).getTime()) / 60000 : 0; };
-            // "Por tempo": mais crítico (sem pedir há mais tempo) primeiro.
-            const lista = visao === "tempo" ? [...abertas].sort((a, b) => mUlt(b) - mUlt(a)) : abertas;
-            const Switcher = (
-              <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-700 p-0.5 mb-3">
-                <button onClick={() => mudarVisao("cards")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "cards" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><LayoutGrid size={14} /> Cards</button>
-                <button onClick={() => mudarVisao("tempo")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "tempo" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Clock size={14} /> Por tempo</button>
-                <button onClick={() => mudarVisao("layout")} className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 h-8 rounded-lg ${visao === "layout" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><MapPin size={14} /> Layout</button>
-              </div>
-            );
-            if (visao === "layout") {
-              const info = (mesaId: string): MesaVista => {
-                const c = abertas.find((x) => x.mesaId === mesaId);
-                if (!c) return { ocupada: false, frac: 0 };
-                const u = ultimoPedidoEm(c); const mm = u ? (Date.now() - new Date(u).getTime()) / 60000 : 0;
-                return { ocupada: true, frac: Math.max(0, Math.min(1, mm / 30)), comandaId: c.id, sub: c.clienteNome, valor: fmtR(totalAPagarComanda(c)), tempo: tempoVivo(u) };
-              };
-              const onMesa = (mesaId: string, comandaId?: string) => {
-                if (comandaId) { setDetalhe(comandaId); return; }
-                if (!podeOperar) return;
-                if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
-                setMesaAbrir(mesaId); setAbrindo("conta");
-              };
-              return (<>{Switcher}<PlantaSalao mesas={layout?.mesas || []} blocos={layout?.blocos || []} info={info} onMesa={onMesa} /></>);
-            }
+            // Sempre por tempo: mais crítico (sem pedir há mais tempo) primeiro.
+            const lista = [...abertas].sort((a, b) => mUlt(b) - mUlt(a));
             if (abertas.length === 0) return (
-              <>
-              {Switcher}
               <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-gray-400">
                 <Receipt size={38} className="mx-auto mb-2 text-gray-300" />
                 <div className="font-semibold text-gray-600 dark:text-gray-300">Nenhuma comanda aberta</div>
                 {podeOperar && <div className="text-sm mt-1">Abra uma comanda pra começar a lançar.</div>}
               </div>
-              </>
             );
             return (
               <>
-              {Switcher}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
                 {lista.map((c) => {
                   const aberta = c.status !== "fechada";
@@ -423,7 +395,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           </div>
         </div>
       )}
-      {abrindo && <AbrirComandaModal modo={abrindo} clientes={clientes} mesas={layout?.mesas || []} mesasOcupadas={new Set(abertas.map((c) => c.mesaId).filter(Boolean) as string[])} mesaInicial={mesaAbrir} onClose={() => { setAbrindo(null); setMesaAbrir(null); }} onAbrir={abrirComanda} />}
+      {abrindo && <AbrirComandaModal modo={abrindo} clientes={clientes} mesas={layout?.mesas || []} blocos={layout?.blocos || []} mesasOcupadas={new Set(abertas.map((c) => c.mesaId).filter(Boolean) as string[])} mesaInicial={mesaAbrir} onClose={() => { setAbrindo(null); setMesaAbrir(null); }} onAbrir={abrirComanda} />}
       {editorSalao && <MesaLayoutEditor rid={rid} onClose={() => setEditorSalao(false)} />}
       {caixaModal === "abrir" && <AbrirCaixaModal onClose={() => setCaixaModal(null)} onAbrir={abrirCaixa} />}
       {(caixaModal === "sangria" || caixaModal === "reforco") && caixa && (
@@ -731,15 +703,18 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
 }
 
 // ── Abrir comanda ────────────────────────────────────────────────────────
-function AbrirComandaModal({ modo, clientes, mesas, mesasOcupadas, mesaInicial, onClose, onAbrir }: {
+function AbrirComandaModal({ modo, clientes, mesas, blocos, mesasOcupadas, mesaInicial, onClose, onAbrir }: {
   modo: "conta" | "togo";
   clientes: Cliente[];
   mesas?: ComandaMesa[];
+  blocos?: ComandaAreaBloco[];
   mesasOcupadas?: Set<string>;
   mesaInicial?: string | null;
   onClose: () => void;
   onAbrir: (d: { numero: string; clienteNome: string; local?: string; mesaId?: string | null; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo"; clienteId?: string | null }) => Promise<void>;
 }) {
+  const togo = modo === "togo";
+  const [step, setStep] = useState(1);   // wizard: 1 cliente · 2 pessoas · 3 lugar
   const [numero, setNumero] = useState("");
   const [nome, setNome] = useState("");
   const [local, setLocal] = useState("");
@@ -749,7 +724,8 @@ function AbrirComandaModal({ modo, clientes, mesas, mesasOcupadas, mesaInicial, 
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const togo = modo === "togo";
+  const areas = blocos || [];
+  const mesasL = mesas || [];
   // Typeahead no CRM: casa por nome OU telefone enquanto digita (até escolher um).
   const matches = useMemo(() => {
     if (clienteId) return [];
@@ -764,7 +740,7 @@ function AbrirComandaModal({ modo, clientes, mesas, mesasOcupadas, mesaInicial, 
   }, [clientes, nome, tel, clienteId]);
   function selecionar(c: Cliente) { setClienteId(c.id); setNome(c.nome); setTel(c.telefone || ""); }
   async function salvar() {
-    if (!togo && !nome.trim()) { setErr("Informe o nome do cliente."); return; }
+    if (!togo && !nome.trim()) { setErr("Informe o nome do cliente."); setStep(1); return; }
     const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
     try { await onAbrir({ numero: numero.trim(), clienteNome, local: local.trim() || undefined, mesaId, telefone: tel, pessoas: Math.max(1, pessoas), modo, clienteId }); }
@@ -772,81 +748,146 @@ function AbrirComandaModal({ modo, clientes, mesas, mesasOcupadas, mesaInicial, 
   }
   const campo = "w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
   const rotulo = "text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5";
+
+  // Campos reutilizados: nome + telefone + sugestões do CRM.
+  const clienteFields = (
+    <>
+      <div>
+        <label className={rotulo}>Nome do cliente {togo ? "(opcional)" : "*"}</label>
+        <input value={nome} onChange={(e) => { setNome(e.target.value); if (clienteId) setClienteId(null); }} autoFocus placeholder="nome do cliente" className={campo} />
+        {clienteId && <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">✓ cliente do CRM <button onClick={() => setClienteId(null)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button></div>}
+      </div>
+      <div>
+        <label className={rotulo}>Telefone (opcional)</label>
+        <input value={tel} onChange={(e) => { setTel(e.target.value); if (clienteId) setClienteId(null); }} inputMode="tel" placeholder="(11) 90000-0000" className={campo} />
+      </div>
+      {matches.length > 0 && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden -mt-1">
+          <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-gray-50 dark:bg-gray-800/40">Clientes cadastrados</div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-44 overflow-y-auto">
+            {matches.map((c) => (
+              <button key={c.id} type="button" onClick={() => selecionar(c)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20">
+                <User size={14} className="text-gray-400 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-800 dark:text-gray-100">{c.nome}</span>
+                {c.telefone && <span className="text-[11px] text-gray-400 tabular-nums shrink-0">{c.telefone}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {!togo && !clienteId && tel.trim() && nome.trim() && matches.length === 0 && (
+        <p className="text-[11px] text-gray-400 -mt-1">Cliente novo — será cadastrado no CRM ao abrir a comanda.</p>
+      )}
+    </>
+  );
+
+  const titulos = ["Cliente", "Quantas pessoas", "Lugar (opcional)"];
+  const avancar = () => { if (step === 1 && !nome.trim()) { setErr("Informe o nome do cliente."); return; } setErr(""); setStep((s) => Math.min(3, s + 1)); };
+
   return (
     <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><User size={16} className="text-indigo-500" /> {togo ? "Venda rápida (to-go)" : "Abrir comanda"}</div>
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5">
+            <User size={16} className="text-indigo-500" /> {togo ? "Venda rápida (to-go)" : `Abrir comanda · ${titulos[step - 1]}`}
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
         </div>
-        <div className="space-y-3.5">
-          <div>
-            <label className={rotulo}>Nome do cliente {togo ? "(opcional)" : "*"}</label>
-            <input value={nome} onChange={(e) => { setNome(e.target.value); if (clienteId) setClienteId(null); }} autoFocus placeholder="nome do cliente" className={campo} />
-            {clienteId && <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">✓ cliente do CRM <button onClick={() => setClienteId(null)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button></div>}
-          </div>
-          <div>
-            <label className={rotulo}>Nº da comanda (opcional)</label>
-            <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12 · deixe vazio p/ automático" className={`${campo} tabular-nums`} />
-          </div>
-          {!togo && (mesas || []).length > 0 && (
+
+        {togo ? (
+          // TO-GO: form único e enxuto (sem passos).
+          <div className="space-y-3.5">
+            {clienteFields}
             <div>
-              <label className={rotulo}>Mesa (da planta)</label>
-              <div className="flex flex-wrap gap-1.5">
-                {(mesas || []).map((m) => {
-                  const ocupada = mesasOcupadas?.has(m.id) && m.id !== mesaInicial;
-                  const sel = mesaId === m.id;
-                  return (
-                    <button key={m.id} type="button" disabled={ocupada} onClick={() => setMesaId(sel ? null : m.id)}
-                      className={`text-[12px] px-2.5 h-8 rounded-lg border font-semibold ${sel ? "bg-indigo-600 border-indigo-600 text-white" : ocupada ? "border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 line-through cursor-not-allowed" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
-                      {m.nome}{ocupada ? " · ocupada" : ""}
-                    </button>
-                  );
-                })}
+              <label className={rotulo}>Nº da comanda (opcional)</label>
+              <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="deixe vazio p/ automático" className={`${campo} tabular-nums`} />
+            </div>
+            {err && <div className="text-sm text-rose-600">{err}</div>}
+            <div className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+              <button onClick={onClose} className="flex-1 h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
+              <button onClick={salvar} disabled={saving} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "..." : "Abrir e lançar"}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3.5">
+            {/* Indicador de passos */}
+            <div className="flex items-center gap-1.5">
+              {[1, 2, 3].map((n) => <div key={n} className={`h-1.5 flex-1 rounded-full ${n <= step ? "bg-indigo-500" : "bg-gray-200 dark:bg-gray-800"}`} />)}
+            </div>
+
+            {step === 1 && (
+              <>
+                {clienteFields}
+                <div>
+                  <label className={rotulo}>Nº da comanda (opcional)</label>
+                  <input value={numero} onChange={(e) => setNumero(e.target.value)} inputMode="numeric" placeholder="ex.: 12 · deixe vazio p/ automático" className={`${campo} tabular-nums`} />
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <div className="py-2">
+                <label className={rotulo}>Quantas pessoas? <span className="text-gray-400 font-normal">(obrigatório)</span></label>
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setPessoas((p) => Math.max(1, p - 1))} disabled={pessoas <= 1} className="w-14 h-14 rounded-xl border border-gray-300 dark:border-gray-700 grid place-items-center text-gray-600 dark:text-gray-300 disabled:opacity-30 active:bg-gray-100 dark:active:bg-gray-800"><Minus size={22} /></button>
+                  <div className="flex-1 h-14 rounded-xl bg-gray-50 dark:bg-gray-800/60 grid place-items-center text-3xl font-extrabold text-gray-900 dark:text-gray-100 tabular-nums">{pessoas}</div>
+                  <button type="button" onClick={() => setPessoas((p) => Math.min(99, p + 1))} className="w-14 h-14 rounded-xl border border-gray-300 dark:border-gray-700 grid place-items-center text-gray-600 dark:text-gray-300 active:bg-gray-100 dark:active:bg-gray-800"><Plus size={22} /></button>
+                </div>
               </div>
+            )}
+
+            {step === 3 && (
+              <>
+                {areas.length > 0 && (
+                  <div>
+                    <label className={rotulo}>Local / referência</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {areas.map((a) => {
+                        const sel = local.trim() === a.nome;
+                        return (
+                          <button key={a.id} type="button" onClick={() => setLocal(sel ? "" : a.nome)}
+                            className={`text-[12px] px-2.5 h-8 rounded-lg border font-semibold ${sel ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+                            {a.nome}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {mesasL.length > 0 && (
+                  <div>
+                    <label className={rotulo}>Mesa</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {mesasL.map((m) => {
+                        const ocupada = mesasOcupadas?.has(m.id) && m.id !== mesaInicial;
+                        const sel = mesaId === m.id;
+                        return (
+                          <button key={m.id} type="button" disabled={ocupada} onClick={() => setMesaId(sel ? null : m.id)}
+                            className={`text-[12px] px-2.5 h-8 rounded-lg border font-semibold ${sel ? "bg-indigo-600 border-indigo-600 text-white" : ocupada ? "border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 line-through cursor-not-allowed" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+                            {m.nome}{ocupada ? " · ocupada" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <label className={rotulo}>{areas.length > 0 ? "Outro local (opcional)" : "Local / referência (opcional)"}</label>
+                  <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex.: Varanda · Balcão" className={campo} />
+                  <p className="text-[11px] text-gray-400 mt-1">Referência pra achar a turma pelo lugar. {areas.length === 0 && "Cadastre as áreas no Editor do salão."}</p>
+                </div>
+              </>
+            )}
+
+            {err && <div className="text-sm text-rose-600">{err}</div>}
+            <div className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+              <button onClick={() => (step === 1 ? onClose() : setStep((s) => s - 1))} className="flex-1 h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">{step === 1 ? "Cancelar" : "Voltar"}</button>
+              {step < 3
+                ? <button onClick={avancar} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold">Próximo</button>
+                : <button onClick={salvar} disabled={saving} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "..." : "Abrir e lançar"}</button>}
             </div>
-          )}
-          <div>
-            <label className={rotulo}>{(mesas || []).length > 0 ? "Local / referência (opcional)" : "Local / mesa (opcional)"}</label>
-            <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex.: Mesa 5 · Varanda · Balcão" className={campo} />
-            <p className="text-[11px] text-gray-400 mt-1">Referência pra localizar a turma pelo lugar.</p>
           </div>
-          <div>
-            <label className={rotulo}>Quantidade de pessoas</label>
-            <div className="flex items-center gap-3">
-              <button type="button" onClick={() => setPessoas((p) => Math.max(1, p - 1))} disabled={pessoas <= 1} className="w-12 h-12 rounded-xl border border-gray-300 dark:border-gray-700 grid place-items-center text-gray-600 dark:text-gray-300 disabled:opacity-30 active:bg-gray-100 dark:active:bg-gray-800"><Minus size={20} /></button>
-              <div className="flex-1 h-12 rounded-xl bg-gray-50 dark:bg-gray-800/60 grid place-items-center text-2xl font-extrabold text-gray-900 dark:text-gray-100 tabular-nums">{pessoas}</div>
-              <button type="button" onClick={() => setPessoas((p) => Math.min(99, p + 1))} className="w-12 h-12 rounded-xl border border-gray-300 dark:border-gray-700 grid place-items-center text-gray-600 dark:text-gray-300 active:bg-gray-100 dark:active:bg-gray-800"><Plus size={20} /></button>
-            </div>
-          </div>
-          <div>
-            <label className={rotulo}>Telefone (opcional)</label>
-            <input value={tel} onChange={(e) => { setTel(e.target.value); if (clienteId) setClienteId(null); }} inputMode="tel" placeholder="(11) 90000-0000" className={campo} />
-          </div>
-          {/* Sugestões do CRM (por nome ou telefone) */}
-          {matches.length > 0 && (
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden -mt-1">
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 bg-gray-50 dark:bg-gray-800/40">Clientes cadastrados</div>
-              <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-44 overflow-y-auto">
-                {matches.map((c) => (
-                  <button key={c.id} type="button" onClick={() => selecionar(c)} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20">
-                    <User size={14} className="text-gray-400 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-gray-800 dark:text-gray-100">{c.nome}</span>
-                    {c.telefone && <span className="text-[11px] text-gray-400 tabular-nums shrink-0">{c.telefone}</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {!togo && !clienteId && tel.trim() && nome.trim() && matches.length === 0 && (
-            <p className="text-[11px] text-gray-400 -mt-1">Cliente novo — será cadastrado no CRM ao abrir a comanda.</p>
-          )}
-          {err && <div className="text-sm text-rose-600">{err}</div>}
-          <div className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
-            <button onClick={onClose} className="flex-1 h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
-            <button onClick={salvar} disabled={saving} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "..." : "Abrir e lançar"}</button>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
