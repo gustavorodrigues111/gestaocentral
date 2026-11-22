@@ -37,6 +37,7 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
   const [funcoes, setFuncoes] = useState<Area[]>(template?.funcoes || []);
   const [responsaveisIds, setResponsaveisIds] = useState<string[]>(template?.responsaveisIds || []);
   const [ativo, setAtivo] = useState(template?.ativo ?? true);
+  const [noCaixa, setNoCaixa] = useState(template?.noCaixa ?? false);
   const [itens, setItens] = useState<ChecklistItemTemplate[]>(template?.itens || []);
   const [novoItem, setNovoItem] = useState("");
   const [saving, setSaving] = useState(false);
@@ -120,6 +121,7 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
         responsaveisIds: responsaveisIds.length > 0 ? responsaveisIds : undefined,
         itens,
         ativo,
+        noCaixa,
         criadoEm: template?.criadoEm || now,
         criadoPor: template?.criadoPor || me.id,
         atualizadoEm: now,
@@ -305,10 +307,12 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
           </div>
         </div>
 
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex items-center gap-2">
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex items-center gap-2 flex-wrap">
           <button type="button" onClick={() => setAtivo(!ativo)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${ativo ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-500"}`}>{ativo ? "✓ Ativo" : "Inativo"}</button>
           <span className="text-[11px] text-gray-400">desativado some da lista do dia</span>
+          <button type="button" onClick={() => setNoCaixa(!noCaixa)} className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${noCaixa ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-500"}`}>{noCaixa ? "✓ Aparece no caixa" : "Aparece no caixa"}</button>
         </div>
+        {noCaixa && <div className="text-[11px] text-gray-400 -mt-1">Esse checklist vai aparecer no módulo Comandas (PDV) pra preencher no balcão.</div>}
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 

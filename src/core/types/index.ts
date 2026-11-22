@@ -2267,6 +2267,9 @@ export type ChecklistTemplate = {
   funcoes?: Area[];                 // áreas/funções responsáveis
   itens: ChecklistItemTemplate[];
   ativo: boolean;
+  // Aparece no módulo Comandas (kiosk do caixa/PDV)? Default false — o caixa só
+  // carrega os marcados, pra não puxar todos os checklists do restaurante.
+  noCaixa?: boolean;
   criadoEm: string;
   criadoPor: string;
   atualizadoEm: string;

@@ -52,7 +52,7 @@ function CabecalhoArea({ area, n }: { area: Area | null; n: number }) {
   );
 }
 
-export function ChecklistsPage() {
+export function ChecklistsPage({ soCaixa = false }: { soCaixa?: boolean } = {}) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
@@ -96,13 +96,16 @@ export function ChecklistsPage() {
     setLoading(true);
     const q = query(collection(db, "checklistTemplates"), where("restaurantId", "==", rid));
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as ChecklistTemplate);
+      let list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as ChecklistTemplate);
+      // No caixa (PDV), só os marcados "aparece no caixa" — pra não puxar todos
+      // os checklists do restaurante.
+      if (soCaixa) list = list.filter(t => t.noCaixa);
       list.sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
       setTemplates(list);
       setLoading(false);
     });
     return () => unsub();
-  }, [rid]);
+  }, [rid, soCaixa]);
 
   useEffect(() => {
     if (!rid) return;

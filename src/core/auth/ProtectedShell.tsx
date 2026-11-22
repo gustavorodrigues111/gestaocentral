@@ -356,7 +356,7 @@ function ComandasKioskShell() {
         <Routes>
           <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} onSwitchRestaurant={restaurants.length > 1 ? trocar : undefined} />} />
           {podeValidade && <Route path="/r/:rid/estoqueValidade" element={<EstoqueValidadePage />} />}
-          {podeChecklists && <Route path="/r/:rid/checklists" element={<ChecklistsPage />} />}
+          {podeChecklists && <Route path="/r/:rid/checklists" element={<ChecklistsPage soCaixa />} />}
           <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
         </Routes>
       </div>
