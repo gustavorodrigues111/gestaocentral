@@ -175,11 +175,11 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   useEffect(() => { if (!rid) return; return ouvirOperadores(rid, setOperadores); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirExclusoes(rid, setExclusoes); }, [rid]);
   const exclusoesPendentes = useMemo(() => exclusoes.filter((x) => x.status === "pendente"), [exclusoes]);
-  // Operador ATIVO do aparelho (lançamentos não pedem PIN; só escolhe quem é).
+  // Operador que está lançando — escolhido na lista rápida ao abrir/mexer numa
+  // comanda (sem PIN). Carimba comanda + itens. Não há mais chip fixo no topo.
   const [operadorAtivoId, setOperadorAtivoId] = useState<string | null>(() => { try { return localStorage.getItem("comandas_operador_ativo"); } catch { return null; } });
-  const [opMenu, setOpMenu] = useState(false);
   const operadorAtivo = useMemo(() => operadores.find((o) => o.id === operadorAtivoId && o.ativo) || null, [operadores, operadorAtivoId]);
-  const escolherOperador = (id: string | null) => { setOperadorAtivoId(id); try { if (id) localStorage.setItem("comandas_operador_ativo", id); else localStorage.removeItem("comandas_operador_ativo"); } catch { /* */ } setOpMenu(false); };
+  const escolherOperador = (id: string | null) => { setOperadorAtivoId(id); try { if (id) localStorage.setItem("comandas_operador_ativo", id); else localStorage.removeItem("comandas_operador_ativo"); } catch { /* */ } };
   // Gate de PIN (promessa): abre o modal e resolve com o operador validado.
   // ok=false → cancelou; ok=true, op=null → nenhum operador elegível cadastrado
   // (ação liberada e registrada no login do aparelho — ver aviso ao usuário).
@@ -214,10 +214,14 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     setPedirOp({ fn });
   };
   // Nível exigido por aba: Exclusões = supervisor; Relatórios/Cadastros = master.
-  const nivelDaAba = (id: string): NivelOperador | null => id === "exclusoes" ? "supervisor" : (id === "relatorios" || id === "cadastros") ? "master" : null;
+  const nivelDaAba = (id: string): NivelOperador | null => (id === "exclusoes" || id === "caixa") ? "supervisor" : (id === "relatorios" || id === "cadastros") ? "master" : null;
   async function irParaAba(id: string) {
     const nivel = nivelDaAba(id);
-    if (nivel) { const r = await exigir(nivel, nivel === "master" ? "Área de gestão" : "Exclusões", nivel === "master" ? "PIN de master" : "PIN de supervisor"); if (!r.ok) return; }
+    if (nivel) {
+      const titulo = abasDisp.find((a) => a.id === id)?.label || "Acesso";
+      const r = await exigir(nivel, titulo, nivel === "master" ? "PIN de master" : "PIN de supervisor");
+      if (!r.ok) return;
+    }
     setTab(id); setMenuAberto(false);
   }
   // Ação de gestão (master): Estação, Locais e mesas, Trocar restaurante, Sair, Impressora IP.
@@ -325,29 +329,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               <KeyRound size={14} /> <span className="hidden sm:inline">Gestão: {unlock?.op.nome}</span><span className="sm:hidden">Travar</span> <span className="text-[10px]">🔓</span>
             </button>
           )}
-          {podeOperar && (
-            <div className="relative">
-              <button onClick={() => setOpMenu((v) => !v)} title="Operador do caixa — quem está lançando agora"
-                className={`h-9 px-2.5 rounded-lg border text-sm font-semibold inline-flex items-center gap-1.5 ${operadorAtivo ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300"}`}>
-                <UserCheck size={15} /> <span className="max-w-[9rem] truncate">{operadorAtivo ? operadorAtivo.nome : "Sem operador"}</span>
-              </button>
-              {opMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setOpMenu(false)} />
-                  <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5 max-h-80 overflow-y-auto">
-                    <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Quem está no caixa</div>
-                    {operadores.filter((o) => o.ativo).length === 0 && <div className="px-3 py-2 text-[12px] text-gray-400">Nenhum operador. Cadastre em <b>Cadastros → Operadores</b>.</div>}
-                    {operadores.filter((o) => o.ativo).map((o) => (
-                      <button key={o.id} onClick={() => escolherOperador(o.id)} className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${operadorAtivoId === o.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                        <UserCheck size={15} /> {o.nome}{o.supervisor && <span className="ml-auto text-[9px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">SUP</span>}
-                      </button>
-                    ))}
-                    {operadorAtivo && <button onClick={() => escolherOperador(null)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 mt-1"><X size={14} /> Limpar</button>}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
           <button onClick={toggleImprimirAqui} title="Este dispositivo imprime direto, sem o diálogo do Chrome (só faz sentido no PC do caixa com a impressora)"
             className={`h-9 px-2.5 rounded-lg border text-sm font-semibold hidden sm:inline-flex items-center gap-1.5 ${imprimirAqui ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
             <Printer size={15} /> Imprimir aqui <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${imprimirAqui ? "bg-emerald-600 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"}`}>{imprimirAqui ? "ON" : "OFF"}</span>
@@ -395,7 +376,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
           fiscalCfg={fiscalCfg} podeOperar={podeOperar}
           meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
-          operador={operadorAtivo} exigir={exigir}
+          operador={operadorAtivo}
           onClose={fecharDetalhe}
         />
       ) : (<>
@@ -606,21 +587,20 @@ function PinModal({ titulo, sub, nivel, operadores, onResolver }: {
 }
 
 // Justificativa obrigatória + PIN pra transferir item/comanda pra Exclusões.
-function ExcluirModal({ tipo, label, valor, exigir, onClose, onConfirmar }: {
+function ExcluirModal({ tipo, label, valor, onClose, onConfirmar }: {
   tipo: "item" | "comanda"; label: string; valor: number;
-  exigir: (nivel: NivelOperador, titulo: string, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
   onClose: () => void; onConfirmar: (justificativa: string, op: ComandaOperador | null) => Promise<void>;
 }) {
   const [just, setJust] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const motivos = ["Cliente desistiu", "Lançado errado", "Item devolvido", "Cortesia", "Comanda aberta por engano"];
+  // Sem PIN — a autoria é o operador já escolhido na lista rápida (quem abriu a
+  // comanda). O PIN fica só pra aprovar/devolver (supervisor) no fechamento.
   async function go() {
     if (just.trim().length < 3) { setErr("Explique o motivo — é obrigatório."); return; }
-    const r = await exigir("qualquer", "Confirmar exclusão", "Digite seu PIN de operador");
-    if (!r.ok) return;
     setSaving(true);
-    try { await onConfirmar(just, r.op); } finally { setSaving(false); }
+    try { await onConfirmar(just, null); } finally { setSaving(false); }
   }
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
@@ -643,7 +623,7 @@ function ExcluirModal({ tipo, label, valor, exigir, onClose, onConfirmar }: {
         {err && <div className="text-[12px] text-rose-600 dark:text-rose-400 mt-1">{err}</div>}
         <div className="flex gap-2 pt-3">
           <button onClick={onClose} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
-          <button onClick={() => void go()} disabled={saving} className="flex-1 h-10 rounded-lg bg-rose-600 text-white text-sm font-bold disabled:opacity-40 inline-flex items-center justify-center gap-1.5"><KeyRound size={15} /> {saving ? "…" : "Transferir (PIN)"}</button>
+          <button onClick={() => void go()} disabled={saving} className="flex-1 h-10 rounded-lg bg-rose-600 text-white text-sm font-bold disabled:opacity-40 inline-flex items-center justify-center gap-1.5"><ShieldCheck size={15} /> {saving ? "…" : "Transferir para Exclusões"}</button>
         </div>
       </div>
     </div>
@@ -1334,10 +1314,9 @@ function AbrirComandaModal({ modo, clientes, mesas, blocos, mesasOcupadas, mesaI
 }
 
 // ── Detalhe da comanda (lançar itens, imprimir, fechar) ───────────────────
-function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fiscalCfg, podeOperar, meNome, nomeRest, rid, operador, exigir, onClose }: {
+function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fiscalCfg, podeOperar, meNome, nomeRest, rid, operador, onClose }: {
   comanda: Comanda; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; logoUrl: string | null; fiscalCfg: ComandaFiscalConfig | null; podeOperar: boolean; meNome: string; nomeRest: string; rid: string;
   operador: ComandaOperador | null;
-  exigir: (nivel: NivelOperador, titulo: string, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
   onClose: () => void;
 }) {
   const fechada = comanda.status === "fechada";
@@ -1828,7 +1807,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       </div>
 
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
-      {excluindo && <ExcluirModal tipo={excluindo.tipo} label={excluindo.label} valor={+excluindo.itens.reduce((s, i) => s + (i.total || 0), 0).toFixed(2)} exigir={exigir} onClose={() => setExcluindo(null)} onConfirmar={transferirExclusao} />}
+      {excluindo && <ExcluirModal tipo={excluindo.tipo} label={excluindo.label} valor={+excluindo.itens.reduce((s, i) => s + (i.total || 0), 0).toFixed(2)} onClose={() => setExcluindo(null)} onConfirmar={transferirExclusao} />}
       {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} fiscalCfg={fiscalCfg} onClose={() => setFechar(false)} onFechado={aposFecharVenda} />}
       {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} onImprimir={() => void reimprimirConta()} />}
       {cpfModal && (
