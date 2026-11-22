@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, ShieldCheck, KeyRound, RotateCcw, UserCheck } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, ShieldCheck, KeyRound, RotateCcw, UserCheck, Coffee } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -208,11 +208,24 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   // Ao abrir/iniciar uma comanda, pergunta QUEM está lançando (toque no nome, sem
   // PIN) — garante a autoria sem depender de lembrar de trocar o chip. Sem
   // operador cadastrado, passa direto (fallback).
-  const [pedirOp, setPedirOp] = useState<null | { fn: () => void }>(null);
-  const pedirOperadorEntao = (fn: () => void) => {
-    if (operadores.filter((o) => o.ativo).length === 0) { fn(); return; }
+  const [pedirOp, setPedirOp] = useState<null | { fn: (op: ComandaOperador | null) => void }>(null);
+  const pedirOperadorEntao = (fn: (op: ComandaOperador | null) => void) => {
+    if (operadores.filter((o) => o.ativo).length === 0) { fn(operadorAtivo); return; }
     setPedirOp({ fn });
   };
+  // Registra "mesa verificada": quem (operador escolhido na lista rápida) + quando.
+  // A comanda volta pra "Atenção" por 10min (lógica nas faixas) e depois volta pro vermelho.
+  async function gravarVerificacao(c: Comanda, op: ComandaOperador | null) {
+    const v = { porId: op?.id || null, porNome: op?.nome || meNome, em: nowIso() };
+    await salvarComanda({ ...c, verificacoes: [...(c.verificacoes || []), v] });
+  }
+  // "Pediu um tempo": estaciona a comanda por N minutos (coluna à parte).
+  const [pausar, setPausar] = useState<Comanda | null>(null);
+  async function aplicarPausa(c: Comanda, mins: number) {
+    await salvarComanda({ ...c, pausadaAte: new Date(Date.now() + mins * 60000).toISOString(), pausadaPorNome: operadorAtivo?.nome || meNome });
+    setPausar(null);
+  }
+  async function tirarPausa(c: Comanda) { await salvarComanda({ ...c, pausadaAte: null }); }
   // Nível exigido por aba: Exclusões = supervisor; Relatórios/Cadastros = master.
   const nivelDaAba = (id: string): NivelOperador | null => (id === "exclusoes" || id === "caixa") ? "supervisor" : (id === "relatorios" || id === "cadastros") ? "master" : null;
   async function irParaAba(id: string) {
@@ -289,14 +302,15 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     await salvarComanda(c);
   }
   // Venda rápida (to-go): cria a comanda na hora, sem modal, e abre direto a venda.
-  async function vendaRapida() {
+  async function vendaRapida(op?: ComandaOperador | null) {
     if (!caixa) { alert("Abra o caixa antes de iniciar uma venda."); return; }
+    const oper = op ?? operadorAtivo;
     const c: Comanda = {
       id: uid(), restaurantId: rid, numero: proximoNumero(), clienteNome: "Venda rápida",
       cpf: null, telefone: null, pessoas: 1,
       status: "aberta", caixaId: caixa.id, modo: "togo", itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
-      operadorId: operadorAtivo?.id || null, operadorNome: operadorAtivo?.nome || null,
+      operadorId: oper?.id || null, operadorNome: oper?.nome || null,
     };
     setNovaComanda(c); setDetalhe(c.id);   // abre direto na seleção de produtos (otimista)
     await salvarComanda(c);
@@ -388,7 +402,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           {podeOperar && caixa && (
             <div className="grid grid-cols-2 gap-2 mb-3">
               <button onClick={() => pedirOperadorEntao(() => setAbrindo("conta"))} className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Plus size={18} /> Abrir comanda</button>
-              <button onClick={() => pedirOperadorEntao(() => void vendaRapida())} className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Package size={18} /> Venda rápida</button>
+              <button onClick={() => pedirOperadorEntao((op) => void vendaRapida(op))} className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Package size={18} /> Venda rápida</button>
             </div>
           )}
 
@@ -405,9 +419,20 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
             );
             // 3 faixas de atenção pelo tempo desde o último pedido (ou abertura,
             // se ainda não pediu): 🟢 Em dia <15min · 🟡 Atenção 15–25 · 🔴 >25.
-            const grupos: Record<"v" | "a" | "g", Comanda[]> = { v: [], a: [], g: [] };
-            for (const c of lista) { const m = mUlt(c); grupos[m > 25 ? "v" : m >= 15 ? "a" : "g"].push(c); }
-            const renderCard = (c: Comanda) => {
+            // "Mesa verificada": se foi verificada há ≤10min, segura em Atenção
+            // (não vai pro vermelho); depois dos 10min volta a cair pro vermelho.
+            const GRACA_VERIF_MIN = 10;
+            const verifMin = (c: Comanda) => { const v = (c.verificacoes || []).at(-1); return v ? (Date.now() - new Date(v.em).getTime()) / 60000 : Infinity; };
+            const pausadaMin = (c: Comanda) => c.pausadaAte ? (new Date(c.pausadaAte).getTime() - Date.now()) / 60000 : -1;
+            const faixaDe = (c: Comanda): "p" | "v" | "a" | "g" => {
+              if (pausadaMin(c) > 0) return "p";   // pediu um tempo (prioridade)
+              const m = mUlt(c); if (m > 25) return verifMin(c) <= GRACA_VERIF_MIN ? "a" : "v"; return m >= 15 ? "a" : "g";
+            };
+            const grupos: Record<"p" | "v" | "a" | "g", Comanda[]> = { p: [], v: [], a: [], g: [] };
+            for (const c of lista) grupos[faixaDe(c)].push(c);
+            const renderCard = (c: Comanda, faixa: "p" | "v" | "a" | "g") => {
+              const ultVerif = (c.verificacoes || []).at(-1);
+              const vMin = verifMin(c);
               const aberta = c.status !== "fechada";
               const parcial = aberta && (c.valorPago || 0) > 0.001;
               const ultPed = ultimoPedidoEm(c);
@@ -421,8 +446,9 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               const alpha = (0.07 + 0.30 * frac).toFixed(2);
               const tint = aberta ? `linear-gradient(0deg, hsla(${hue},85%,48%,${alpha}), hsla(${hue},85%,48%,${alpha}))` : undefined;
               const corTempo = !aberta ? "text-gray-400" : frac >= 0.8 ? "text-rose-600 dark:text-rose-400 font-semibold" : frac >= 0.5 ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-gray-400";
+              const abrir = () => { if (c.status !== "fechada") pedirOperadorEntao(() => setDetalhe(c.id)); else setDetalhe(c.id); };
               return (
-                <button key={c.id} onClick={() => { if (c.status !== "fechada") pedirOperadorEntao(() => setDetalhe(c.id)); else setDetalhe(c.id); }} style={tint ? { backgroundImage: tint } : undefined} className={`w-full text-left rounded-2xl border p-3 shadow-sm ${c.status === "fechada" ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
+                <div key={c.id} role="button" onClick={abrir} style={tint ? { backgroundImage: tint } : undefined} className={`w-full text-left rounded-2xl border p-3 shadow-sm cursor-pointer ${c.status === "fechada" ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
                   <div className="flex items-center justify-between gap-1">
                     <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"><span className={`w-2 h-2 rounded-full ${dot}`} />#{c.numero}</span>
                     {c.status === "fechada" ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">paga</span>
@@ -436,16 +462,33 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                     {aberta && ultPed && <span className={`inline-flex items-center gap-0.5 tabular-nums ${corTempo}`}><Clock size={10} /> {tempoVivo(ultPed)}</span>}
                   </div>
                   <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(totalAPagarComanda(c))}{parcial && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 ml-1">falta {fmtR(totalAPagarComanda(c) - (c.valorPago || 0))}</span>}</div>
-                </button>
+                  {/* Pediu um tempo: estado + voltar agora */}
+                  {aberta && faixa === "p" ? (
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-sky-700 dark:text-sky-400 inline-flex items-center gap-1 truncate"><Coffee size={12} className="shrink-0" /> volta em {Math.max(0, Math.ceil(pausadaMin(c)))}min{c.pausadaPorNome ? ` · ${c.pausadaPorNome}` : ""}</span>
+                      <button onClick={(e) => { e.stopPropagation(); void tirarPausa(c); }} className="shrink-0 h-8 px-2.5 rounded-lg border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 text-[12px] font-semibold">Voltar agora</button>
+                    </div>
+                  ) : aberta && (
+                    <div className="mt-2 flex gap-1.5">
+                      {faixa === "v" && <button onClick={(e) => { e.stopPropagation(); pedirOperadorEntao((op) => void gravarVerificacao(c, op)); }} className="flex-1 h-9 rounded-lg bg-rose-600 text-white text-[13px] font-bold inline-flex items-center justify-center gap-1"><Check size={15} /> Verifiquei</button>}
+                      <button onClick={(e) => { e.stopPropagation(); setPausar(c); }} className="flex-1 h-9 rounded-lg border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 text-[12px] font-semibold inline-flex items-center justify-center gap-1"><Coffee size={14} /> Pediu um tempo</button>
+                    </div>
+                  )}
+                  {/* Em Atenção por verificação recente: quem verificou + quando */}
+                  {aberta && faixa === "a" && ultVerif && vMin <= 10 && (
+                    <div className="mt-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 inline-flex items-center gap-1"><Check size={12} /> verificada {vMin < 1 ? "agora" : `há ${Math.round(vMin)}min`} por {ultVerif.porNome || "—"}{(c.verificacoes || []).length > 1 ? ` · ${(c.verificacoes || []).length}ª vez` : ""}</div>
+                  )}
+                </div>
               );
             };
-            const faixas: [("v" | "a" | "g"), string, string, string][] = [
+            const faixas: [("p" | "v" | "a" | "g"), string, string, string][] = [
               ["v", "Verifique a mesa", "bg-rose-500", "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"],
               ["a", "Atenção", "bg-amber-500", "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"],
               ["g", "Em dia", "bg-emerald-500", "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"],
+              ["p", "Pediu um tempo", "bg-sky-500", "bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300"],
             ];
             return (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start">
                 {faixas.map(([k, titulo, dotCor, hdr]) => (
                   <div key={k} className="rounded-2xl border border-gray-100 dark:border-gray-800/60 bg-gray-50/50 dark:bg-gray-900/30 p-2">
                     <div className={`flex items-center justify-between px-2.5 h-9 rounded-xl text-[13px] font-bold mb-2 ${hdr}`}>
@@ -454,7 +497,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                     </div>
                     {grupos[k].length === 0
                       ? <div className="text-[12px] text-gray-400 text-center py-4">nenhuma</div>
-                      : <div className="grid grid-cols-2 md:grid-cols-1 gap-2.5">{grupos[k].map(renderCard)}</div>}
+                      : <div className="grid grid-cols-2 md:grid-cols-1 gap-2.5">{grupos[k].map((c) => renderCard(c, k))}</div>}
                   </div>
                 ))}
               </div>
@@ -504,15 +547,38 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         <FecharCaixaModal caixa={caixa} comandas={comandas} exclusoesPendentes={exclusoesPendentes.length} onIrExclusoes={() => { setCaixaModal(null); setTab("exclusoes"); }} exigir={exigir} onClose={() => setCaixaModal(null)} onFechar={fecharCaixa} />
       )}
       {pinReq && <PinModal titulo={pinReq.titulo} sub={pinReq.sub} nivel={pinReq.nivel} operadores={operadores} onResolver={resolverPin} />}
-      {pedirOp && <PedirOperadorModal operadores={operadores.filter((o) => o.ativo)} atualId={operadorAtivoId} onEscolher={(id) => { escolherOperador(id); const fn = pedirOp.fn; setPedirOp(null); fn(); }} onClose={() => setPedirOp(null)} />}
+      {pedirOp && <PedirOperadorModal operadores={operadores.filter((o) => o.ativo)} atualId={operadorAtivoId} onEscolher={(op) => { escolherOperador(op?.id ?? null); const fn = pedirOp.fn; setPedirOp(null); fn(op); }} onClose={() => setPedirOp(null)} />}
+      {pausar && <PausarModal comanda={pausar} onAplicar={(m) => void aplicarPausa(pausar, m)} onClose={() => setPausar(null)} />}
     </PageContainer>
+  );
+}
+
+// ── "Pediu um tempo" — escolhe por quanto tempo a mesa fica de boa ──────────
+function PausarModal({ comanda, onAplicar, onClose }: {
+  comanda: Comanda; onAplicar: (mins: number) => void; onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[85] bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-xs p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Coffee size={16} className="text-sky-500" /> Pediu um tempo</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <p className="text-[12px] text-gray-500 mb-3">#{comanda.numero}{comanda.clienteNome ? ` · ${comanda.clienteNome}` : ""} não quer ser incomodada. Por quanto tempo?</p>
+        <div className="grid grid-cols-3 gap-2">
+          {[15, 30, 45].map((m) => (
+            <button key={m} onClick={() => onAplicar(m)} className="h-14 rounded-xl border-2 border-sky-200 dark:border-sky-900/60 bg-sky-50/60 dark:bg-sky-950/20 text-sky-700 dark:text-sky-300 font-bold text-base inline-flex items-center justify-center">{m}min</button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ── "Quem está lançando?" — escolha de operador ao abrir a comanda (sem PIN) ──
 function PedirOperadorModal({ operadores, atualId, onEscolher, onClose }: {
   operadores: ComandaOperador[]; atualId: string | null;
-  onEscolher: (id: string) => void; onClose: () => void;
+  onEscolher: (op: ComandaOperador) => void; onClose: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-[85] bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
@@ -524,7 +590,7 @@ function PedirOperadorModal({ operadores, atualId, onEscolher, onClose }: {
         <p className="text-[12px] text-gray-500 mb-3">Toque no seu nome pra abrir a comanda.</p>
         <div className="grid grid-cols-2 gap-2">
           {operadores.map((o) => (
-            <button key={o.id} onClick={() => onEscolher(o.id)} className={`h-14 rounded-xl border-2 font-bold text-sm inline-flex items-center justify-center gap-1.5 px-2 text-center ${atualId === o.id ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-100 hover:border-indigo-300"}`}>
+            <button key={o.id} onClick={() => onEscolher(o)} className={`h-14 rounded-xl border-2 font-bold text-sm inline-flex items-center justify-center gap-1.5 px-2 text-center ${atualId === o.id ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-100 hover:border-indigo-300"}`}>
               <UserCheck size={15} className="shrink-0" /> <span className="truncate">{o.nome}</span>
             </button>
           ))}

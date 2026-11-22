@@ -6875,6 +6875,14 @@ export type Comanda = {
   criadoPorNome?: string;
   operadorId?: string | null;          // operador do caixa que abriu a comanda
   operadorNome?: string | null;
+  // "Mesa verificada": alguém foi à mesa (que estava em "Verifique a mesa"),
+  // conversou e ela não pediu nada. Registra quem + quando; a comanda volta pra
+  // "Atenção" por 10 min e depois retorna pra "Verifique a mesa" (ciclo).
+  verificacoes?: Array<{ porId?: string | null; porNome?: string | null; em: string }>;
+  // "Pediu um tempo": a mesa não quer ser incomodada. Fica numa coluna à parte
+  // até `pausadaAte`; depois volta ao fluxo normal de atenção.
+  pausadaAte?: string | null;
+  pausadaPorNome?: string | null;
   fechadoEm?: string | null;
   fechadoPorNome?: string | null;
   // NFC-e (Focus NFe) — resultado da emissão fiscal, se houver.
