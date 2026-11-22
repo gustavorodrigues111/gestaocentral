@@ -1513,11 +1513,13 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     if (pendentesProducao.length && !confirm(`Há ${pendentesProducao.length} item(ns) de cozinha ainda NÃO enviados pra produção. Fechar mesmo assim?`)) return;
     setFechar(true);
   }
-  const vazia = comanda.status !== "fechada" && comanda.itens.length === 0 && (comanda.pagamentos || []).length === 0;
+  // Só a VENDA RÁPIDA (to-go) vazia é descartada ao sair. Uma CONTA aberta (modo
+  // "conta") fica na tela mesmo sem item — abriu, aparece; lança depois.
+  const vazia = comanda.status !== "fechada" && comanda.modo === "togo" && comanda.itens.length === 0 && (comanda.pagamentos || []).length === 0;
   // Sair do detalhe: se há itens de cozinha não enviados, confirma antes.
   async function sair() {
     if (editavel && pendentesProducao.length && !confirm(`Há ${pendentesProducao.length} item(ns) de cozinha ainda NÃO enviados pra produção. Sair sem imprimir? (Cancele pra imprimir a cozinha)`)) return;
-    // Comanda vazia (sem item e sem pagamento) não fica na lista — apaga ao sair.
+    // Venda rápida vazia não fica na lista — apaga ao sair.
     if (vazia) { try { await excluirComanda(comanda.id); } catch { /* ignore */ } }
     onClose();
   }
