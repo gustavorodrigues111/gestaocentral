@@ -34,6 +34,9 @@ import QRCode from "qrcode";
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
 const fmtDataHora = (iso: string) => { try { return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+// "Stand by" = pausa sem tempo (fica até alguém tirar). Guardado como pausadaAte
+// bem no futuro; o card detecta pela sobra enorme (> 1 dia) e mostra "Stand by".
+const STANDBY_MIN = 60 * 24 * 365 * 10;
 // Sombreamento do botão de produto por categoria (por palavra-chave no nome):
 // pescados = azul claro, comidas/cozinha = vermelho claro, bebidas = amarelo claro.
 function corCategoria(nome?: string | null): string {
@@ -465,7 +468,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                   {/* Pediu um tempo: estado + voltar agora */}
                   {aberta && faixa === "p" ? (
                     <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="text-[11px] text-sky-700 dark:text-sky-400 inline-flex items-center gap-1 truncate"><Coffee size={12} className="shrink-0" /> volta em {Math.max(0, Math.ceil(pausadaMin(c)))}min{c.pausadaPorNome ? ` · ${c.pausadaPorNome}` : ""}</span>
+                      <span className="text-[11px] text-sky-700 dark:text-sky-400 inline-flex items-center gap-1 truncate"><Coffee size={12} className="shrink-0" /> {pausadaMin(c) > 1440 ? "Stand by" : `volta em ${Math.max(0, Math.ceil(pausadaMin(c)))}min`}{c.pausadaPorNome ? ` · ${c.pausadaPorNome}` : ""}</span>
                       <button onClick={(e) => { e.stopPropagation(); void tirarPausa(c); }} className="shrink-0 h-8 px-2.5 rounded-lg border border-sky-300 dark:border-sky-800 text-sky-700 dark:text-sky-300 text-[12px] font-semibold">Voltar agora</button>
                     </div>
                   ) : aberta && (
@@ -570,6 +573,7 @@ function PausarModal({ comanda, onAplicar, onClose }: {
             <button key={m} onClick={() => onAplicar(m)} className="h-14 rounded-xl border-2 border-sky-200 dark:border-sky-900/60 bg-sky-50/60 dark:bg-sky-950/20 text-sky-700 dark:text-sky-300 font-bold text-base inline-flex items-center justify-center">{m}min</button>
           ))}
         </div>
+        <button onClick={() => onAplicar(STANDBY_MIN)} className="mt-2 w-full h-12 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/40 text-slate-700 dark:text-slate-200 font-bold text-sm inline-flex items-center justify-center gap-1.5"><Coffee size={16} /> Stand by (sem tempo — até tirar)</button>
       </div>
     </div>
   );
