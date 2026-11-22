@@ -145,6 +145,23 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
     setObsAbertas(s => { const n = new Set(s); n.delete(itemId); return n; });
   }
 
+  // Medição (ex.: temperatura): digitar valor marca o item como feito. Edita
+  // local no digitar, grava no blur (como a observação).
+  function editarMedicaoLocal(itemId: string, texto: string, raw: string) {
+    const num = raw.trim() === "" ? null : Number(raw.replace(",", "."));
+    const valido = num != null && !Number.isNaN(num);
+    const now = new Date().toISOString();
+    setResMap(m => {
+      const prev = m[itemId] || { itemId, textoSnapshot: texto, feito: false };
+      return { ...m, [itemId]: { ...prev, valor: valido ? num : null, feito: valido, marcadoEm: valido ? now : undefined, feitoPorId: valido ? (me?.id || null) : null, feitoPorNome: valido ? (me?.nome || null) : null } };
+    });
+  }
+  function gravarMedicao(itemId: string, texto: string) {
+    editandoRef.current = null;
+    const cur = resMap[itemId]; if (!cur) return;
+    void gravarItem(itemId, cur, mkLog(cur.feito ? "marcou" : "desmarcou", itemId, `${texto}${cur.valor != null ? `: ${cur.valor}` : ""}`));
+  }
+
   // Payload completo (criação e finalização).
   function payload(status: ChecklistRunStatus, finalizar: boolean): Omit<ChecklistRun, "id"> {
     const st = statsFrom(resMap);
@@ -251,10 +268,13 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
             {itensDia.map((item, idx) => {
               const r = resMap[item.id] || { itemId: item.id, textoSnapshot: item.texto, feito: false };
               const obsVisivel = item.exigeObs || r.observacao != null || obsAbertas.has(item.id);
+              const foraDaFaixa = !!item.medicao && r.valor != null && ((item.faixaMin != null && r.valor < item.faixaMin) || (item.faixaMax != null && r.valor > item.faixaMax));
               return (
-                <div key={item.id} className={`rounded-2xl border ${r.feito ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-300 dark:border-emerald-800" : item.obrigatorio ? "bg-white dark:bg-gray-900 border-amber-200 dark:border-amber-800" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"}`}>
+                <div key={item.id} className={`rounded-2xl border ${foraDaFaixa ? "bg-rose-50 dark:bg-rose-900/10 border-rose-300 dark:border-rose-800" : r.feito ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-300 dark:border-emerald-800" : item.obrigatorio ? "bg-white dark:bg-gray-900 border-amber-200 dark:border-amber-800" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"}`}>
                   <label className="flex items-start gap-3 cursor-pointer p-3.5">
-                    <input type="checkbox" checked={r.feito} onChange={(e) => toggleFeito(item.id, item.texto, e.target.checked)} disabled={isReadonly} className="mt-0.5 w-7 h-7 rounded-md accent-emerald-600 cursor-pointer shrink-0" />
+                    {item.medicao
+                      ? <span className={`mt-0.5 w-7 h-7 rounded-md shrink-0 grid place-items-center text-sm font-bold ${r.feito ? (foraDaFaixa ? "bg-rose-500 text-white" : "bg-emerald-500 text-white") : "border-2 border-gray-300 dark:border-gray-600 text-transparent"}`}>{foraDaFaixa ? "!" : "✓"}</span>
+                      : <input type="checkbox" checked={r.feito} onChange={(e) => toggleFeito(item.id, item.texto, e.target.checked)} disabled={isReadonly} className="mt-0.5 w-7 h-7 rounded-md accent-emerald-600 cursor-pointer shrink-0" />}
                     <div className="flex-1 min-w-0">
                       <div className={`text-[15px] leading-snug ${r.feito ? "line-through text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
                         <span className="text-gray-400 mr-1">{idx + 1}.</span>{item.texto}{item.obrigatorio && <span className="text-rose-500 ml-1">*</span>}
@@ -264,6 +284,21 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
                       {item.fotoGuiaUrl && <a href={item.fotoGuiaUrl} target="_blank" rel="noreferrer" className="inline-block mt-1.5"><img src={item.fotoGuiaUrl} alt="guia" className="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700" title="Foto-guia" /></a>}
                     </div>
                   </label>
+                  {item.medicao && (
+                    <div className="px-3.5 pb-3 pl-14 flex items-center gap-2 flex-wrap">
+                      {isReadonly
+                        ? <span className={`text-sm font-bold tabular-nums ${foraDaFaixa ? "text-rose-600 dark:text-rose-400" : "text-gray-800 dark:text-gray-100"}`}>{r.valor != null ? `${r.valor} ${item.unidade || "°C"}` : "— não medido"}</span>
+                        : <>
+                            <input type="number" inputMode="decimal" step="0.1" value={r.valor ?? ""}
+                              onFocus={() => { editandoRef.current = item.id; }} onBlur={() => gravarMedicao(item.id, item.texto)}
+                              onChange={(e) => editarMedicaoLocal(item.id, item.texto, e.target.value)}
+                              placeholder="valor" className={`w-24 h-9 px-2 text-sm rounded-lg border tabular-nums bg-white dark:bg-gray-900 ${foraDaFaixa ? "border-rose-400" : "border-gray-300 dark:border-gray-700"}`} />
+                            <span className="text-xs text-gray-500">{item.unidade || "°C"}</span>
+                          </>}
+                      {(item.faixaMin != null || item.faixaMax != null) && <span className="text-[11px] text-gray-400">ideal {item.faixaMin ?? "−∞"} a {item.faixaMax ?? "∞"} {item.unidade || "°C"}</span>}
+                      {foraDaFaixa && <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">⚠ fora da faixa</span>}
+                    </div>
+                  )}
                   {(item.exigeFoto || r.fotoUrl) && (
                     <div className="px-3.5 pb-3 pl-14 flex items-center gap-2 flex-wrap">
                       {isReadonly ? (r.fotoUrl ? <a href={r.fotoUrl} target="_blank" rel="noreferrer"><img src={r.fotoUrl} alt="prova" className="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700" /></a> : <span className="text-xs text-gray-400">sem foto</span>)

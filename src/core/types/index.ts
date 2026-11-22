@@ -2230,6 +2230,13 @@ export type ChecklistItemTemplate = {
   obrigatorio: boolean;       // se true, run não fecha sem marcar
   exigeFoto?: boolean;        // se true, run exige foto de prova ao marcar feito
   exigeObs?: boolean;         // se true, run pede observação no item
+  // MEDIÇÃO: item vira campo numérico (ex.: temperatura). Fica "feito" quando um
+  // valor é digitado; alerta se cair fora de [faixaMin, faixaMax]. Base do
+  // relatório/controle de temperatura por equipamento.
+  medicao?: boolean;
+  unidade?: string;           // ex.: "°C" (default °C na UI)
+  faixaMin?: number | null;   // limite inferior ideal (null = sem limite)
+  faixaMax?: number | null;   // limite superior ideal (null = sem limite)
   descricao?: string;         // instrução de "como fazer" este item
   fotoGuiaUrl?: string;       // foto de referência (como deve ficar) — Storage
   // Frequência POR ITEM (ausente = diário todo dia). Quando QUALQUER item tem
@@ -2279,6 +2286,7 @@ export type ChecklistRunItemResultado = {
   itemId: string;
   textoSnapshot: string;            // snapshot pra preservar mesmo após editar template
   feito: boolean;
+  valor?: number | null;            // item de medição: valor lido (ex.: temperatura)
   observacao?: string;
   fotoUrl?: string;                 // foto de prova anexada na execução — Storage
   marcadoEm?: string;               // ISO

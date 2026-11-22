@@ -205,6 +205,14 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     return r;
   }
   const gestaoAtiva = !!(unlock && unlock.ate > Date.now() && unlock.op.master);
+  // Ao abrir/iniciar uma comanda, pergunta QUEM está lançando (toque no nome, sem
+  // PIN) — garante a autoria sem depender de lembrar de trocar o chip. Sem
+  // operador cadastrado, passa direto (fallback).
+  const [pedirOp, setPedirOp] = useState<null | { fn: () => void }>(null);
+  const pedirOperadorEntao = (fn: () => void) => {
+    if (operadores.filter((o) => o.ativo).length === 0) { fn(); return; }
+    setPedirOp({ fn });
+  };
   // Nível exigido por aba: Exclusões = supervisor; Relatórios/Cadastros = master.
   const nivelDaAba = (id: string): NivelOperador | null => id === "exclusoes" ? "supervisor" : (id === "relatorios" || id === "cadastros") ? "master" : null;
   async function irParaAba(id: string) {
@@ -398,8 +406,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           {podeOperar && !caixa && <AbrirCaixaTile onAbrir={() => setCaixaModal("abrir")} />}
           {podeOperar && caixa && (
             <div className="grid grid-cols-2 gap-2 mb-3">
-              <button onClick={() => setAbrindo("conta")} className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Plus size={18} /> Abrir comanda</button>
-              <button onClick={() => void vendaRapida()} className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Package size={18} /> Venda rápida</button>
+              <button onClick={() => pedirOperadorEntao(() => setAbrindo("conta"))} className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Plus size={18} /> Abrir comanda</button>
+              <button onClick={() => pedirOperadorEntao(() => void vendaRapida())} className="rounded-2xl border-2 border-dashed border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300 h-14 font-bold inline-flex items-center justify-center gap-1.5"><Package size={18} /> Venda rápida</button>
             </div>
           )}
 
@@ -515,7 +523,33 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         <FecharCaixaModal caixa={caixa} comandas={comandas} exclusoesPendentes={exclusoesPendentes.length} onIrExclusoes={() => { setCaixaModal(null); setTab("exclusoes"); }} exigir={exigir} onClose={() => setCaixaModal(null)} onFechar={fecharCaixa} />
       )}
       {pinReq && <PinModal titulo={pinReq.titulo} sub={pinReq.sub} nivel={pinReq.nivel} operadores={operadores} onResolver={resolverPin} />}
+      {pedirOp && <PedirOperadorModal operadores={operadores.filter((o) => o.ativo)} atualId={operadorAtivoId} onEscolher={(id) => { escolherOperador(id); const fn = pedirOp.fn; setPedirOp(null); fn(); }} onClose={() => setPedirOp(null)} />}
     </PageContainer>
+  );
+}
+
+// ── "Quem está lançando?" — escolha de operador ao abrir a comanda (sem PIN) ──
+function PedirOperadorModal({ operadores, atualId, onEscolher, onClose }: {
+  operadores: ComandaOperador[]; atualId: string | null;
+  onEscolher: (id: string) => void; onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[85] bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><UserCheck size={16} className="text-indigo-500" /> Quem está lançando?</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <p className="text-[12px] text-gray-500 mb-3">Toque no seu nome pra abrir a comanda.</p>
+        <div className="grid grid-cols-2 gap-2">
+          {operadores.map((o) => (
+            <button key={o.id} onClick={() => onEscolher(o.id)} className={`h-14 rounded-xl border-2 font-bold text-sm inline-flex items-center justify-center gap-1.5 px-2 text-center ${atualId === o.id ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-100 hover:border-indigo-300"}`}>
+              <UserCheck size={15} className="shrink-0" /> <span className="truncate">{o.nome}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 

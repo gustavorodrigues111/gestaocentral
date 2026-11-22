@@ -243,10 +243,21 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
                   <button type="button" onClick={() => removerItem(item.id)} className="text-gray-300 hover:text-rose-600 text-base shrink-0">×</button>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2 pl-8">
-                  {([["obrigatorio", "Obrigatório"], ["exigeObs", "Exige obs"], ["exigeFoto", "Exige foto"]] as const).map(([k, l]) => (
+                  {([["obrigatorio", "Obrigatório"], ["exigeObs", "Exige obs"], ["exigeFoto", "Exige foto"], ["medicao", "Medição"]] as const).map(([k, l]) => (
                     <button key={k} type="button" onClick={() => patchItem(item.id, { [k]: !item[k] } as Partial<ChecklistItemTemplate>)} className={CHIP(!!item[k])}>{l}</button>
                   ))}
                 </div>
+                {item.medicao && (
+                  <div className="flex items-center gap-1.5 mt-1.5 pl-8 flex-wrap">
+                    <span className="text-[11px] text-gray-400">Unidade</span>
+                    <input value={item.unidade ?? "°C"} onChange={(e) => patchItem(item.id, { unidade: e.target.value })} className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                    <span className="text-[11px] text-gray-400 ml-1">Faixa ideal</span>
+                    <input type="number" placeholder="mín" value={item.faixaMin ?? ""} onChange={(e) => patchItem(item.id, { faixaMin: e.target.value === "" ? null : Number(e.target.value) })} className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                    <span className="text-[11px] text-gray-400">a</span>
+                    <input type="number" placeholder="máx" value={item.faixaMax ?? ""} onChange={(e) => patchItem(item.id, { faixaMax: e.target.value === "" ? null : Number(e.target.value) })} className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+                    <span className="text-[11px] text-gray-400">(vazio = sem limite; alerta fora da faixa)</span>
+                  </div>
+                )}
                 <div className="mt-2 pl-8 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] text-gray-400 mr-0.5">Frequência:</span>
