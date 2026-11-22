@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, ShieldCheck, KeyRound, RotateCcw, UserCheck } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, ShieldCheck, KeyRound, RotateCcw, UserCheck, ClipboardList } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -22,7 +22,7 @@ import {
   ouvirFiscalConfig, salvarFiscalConfig, ouvirLayout,
   ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
   ouvirOperadores, salvarOperador, excluirOperador, conferirPin, hashPin, operadorTemNivel, operadoresDoNivel,
-  ouvirExclusoes, salvarExclusao,
+  ouvirExclusoes, salvarExclusao, seedChecklistsPeixaria,
 } from "./comandasRepo";
 import type { NivelOperador } from "./comandasRepo";
 import { EstacaoImpressao, AppCaixaConfig } from "./EstacaoImpressao";
@@ -565,12 +565,12 @@ function PinModal({ titulo, sub, nivel, operadores, onResolver }: {
   const [pin, setPin] = useState("");
   const [erro, setErro] = useState("");
   const [checando, setChecando] = useState(false);
-  async function confirmar() {
-    if (pin.length < 4) { setErro("Digite o PIN de 4 dígitos."); return; }
+  async function confirmar(valor: string) {
+    if (valor.length < 4 || checando) return;
     setChecando(true); setErro("");
-    const op = await conferirPin(operadores, pin, nivel);
+    const op = await conferirPin(operadores, valor, nivel);
     setChecando(false);
-    if (!op) { setErro(nivel === "qualquer" ? "PIN inválido." : `PIN inválido ou não é ${nivelLabel}.`); setPin(""); return; }
+    if (!op) { setErro(nivel === "qualquer" ? "PIN inválido, digite de novo." : `PIN inválido ou não é ${nivelLabel}.`); setPin(""); return; }
     onResolver({ ok: true, op });
   }
   return (
@@ -590,15 +590,13 @@ function PinModal({ titulo, sub, nivel, operadores, onResolver }: {
           </>
         ) : (
           <>
-            <input autoFocus type="password" inputMode="numeric" pattern="[0-9]*" maxLength={4} value={pin}
-              onChange={(e) => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setErro(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") void confirmar(); }}
+            <input autoFocus type="password" inputMode="numeric" pattern="[0-9]*" maxLength={4} value={pin} disabled={checando}
+              onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 4); setPin(v); setErro(""); if (v.length === 4) void confirmar(v); }}
               placeholder="● ● ● ●"
-              className="w-full h-14 text-center text-2xl tracking-[0.5em] font-bold rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100" />
-            {erro && <div className="text-[12px] text-rose-600 dark:text-rose-400 mt-1.5">{erro}</div>}
-            <div className="flex gap-2 mt-3">
-              <button onClick={() => onResolver({ ok: false, op: null })} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
-              <button onClick={() => void confirmar()} disabled={checando || pin.length < 4} className={`flex-1 h-10 rounded-lg text-white text-sm font-bold disabled:opacity-40 ${forte ? "bg-rose-600" : "bg-indigo-600"}`}>{checando ? "…" : "Confirmar"}</button>
+              className="w-full h-14 text-center text-2xl tracking-[0.5em] font-bold rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 disabled:opacity-60" />
+            <div className="text-[12px] mt-1.5 h-4">{erro ? <span className="text-rose-600 dark:text-rose-400">{erro}</span> : checando ? <span className="text-gray-400">Conferindo…</span> : <span className="text-gray-400">Digite os 4 dígitos — confirma sozinho.</span>}</div>
+            <div className="mt-2">
+              <button onClick={() => onResolver({ ok: false, op: null })} className="w-full h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
             </div>
           </>
         )}
@@ -3072,6 +3070,7 @@ function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podePr
     if (podeProdutos) a.push({ id: "categorias", label: "Categorias" }, { id: "produtos", label: "Produtos" }, { id: "gorjeta", label: "Gorjeta" }, { id: "fiscal", label: "Fiscal" });
     if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
     a.push({ id: "operadores", label: "Operadores" });
+    a.push({ id: "checklistseed", label: "Checklists" });
     return a;
   }, [podeProdutos, podeEstacoes]);
   const [sub, setSub] = useState(subs[0]?.id || "produtos");
@@ -3089,6 +3088,31 @@ function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podePr
       {atual === "fiscal" && <FiscalPadraoEditor rid={rid} cfg={fiscalCfg} />}
       {atual === "impressoras" && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
       {atual === "operadores" && <OperadoresEditor rid={rid} />}
+      {atual === "checklistseed" && <SeedPeixariaCard rid={rid} />}
+    </div>
+  );
+}
+
+// Botão provisório: cria/atualiza os 2 checklists da Peixaria (Abertura/Fechamento)
+// no restaurante atual, num clique. Roda como o usuário logado (escreve no banco).
+function SeedPeixariaCard({ rid }: { rid: string }) {
+  const { pessoa: me } = useAuth();
+  const [st, setSt] = useState<"idle" | "saving" | "done" | "err">("idle");
+  async function go() {
+    setSt("saving");
+    try { await seedChecklistsPeixaria(rid, me?.id || ""); setSt("done"); }
+    catch (e) { console.error("[seedChecklistsPeixaria]", e); setSt("err"); }
+  }
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 text-[12px] text-indigo-800 dark:text-indigo-200">
+        <b>Checklists da Peixaria (provisório).</b> Cria/atualiza os 2 checklists — <b>Abertura</b> e <b>Fechamento</b> da loja — já com os itens, as medições de temperatura (faixas ANVISA) e marcados pra <b>aparecer no caixa</b>. Pode clicar de novo pra atualizar; não duplica.
+      </div>
+      <button onClick={() => void go()} disabled={st === "saving"} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold inline-flex items-center gap-1.5 disabled:opacity-40">
+        <ClipboardList size={16} /> {st === "saving" ? "Criando…" : "Criar/atualizar os 2 checklists"}
+      </button>
+      {st === "done" && <div className="text-[13px] text-emerald-600 dark:text-emerald-400 font-semibold">✓ Pronto! Abra a aba Checklists do caixa pra ver.</div>}
+      {st === "err" && <div className="text-[13px] text-rose-600 dark:text-rose-400">Falha ao criar. Confira se sua conta tem permissão de Checklists neste restaurante.</div>}
     </div>
   );
 }
