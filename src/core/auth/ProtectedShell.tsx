@@ -326,20 +326,29 @@ function ComandasKioskShell() {
   // Launcher de módulos do painel da loja. Cada app aparece se a CONTA do caixa
   // tem a permissão dele (vínculo = permissão da pessoa, cadastrada no app admin).
   // Pra crescer (WhatsApp, Música…), basta adicionar um item aqui.
-  const apps: { id: string; label: string; icon: React.ReactNode; path: string; visivel: boolean; ativo: boolean }[] = [
+  // Cor por módulo (classes LITERAIS p/ o Tailwind não podar): ativo = cheio,
+  // inativo = tinta leve, tela = tingimento de fundo da cor do módulo ativo.
+  const COR = {
+    comandas:   { ativo: "bg-violet-600 text-white border-violet-600", inativo: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-300 dark:border-violet-900/50", tela: "bg-violet-50/50 dark:bg-violet-950/20" },
+    etiquetas:  { ativo: "bg-sky-600 text-white border-sky-600",       inativo: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-900/50",             tela: "bg-sky-50/50 dark:bg-sky-950/20" },
+    checklists: { ativo: "bg-rose-600 text-white border-rose-600",     inativo: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-900/50",         tela: "bg-rose-50/50 dark:bg-rose-950/20" },
+  } as const;
+  const apps: { id: keyof typeof COR; label: string; icon: React.ReactNode; path: string; visivel: boolean; ativo: boolean }[] = [
     { id: "comandas", label: "Comandas", icon: <Store size={15} />, path: `/r/${rid}/comandas`, visivel: true, ativo: loc.pathname.includes("/comandas") },
     { id: "etiquetas", label: "Etiquetas", icon: <Tag size={15} />, path: `/r/${rid}/estoqueValidade`, visivel: podeValidade, ativo: loc.pathname.includes("/estoqueValidade") },
     { id: "checklists", label: "Checklists", icon: <ClipboardList size={15} />, path: `/r/${rid}/checklists`, visivel: podeChecklists, ativo: loc.pathname.includes("/checklists") },
   ];
   const appsVisiveis = apps.filter((a) => a.visivel);
+  const appAtivo = appsVisiveis.find((a) => a.ativo) || appsVisiveis[0];
+  const telaTint = appAtivo ? COR[appAtivo.id].tela : "bg-gray-50 dark:bg-gray-950";
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className={`min-h-screen transition-colors ${telaTint}`}>
       {/* Moldura central (o kiosk não tem o <main> do AppShell que dá margem) */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
         {appsVisiveis.length > 1 && (
-          <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
+          <div className="flex gap-2 mb-3">
             {appsVisiveis.map((a) => (
-              <button key={a.id} onClick={() => nav(a.path)} className={`shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${a.ativo ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{a.icon} {a.label}</button>
+              <button key={a.id} onClick={() => nav(a.path)} className={`flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-2 rounded-xl text-sm font-bold border shadow-sm ${a.ativo ? COR[a.id].ativo : COR[a.id].inativo}`}>{a.icon} {a.label}</button>
             ))}
           </div>
         )}
