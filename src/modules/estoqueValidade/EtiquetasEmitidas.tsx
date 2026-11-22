@@ -44,6 +44,7 @@ export function EtiquetasEmitidas({ rid, ativas, locais, usuario, podeOperar }: 
   const [busca, setBusca] = useState("");
   const [aberta, setAberta] = useState<EtiquetaEmitida | null>(null);
   const [scan, setScan] = useState(false);
+  const [codigo, setCodigo] = useState("");   // código digitado (ou lido por leitor laser USB) da etiqueta
   const [msg, setMsg] = useState("");
   const [historico, setHistorico] = useState<EtiquetaEmitida[]>([]);
   const hoje = hojeSP();
@@ -117,10 +118,14 @@ export function EtiquetasEmitidas({ rid, ativas, locais, usuario, podeOperar }: 
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <button type="button" onClick={() => void lerQr()}
-        className="w-full h-14 rounded-xl bg-indigo-600 text-white text-base font-semibold inline-flex items-center justify-center gap-2 active:bg-indigo-700">
-        <ScanLine size={20} /> Ler QR da etiqueta
-      </button>
+      <form onSubmit={(e) => { e.preventDefault(); const c = codigo.trim(); if (c) { void aoLer(c); setCodigo(""); } }} className="flex gap-2">
+        <input autoFocus value={codigo} onChange={(e) => { setCodigo(e.target.value); setMsg(""); }} placeholder="Digite o código da etiqueta"
+          className="flex-1 h-14 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-base text-gray-900 dark:text-gray-100" />
+        <button type="submit" disabled={!codigo.trim()}
+          className="h-14 px-5 rounded-xl bg-indigo-600 text-white text-base font-semibold inline-flex items-center justify-center gap-2 active:bg-indigo-700 disabled:opacity-40">
+          <ScanLine size={20} /> Dar baixa
+        </button>
+      </form>
       {msg && <div className="text-sm text-amber-700 dark:text-amber-300">{msg}</div>}
 
       <div className="flex items-center justify-between">
