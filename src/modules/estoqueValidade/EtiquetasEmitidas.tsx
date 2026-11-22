@@ -137,11 +137,10 @@ export function EtiquetasEmitidas({ rid, ativas, locais, usuario, podeOperar }: 
       <form onSubmit={(e) => { e.preventDefault(); submeterCodigo(codigo); }} className="flex gap-2">
         <label className="flex-1 h-14 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center gap-2 cursor-text">
           <span className="text-gray-400 font-bold text-lg font-mono shrink-0">{sigla}</span>
-          <input autoFocus inputMode="numeric" pattern="[0-9]*" value={codigo}
-            onChange={(e) => { setCodigo(e.target.value.replace(/\D/g, "").slice(0, 5)); setMsg(""); }}
+          <input autoFocus inputMode="numeric" pattern="[0-9]*" value={codigo ? codigo.padStart(5, "0") : ""}
+            onChange={(e) => { const d = e.target.value.replace(/\D/g, "").replace(/^0+/, "").slice(-5); setCodigo(d); setMsg(""); }}
             placeholder="00000"
             className="flex-1 min-w-0 bg-transparent outline-none text-2xl font-bold tracking-[0.25em] tabular-nums text-gray-900 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-600" />
-          {codigo && <span className="text-gray-400 text-sm shrink-0 tabular-nums">→ {codigoEtiqueta(sigla, parseInt(codigo, 10) || 0)}</span>}
         </label>
         <button type="submit" disabled={!codigo.trim()}
           className="h-14 px-5 rounded-xl bg-indigo-600 text-white text-base font-semibold inline-flex items-center justify-center gap-2 active:bg-indigo-700 disabled:opacity-40">

@@ -341,6 +341,10 @@ function ComandasKioskShell() {
   const appsVisiveis = apps.filter((a) => a.visivel);
   const appAtivo = appsVisiveis.find((a) => a.ativo) || appsVisiveis[0];
   const telaTint = appAtivo ? COR[appAtivo.id].tela : "bg-gray-50 dark:bg-gray-950";
+  // Clicar no módulo ATIVO volta pra home dele (remonta a página = fecha detalhe
+  // de comanda / checklist aberto). Clicar em outro módulo navega normal.
+  const [homeN, setHomeN] = useState(0);
+  const clicarApp = (a: typeof apps[number]) => { if (a.ativo) setHomeN((n) => n + 1); else nav(a.path); };
   return (
     <div className={`min-h-screen transition-colors ${telaTint}`}>
       {/* Moldura central (o kiosk não tem o <main> do AppShell que dá margem) */}
@@ -348,7 +352,7 @@ function ComandasKioskShell() {
         {appsVisiveis.length > 1 && (
           <div className="flex gap-2 mb-3">
             {appsVisiveis.map((a) => (
-              <button key={a.id} onClick={() => nav(a.path)} className={`flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-2 rounded-xl text-sm font-bold border shadow-sm ${a.ativo ? COR[a.id].ativo : COR[a.id].inativo}`}>{a.icon} {a.label}</button>
+              <button key={a.id} onClick={() => clicarApp(a)} className={`flex-1 inline-flex items-center justify-center gap-1.5 h-10 px-2 rounded-xl text-sm font-bold border shadow-sm ${a.ativo ? COR[a.id].ativo : COR[a.id].inativo}`}>{a.icon} {a.label}</button>
             ))}
           </div>
         )}
@@ -363,9 +367,9 @@ function ComandasKioskShell() {
           </div>
         )}
         <Routes>
-          <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} onSwitchRestaurant={restaurants.length > 1 ? trocar : undefined} />} />
-          {podeValidade && <Route path="/r/:rid/estoqueValidade" element={<EstoqueValidadePage />} />}
-          {podeChecklists && <Route path="/r/:rid/checklists" element={<ChecklistsPage soCaixa />} />}
+          <Route path="/r/:rid/comandas" element={<ComandasPage key={homeN} onLogout={() => void signOut()} onSwitchRestaurant={restaurants.length > 1 ? trocar : undefined} />} />
+          {podeValidade && <Route path="/r/:rid/estoqueValidade" element={<EstoqueValidadePage key={homeN} />} />}
+          {podeChecklists && <Route path="/r/:rid/checklists" element={<ChecklistsPage key={homeN} soCaixa />} />}
           <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
         </Routes>
       </div>
