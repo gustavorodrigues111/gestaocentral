@@ -267,6 +267,9 @@ function ComandasKioskShell() {
   const loc = useLocation();
   // Restaurante escolhido pro PDV (lembrado por dispositivo). Com 1 só, usa direto.
   const [escolhido, setEscolhido] = useState<string | null>(() => { try { return localStorage.getItem("comandas_kiosk_rid"); } catch { return null; } });
+  // Nonce pra "voltar pra home" do módulo ativo (remonta a página). Declarado
+  // AQUI, antes de qualquer early return — hooks não podem ser condicionais.
+  const [homeN, setHomeN] = useState(0);
   const escolhidoValido = escolhido && restaurants.some((r) => r.id === escolhido) ? escolhido : null;
   const rid = restaurants.length === 1 ? restaurants[0].id : (escolhidoValido || "");
 
@@ -343,7 +346,7 @@ function ComandasKioskShell() {
   const telaTint = appAtivo ? COR[appAtivo.id].tela : "bg-gray-50 dark:bg-gray-950";
   // Clicar no módulo ATIVO volta pra home dele (remonta a página = fecha detalhe
   // de comanda / checklist aberto). Clicar em outro módulo navega normal.
-  const [homeN, setHomeN] = useState(0);
+  // (homeN é declarado no topo, antes dos early returns — hook não pode ser condicional.)
   const clicarApp = (a: typeof apps[number]) => { if (a.ativo) setHomeN((n) => n + 1); else nav(a.path); };
   return (
     <div className={`min-h-screen transition-colors ${telaTint}`}>
