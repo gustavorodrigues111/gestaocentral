@@ -28,10 +28,11 @@ type Props = {
   restaurantId: string;
   podeExecutar: boolean;
   podeConfig: boolean;
+  autoStart?: boolean;   // caixa/PDV: pula a tela de início (data de hoje + usuário logado)
   onClose: () => void;
 };
 
-export function ChecklistRunModal({ template, run, empregados, restaurantId, podeExecutar, podeConfig, onClose }: Props) {
+export function ChecklistRunModal({ template, run, empregados, restaurantId, podeExecutar, podeConfig, autoStart = false, onClose }: Props) {
   const { pessoa: me } = useAuth();
   // Preenche quem pode EXECUTAR (ou editar templates). Só-leitura = quem só tem histórico.
   const isReadonly = !(podeExecutar || podeConfig);
@@ -65,6 +66,17 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
   const editandoRef = useRef<string | null>(null);   // item (ou "__geral__") em edição — não sobrescrever com o remoto
 
   useEffect(() => { if (executor) { const emp = empregados.find(e => e.id === executor); if (emp) setExecutorNome(emp.nome); } }, [executor, empregados]);
+
+  // Caixa/PDV: pula a tela de "confirme a data e quem executa" — abre direto na
+  // lista, com a data de hoje e o usuário logado como executor.
+  const autoRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && !autoRef.current && etapa === "inicio" && !isReadonly && !runId && !run) {
+      autoRef.current = true;
+      void comecar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, etapa, isReadonly, runId]);
 
   // ── Ao vivo: escuta o run e atualiza o que os outros marcaram ──
   useEffect(() => {

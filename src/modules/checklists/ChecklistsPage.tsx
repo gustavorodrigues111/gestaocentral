@@ -607,6 +607,7 @@ export function ChecklistsPage({ soCaixa = false }: { soCaixa?: boolean } = {}) 
           restaurantId={rid}
           podeExecutar={podeExecutar}
           podeConfig={podeConfig}
+          autoStart={soCaixa}
           onClose={() => setRunEditor(null)}
         />
       )}
