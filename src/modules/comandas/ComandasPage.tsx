@@ -283,7 +283,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                 <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
                 {temBridge && <button onClick={() => { setMenuAberto(false); setCfgApp(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Impressora do caixa (IP)</button>}
                 <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação (outra tela/PC)</a>
-                {podeOperar && <button onClick={() => { setMenuAberto(false); setEditorSalao(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><MapPin size={16} /> Editor do salão (planta)</button>}
+                {podeOperar && <button onClick={() => { setMenuAberto(false); setEditorSalao(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><MapPin size={16} /> Locais e mesas</button>}
                 {imprimirAqui && <div className="px-3 py-1 text-[10px] text-gray-400">"Imprimir aqui" está ON — este PC imprime direto. Não abra a Estação em outra aba junto, pra não duplicar.</div>}
                 {(onSwitchRestaurant || onLogout) && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
                 {onSwitchRestaurant && <button onClick={() => { setMenuAberto(false); onSwitchRestaurant(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Store size={16} /> Trocar restaurante</button>}
@@ -759,6 +759,7 @@ function AbrirComandaModal({ modo, clientes, mesas, blocos, mesasOcupadas, mesaI
   function selecionar(c: Cliente) { setClienteId(c.id); setNome(c.nome); setTel(c.telefone || ""); }
   async function salvar() {
     if (!togo && !nome.trim()) { setErr("Informe o nome do cliente."); setStep(1); return; }
+    if (!togo && !local.trim()) { setErr("Escolha ou digite o local."); setStep(3); return; }
     const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
     try { await onAbrir({ numero: numero.trim(), clienteNome, local: local.trim() || undefined, mesaId, telefone: tel, pessoas: Math.max(1, pessoas), modo, clienteId }); }
@@ -799,7 +800,7 @@ function AbrirComandaModal({ modo, clientes, mesas, blocos, mesasOcupadas, mesaI
     </>
   );
 
-  const titulos = ["Cliente", "Quantas pessoas", "Lugar (opcional)"];
+  const titulos = ["Cliente", "Quantas pessoas", "Local"];
   const avancar = () => { if (step === 1 && !nome.trim()) { setErr("Informe o nome do cliente."); return; } setErr(""); setStep((s) => Math.min(3, s + 1)); };
 
   return (
@@ -890,9 +891,9 @@ function AbrirComandaModal({ modo, clientes, mesas, blocos, mesasOcupadas, mesaI
                   </div>
                 )}
                 <div>
-                  <label className={rotulo}>{areas.length > 0 ? "Outro local (opcional)" : "Local / referência (opcional)"}</label>
+                  <label className={rotulo}>{areas.length > 0 ? "Outro local" : "Local / referência *"}</label>
                   <input value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex.: Varanda · Balcão" className={campo} />
-                  <p className="text-[11px] text-gray-400 mt-1">Referência pra achar a turma pelo lugar. {areas.length === 0 && "Cadastre as áreas no Editor do salão."}</p>
+                  <p className="text-[11px] text-gray-400 mt-1">Obrigatório — referência pra achar a turma pelo lugar. {areas.length === 0 && "Cadastre os locais no Menu → Locais e mesas."}</p>
                 </div>
               </>
             )}
