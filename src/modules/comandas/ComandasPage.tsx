@@ -326,43 +326,61 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                 {podeOperar && <div className="text-sm mt-1">Abra uma comanda pra começar a lançar.</div>}
               </div>
             );
+            // 3 faixas de atenção pelo tempo desde o último pedido (ou abertura,
+            // se ainda não pediu): 🟢 Em dia <15min · 🟡 Atenção 15–25 · 🔴 >25.
+            const grupos: Record<"v" | "a" | "g", Comanda[]> = { v: [], a: [], g: [] };
+            for (const c of lista) { const m = mUlt(c); grupos[m > 25 ? "v" : m >= 15 ? "a" : "g"].push(c); }
+            const renderCard = (c: Comanda) => {
+              const aberta = c.status !== "fechada";
+              const parcial = aberta && (c.valorPago || 0) > 0.001;
+              const ultPed = ultimoPedidoEm(c);
+              const minsUlt = ultPed ? (Date.now() - new Date(ultPed).getTime()) / 60000 : 0;
+              const frac = Math.max(0, Math.min(1, minsUlt / 30));   // 0 = recém-pedido, 1 = 30min+ (crítico)
+              const velha = aberta && frac >= 1;                     // 30min+ sem novo pedido
+              const dot = !aberta ? "bg-gray-300 dark:bg-gray-600" : (parcial || velha) ? "bg-amber-500" : "bg-emerald-500";
+              // Degradê de envelhecimento: verde (140°) → vermelho (0°), tinta
+              // translúcida SOBRE o fundo do card (funciona claro/escuro).
+              const hue = Math.round(140 * (1 - frac));
+              const alpha = (0.07 + 0.30 * frac).toFixed(2);
+              const tint = aberta ? `linear-gradient(0deg, hsla(${hue},85%,48%,${alpha}), hsla(${hue},85%,48%,${alpha}))` : undefined;
+              const corTempo = !aberta ? "text-gray-400" : frac >= 0.8 ? "text-rose-600 dark:text-rose-400 font-semibold" : frac >= 0.5 ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-gray-400";
+              return (
+                <button key={c.id} onClick={() => setDetalhe(c.id)} style={tint ? { backgroundImage: tint } : undefined} className={`w-full text-left rounded-2xl border p-3 shadow-sm ${c.status === "fechada" ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"><span className={`w-2 h-2 rounded-full ${dot}`} />#{c.numero}</span>
+                    {c.status === "fechada" ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">paga</span>
+                      : parcial ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">parcial</span>
+                      : c.modo === "togo" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">to-go</span>}
+                  </div>
+                  <div className="font-bold text-gray-900 dark:text-gray-100 truncate mt-1.5">{c.clienteNome || "—"}</div>
+                  {c.local && <div className="text-[11px] text-indigo-600 dark:text-indigo-300 font-medium truncate inline-flex items-center gap-0.5"><MapPin size={10} className="shrink-0" /> {c.local}</div>}
+                  <div className="text-[12px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+                    <span>{c.itens.length} item(ns){c.pessoas && c.pessoas > 1 ? ` · ${c.pessoas}p` : ""}</span>
+                    {aberta && ultPed && <span className={`inline-flex items-center gap-0.5 tabular-nums ${corTempo}`}><Clock size={10} /> {tempoVivo(ultPed)}</span>}
+                  </div>
+                  <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(totalAPagarComanda(c))}{parcial && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 ml-1">falta {fmtR(totalAPagarComanda(c) - (c.valorPago || 0))}</span>}</div>
+                </button>
+              );
+            };
+            const faixas: [("v" | "a" | "g"), string, string, string][] = [
+              ["v", "Verifique a mesa", "bg-rose-500", "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"],
+              ["a", "Atenção", "bg-amber-500", "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300"],
+              ["g", "Em dia", "bg-emerald-500", "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"],
+            ];
             return (
-              <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                {lista.map((c) => {
-                  const aberta = c.status !== "fechada";
-                  const parcial = aberta && (c.valorPago || 0) > 0.001;
-                  const ultPed = ultimoPedidoEm(c);
-                  const minsUlt = ultPed ? (Date.now() - new Date(ultPed).getTime()) / 60000 : 0;
-                  const frac = Math.max(0, Math.min(1, minsUlt / 30));   // 0 = recém-pedido, 1 = 30min+ (crítico)
-                  const velha = aberta && frac >= 1;                     // 30min+ sem novo pedido
-                  const dot = !aberta ? "bg-gray-300 dark:bg-gray-600" : (parcial || velha) ? "bg-amber-500" : "bg-emerald-500";
-                  // Degradê de envelhecimento: verde (140°) → vermelho (0°), tinta
-                  // translúcida SOBRE o fundo do card (funciona claro/escuro).
-                  const hue = Math.round(140 * (1 - frac));
-                  const alpha = (0.07 + 0.30 * frac).toFixed(2);
-                  const tint = aberta ? `linear-gradient(0deg, hsla(${hue},85%,48%,${alpha}), hsla(${hue},85%,48%,${alpha}))` : undefined;
-                  const corTempo = !aberta ? "text-gray-400" : frac >= 0.8 ? "text-rose-600 dark:text-rose-400 font-semibold" : frac >= 0.5 ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-gray-400";
-                  return (
-                  <button key={c.id} onClick={() => setDetalhe(c.id)} style={tint ? { backgroundImage: tint } : undefined} className={`text-left rounded-2xl border p-3 shadow-sm ${c.status === "fechada" ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"><span className={`w-2 h-2 rounded-full ${dot}`} />#{c.numero}</span>
-                      {c.status === "fechada" ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">paga</span>
-                        : parcial ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">parcial</span>
-                        : c.modo === "togo" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">to-go</span>}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+                {faixas.map(([k, titulo, dotCor, hdr]) => (
+                  <div key={k} className="rounded-2xl border border-gray-100 dark:border-gray-800/60 bg-gray-50/50 dark:bg-gray-900/30 p-2">
+                    <div className={`flex items-center justify-between px-2.5 h-9 rounded-xl text-[13px] font-bold mb-2 ${hdr}`}>
+                      <span className="inline-flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-full ${dotCor}`} /> {titulo}</span>
+                      <span className="tabular-nums">{grupos[k].length}</span>
                     </div>
-                    <div className="font-bold text-gray-900 dark:text-gray-100 truncate mt-1.5">{c.clienteNome || "—"}</div>
-                    {c.local && <div className="text-[11px] text-indigo-600 dark:text-indigo-300 font-medium truncate inline-flex items-center gap-0.5"><MapPin size={10} className="shrink-0" /> {c.local}</div>}
-                    <div className="text-[12px] text-gray-500 flex items-center gap-1.5 flex-wrap">
-                      <span>{c.itens.length} item(ns){c.pessoas && c.pessoas > 1 ? ` · ${c.pessoas}p` : ""}</span>
-                      {aberta && ultPed && <span className={`inline-flex items-center gap-0.5 tabular-nums ${corTempo}`}><Clock size={10} /> {tempoVivo(ultPed)}</span>}
-                    </div>
-                    <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(totalAPagarComanda(c))}{parcial && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 ml-1">falta {fmtR(totalAPagarComanda(c) - (c.valorPago || 0))}</span>}</div>
-                  </button>
-                  );
-                })}
+                    {grupos[k].length === 0
+                      ? <div className="text-[12px] text-gray-400 text-center py-4">nenhuma</div>
+                      : <div className="grid grid-cols-2 md:grid-cols-1 gap-2.5">{grupos[k].map(renderCard)}</div>}
+                  </div>
+                ))}
               </div>
-              </>
             );
           })()}
         </>
