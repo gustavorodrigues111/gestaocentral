@@ -15,7 +15,7 @@ import { noAppSunmi, lerQrNativo, armarTeclaScan, armarCodigoScan } from "../../
 import { ScannerModal } from "./ScannerModal";
 import {
   type EtiquetaEmitida, type Faixa, MOTIVOS_DESCARTE, buscarPorToken, darBaixaEtiqueta, diasAteValidade,
-  faixaDe, hojeSP, reativarEtiqueta, textoPrazo, tokenDoQr, ultimosDias,
+  faixaDe, hojeSP, reativarEtiqueta, textoPrazo, tokenDoQr, ultimosDias, etiquetaPorNumero, codigoEtiqueta,
 } from "./etiquetasRepo";
 
 type Usuario = { uid?: string | null; nome?: string | null };
@@ -92,6 +92,22 @@ export function EtiquetasEmitidas({ rid, ativas, locais, usuario, podeOperar }: 
     } catch { setMsg("Não consegui consultar a etiqueta. Verifique a conexão."); }
   }
 
+  // Sigla do restaurante (prefixo do código), tirada de uma etiqueta ativa.
+  const sigla = ativas.find((e) => e.codigo)?.codigo?.replace(/\d+$/, "") || "SOR";
+  // Baixa pelo CÓDIGO digitado: número da etiqueta (7 → SOR00007). Se vier um QR
+  // (leitor laser mirando o QR), cai no fluxo de token.
+  function submeterCodigo(raw: string) {
+    const t = raw.trim();
+    if (!t) return;
+    const token = tokenDoQr(t);
+    if (token) { void aoLer(t); setCodigo(""); return; }
+    const n = parseInt(t.replace(/\D/g, ""), 10);
+    if (!n) { setMsg("Digite o número da etiqueta."); return; }
+    const found = etiquetaPorNumero(ativas, n);
+    if (found) { setAberta(found); setCodigo(""); setMsg(""); }
+    else setMsg(`Etiqueta ${codigoEtiqueta(sigla, n)} não encontrada entre as ativas (já foi baixada?).`);
+  }
+
   async function lerQr() {
     if (noAppSunmi()) {
       const v = await lerQrNativo();
@@ -118,14 +134,21 @@ export function EtiquetasEmitidas({ rid, ativas, locais, usuario, podeOperar }: 
 
   return (
     <div className="space-y-4 max-w-2xl">
-      <form onSubmit={(e) => { e.preventDefault(); const c = codigo.trim(); if (c) { void aoLer(c); setCodigo(""); } }} className="flex gap-2">
-        <input autoFocus value={codigo} onChange={(e) => { setCodigo(e.target.value); setMsg(""); }} placeholder="Digite o código da etiqueta"
-          className="flex-1 h-14 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-base text-gray-900 dark:text-gray-100" />
+      <form onSubmit={(e) => { e.preventDefault(); submeterCodigo(codigo); }} className="flex gap-2">
+        <label className="flex-1 h-14 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center gap-2 cursor-text">
+          <span className="text-gray-400 font-bold text-lg font-mono shrink-0">{sigla}</span>
+          <input autoFocus inputMode="numeric" pattern="[0-9]*" value={codigo}
+            onChange={(e) => { setCodigo(e.target.value.replace(/\D/g, "").slice(0, 5)); setMsg(""); }}
+            placeholder="00000"
+            className="flex-1 min-w-0 bg-transparent outline-none text-2xl font-bold tracking-[0.25em] tabular-nums text-gray-900 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-600" />
+          {codigo && <span className="text-gray-400 text-sm shrink-0 tabular-nums">→ {codigoEtiqueta(sigla, parseInt(codigo, 10) || 0)}</span>}
+        </label>
         <button type="submit" disabled={!codigo.trim()}
           className="h-14 px-5 rounded-xl bg-indigo-600 text-white text-base font-semibold inline-flex items-center justify-center gap-2 active:bg-indigo-700 disabled:opacity-40">
           <ScanLine size={20} /> Dar baixa
         </button>
       </form>
+      <p className="text-[12px] text-gray-400 -mt-1">Digite só o número da etiqueta (ex.: <b>7</b> = {sigla}00007). Leitor a laser no QR também funciona.</p>
       {msg && <div className="text-sm text-amber-700 dark:text-amber-300">{msg}</div>}
 
       <div className="flex items-center justify-between">
