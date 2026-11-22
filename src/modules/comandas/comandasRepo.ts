@@ -129,11 +129,20 @@ export async function salvarOperador(o: ComandaOperador): Promise<void> {
   await setDoc(doc(db, "comandaOperadores", o.id), sanitizeForFirestore(o), { merge: true });
 }
 export async function excluirOperador(id: string): Promise<void> { await deleteDoc(doc(db, "comandaOperadores", id)); }
-// Confere um PIN de 4 dígitos contra a lista; retorna o operador (ou null).
-// Se exigirSupervisor, só valida operadores marcados como supervisor.
-export async function conferirPin(operadores: ComandaOperador[], pin: string, exigirSupervisor: boolean): Promise<ComandaOperador | null> {
-  const cands = operadores.filter((o) => o.ativo && (!exigirSupervisor || o.supervisor));
-  for (const o of cands) {
+// Nível de um operador (hierárquico): master ⊇ supervisor ⊇ qualquer.
+export type NivelOperador = "qualquer" | "supervisor" | "master";
+export function operadorTemNivel(o: ComandaOperador, nivel: NivelOperador): boolean {
+  if (nivel === "master") return !!o.master;
+  if (nivel === "supervisor") return !!o.supervisor || !!o.master;
+  return true;
+}
+// Operadores elegíveis pra um nível (ativos + com o nível).
+export function operadoresDoNivel(operadores: ComandaOperador[], nivel: NivelOperador): ComandaOperador[] {
+  return operadores.filter((o) => o.ativo && operadorTemNivel(o, nivel));
+}
+// Confere um PIN de 4 dígitos contra a lista no nível exigido; retorna o operador (ou null).
+export async function conferirPin(operadores: ComandaOperador[], pin: string, nivel: NivelOperador): Promise<ComandaOperador | null> {
+  for (const o of operadoresDoNivel(operadores, nivel)) {
     if ((await hashPin(o.id, pin)) === o.pinHash) return o;
   }
   return null;

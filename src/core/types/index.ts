@@ -6771,6 +6771,7 @@ export type ComandaOperador = {
   nome: string;
   pinHash: string;                     // SHA-256 hex do PIN de 4 dígitos (+ salt do id)
   supervisor?: boolean;                // pode APROVAR exclusões e FECHAR o caixa
+  master?: boolean;                    // + acessa gestão (Cadastros/Estação/Locais/Relatórios/Trocar/Sair); master também é supervisor
   ativo: boolean;
   criadoEm: string;
 };

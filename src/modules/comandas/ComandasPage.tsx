@@ -21,9 +21,10 @@ import {
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
   ouvirFiscalConfig, salvarFiscalConfig, ouvirLayout,
   ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
-  ouvirOperadores, salvarOperador, excluirOperador, conferirPin, hashPin,
+  ouvirOperadores, salvarOperador, excluirOperador, conferirPin, hashPin, operadorTemNivel, operadoresDoNivel,
   ouvirExclusoes, salvarExclusao,
 } from "./comandasRepo";
+import type { NivelOperador } from "./comandasRepo";
 import { EstacaoImpressao, AppCaixaConfig } from "./EstacaoImpressao";
 import { MesaLayoutEditor } from "./MesaLayoutEditor";
 import { TefCobranca } from "./TefCobranca";
@@ -182,10 +183,42 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   // Gate de PIN (promessa): abre o modal e resolve com o operador validado.
   // ok=false → cancelou; ok=true, op=null → nenhum operador elegível cadastrado
   // (ação liberada e registrada no login do aparelho — ver aviso ao usuário).
-  const [pinReq, setPinReq] = useState<{ titulo: string; sub?: string; exigirSupervisor: boolean } | null>(null);
+  const [pinReq, setPinReq] = useState<{ titulo: string; sub?: string; nivel: NivelOperador } | null>(null);
   const pinResolveRef = useRef<((r: { ok: boolean; op: ComandaOperador | null }) => void) | null>(null);
-  const pedirPin = (titulo: string, exigirSupervisor: boolean, sub?: string) => new Promise<{ ok: boolean; op: ComandaOperador | null }>((resolve) => { pinResolveRef.current = resolve; setPinReq({ titulo, sub, exigirSupervisor }); });
+  const pedirPin = (titulo: string, nivel: NivelOperador, sub?: string) => new Promise<{ ok: boolean; op: ComandaOperador | null }>((resolve) => { pinResolveRef.current = resolve; setPinReq({ titulo, sub, nivel }); });
   const resolverPin = (r: { ok: boolean; op: ComandaOperador | null }) => { setPinReq(null); const fn = pinResolveRef.current; pinResolveRef.current = null; fn?.(r); };
+  // Modo gestão: destrava um nível por 5 min (janela deslizante). O botão "Travar"
+  // limpa; expira sozinho. master satisfaz supervisor, que satisfaz qualquer.
+  const UNLOCK_MS = 5 * 60 * 1000;
+  const [unlock, setUnlock] = useState<{ op: ComandaOperador; ate: number } | null>(null);
+  const travarGestao = () => setUnlock(null);
+  // Gate com sessão: se a sessão atual cobre o nível e não expirou, passa direto
+  // (e desliza o prazo); senão pede o PIN e abre a sessão. op=null = fallback
+  // liberado (sem ninguém cadastrado no nível) — não abre sessão.
+  async function exigir(nivel: NivelOperador, titulo: string, sub?: string): Promise<{ ok: boolean; op: ComandaOperador | null }> {
+    if (unlock && unlock.ate > Date.now() && operadorTemNivel(unlock.op, nivel)) {
+      setUnlock({ op: unlock.op, ate: Date.now() + UNLOCK_MS });
+      return { ok: true, op: unlock.op };
+    }
+    const r = await pedirPin(titulo, nivel, sub);
+    if (r.ok && r.op) setUnlock({ op: r.op, ate: Date.now() + UNLOCK_MS });
+    return r;
+  }
+  const gestaoAtiva = !!(unlock && unlock.ate > Date.now() && unlock.op.master);
+  // Nível exigido por aba: Exclusões = supervisor; Relatórios/Cadastros = master.
+  const nivelDaAba = (id: string): NivelOperador | null => id === "exclusoes" ? "supervisor" : (id === "relatorios" || id === "cadastros") ? "master" : null;
+  async function irParaAba(id: string) {
+    const nivel = nivelDaAba(id);
+    if (nivel) { const r = await exigir(nivel, nivel === "master" ? "Área de gestão" : "Exclusões", nivel === "master" ? "PIN de master" : "PIN de supervisor"); if (!r.ok) return; }
+    setTab(id); setMenuAberto(false);
+  }
+  // Ação de gestão (master): Estação, Locais e mesas, Trocar restaurante, Sair, Impressora IP.
+  async function acaoGestao(fn: () => void) {
+    setMenuAberto(false);
+    const r = await exigir("master", "Área de gestão", "PIN de master");
+    if (!r.ok) return;
+    fn();
+  }
   // Clientes (CRM) — carga única p/ o typeahead de abertura de comanda.
   useEffect(() => { if (!rid) return; let vivo = true; void lerClientes(rid).then((l) => { if (vivo) setClientes(l); }); return () => { vivo = false; }; }, [rid]);
   useEffect(() => { if (!rid) return; void lerLogoSite(rid).then(setLogoUrl); }, [rid]);
@@ -279,6 +312,11 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           <p className="text-[10px] text-gray-400">planejamento.app · {APP_VERSION_LABEL}</p>
         </div>
         <div className="flex items-center gap-2">
+          {gestaoAtiva && (
+            <button onClick={travarGestao} title="Travar a gestão agora" className="h-9 px-2.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 text-sm font-semibold inline-flex items-center gap-1.5">
+              <KeyRound size={14} /> <span className="hidden sm:inline">Gestão: {unlock?.op.nome}</span><span className="sm:hidden">Travar</span> <span className="text-[10px]">🔓</span>
+            </button>
+          )}
           {podeOperar && (
             <div className="relative">
               <button onClick={() => setOpMenu((v) => !v)} title="Operador do caixa — quem está lançando agora"
@@ -321,21 +359,22 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                   return (
                     <Fragment key={a.id}>
                       {divisor && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
-                      <button onClick={() => { setTab(a.id); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${tabEfetiva === a.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                      <button onClick={() => void irParaAba(a.id)} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${tabEfetiva === a.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
                         {ic} {a.label}
+                        {nivelDaAba(a.id) && <span className="text-gray-300 dark:text-gray-600">{nivelDaAba(a.id) === "master" ? <KeyRound size={12} /> : <ShieldCheck size={12} />}</span>}
                         {a.id === "exclusoes" && exclusoesPendentes.length > 0 && <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white tabular-nums">{exclusoesPendentes.length}</span>}
                       </button>
                     </Fragment>
                   );
                 })}
                 <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
-                {temBridge && <button onClick={() => { setMenuAberto(false); setCfgApp(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Impressora do caixa (IP)</button>}
-                <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação (outra tela/PC)</a>
-                {podeOperar && <button onClick={() => { setMenuAberto(false); setEditorSalao(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><MapPin size={16} /> Locais e mesas</button>}
+                {temBridge && <button onClick={() => void acaoGestao(() => setCfgApp(true))} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Impressora do caixa (IP) <KeyRound size={12} className="ml-auto text-gray-300 dark:text-gray-600" /></button>}
+                <button onClick={() => void acaoGestao(() => window.open("?estacao=1", "_blank"))} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação (outra tela/PC) <KeyRound size={12} className="ml-auto text-gray-300 dark:text-gray-600" /></button>
+                {podeOperar && <button onClick={() => void acaoGestao(() => setEditorSalao(true))} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><MapPin size={16} /> Locais e mesas <KeyRound size={12} className="ml-auto text-gray-300 dark:text-gray-600" /></button>}
                 {imprimirAqui && <div className="px-3 py-1 text-[10px] text-gray-400">"Imprimir aqui" está ON — este PC imprime direto. Não abra a Estação em outra aba junto, pra não duplicar.</div>}
                 {(onSwitchRestaurant || onLogout) && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
-                {onSwitchRestaurant && <button onClick={() => { setMenuAberto(false); onSwitchRestaurant(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Store size={16} /> Trocar restaurante</button>}
-                {onLogout && <button onClick={() => { setMenuAberto(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50/60 dark:hover:bg-rose-950/20"><LogOut size={16} /> Sair do PDV</button>}
+                {onSwitchRestaurant && <button onClick={() => void acaoGestao(() => onSwitchRestaurant())} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Store size={16} /> Trocar restaurante <KeyRound size={12} className="ml-auto text-gray-300 dark:text-gray-600" /></button>}
+                {onLogout && <button onClick={() => void acaoGestao(() => onLogout())} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50/60 dark:hover:bg-rose-950/20"><LogOut size={16} /> Sair do PDV <KeyRound size={12} className="ml-auto opacity-40" /></button>}
               </div>
             </>
           )}
@@ -348,7 +387,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
           fiscalCfg={fiscalCfg} podeOperar={podeOperar}
           meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
-          operador={operadorAtivo} pedirPin={pedirPin}
+          operador={operadorAtivo} exigir={exigir}
           onClose={fecharDetalhe}
         />
       ) : (<>
@@ -440,7 +479,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       )}
 
       {tabEfetiva === "exclusoes" && podeOperar && (
-        <ExclusoesPanel exclusoes={exclusoes} abertas={abertas} pedirPin={pedirPin} />
+        <ExclusoesPanel exclusoes={exclusoes} abertas={abertas} exigir={exigir} />
       )}
 
       {tabEfetiva === "relatorios" && podeRelatorios && (
@@ -473,40 +512,42 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         <MovimentoCaixaModal tipo={caixaModal} meNome={meNome} onClose={() => setCaixaModal(null)} onConfirmar={addMovimentoCaixa} />
       )}
       {caixaModal === "fechar" && caixa && (
-        <FecharCaixaModal caixa={caixa} comandas={comandas} exclusoesPendentes={exclusoesPendentes.length} onIrExclusoes={() => { setCaixaModal(null); setTab("exclusoes"); }} pedirPin={pedirPin} onClose={() => setCaixaModal(null)} onFechar={fecharCaixa} />
+        <FecharCaixaModal caixa={caixa} comandas={comandas} exclusoesPendentes={exclusoesPendentes.length} onIrExclusoes={() => { setCaixaModal(null); setTab("exclusoes"); }} exigir={exigir} onClose={() => setCaixaModal(null)} onFechar={fecharCaixa} />
       )}
-      {pinReq && <PinModal titulo={pinReq.titulo} sub={pinReq.sub} exigirSupervisor={pinReq.exigirSupervisor} operadores={operadores} onResolver={resolverPin} />}
+      {pinReq && <PinModal titulo={pinReq.titulo} sub={pinReq.sub} nivel={pinReq.nivel} operadores={operadores} onResolver={resolverPin} />}
     </PageContainer>
   );
 }
 
 // ── PIN de operador (gate de ações sensíveis) ──────────────────────────────
-function PinModal({ titulo, sub, exigirSupervisor, operadores, onResolver }: {
-  titulo: string; sub?: string; exigirSupervisor: boolean; operadores: ComandaOperador[];
+function PinModal({ titulo, sub, nivel, operadores, onResolver }: {
+  titulo: string; sub?: string; nivel: NivelOperador; operadores: ComandaOperador[];
   onResolver: (r: { ok: boolean; op: ComandaOperador | null }) => void;
 }) {
-  const elegiveis = operadores.filter((o) => o.ativo && (!exigirSupervisor || o.supervisor));
+  const elegiveis = operadoresDoNivel(operadores, nivel);
   const semOperador = elegiveis.length === 0;
+  const nivelLabel = nivel === "master" ? "master" : nivel === "supervisor" ? "supervisor" : "operador";
+  const forte = nivel !== "qualquer";
   const [pin, setPin] = useState("");
   const [erro, setErro] = useState("");
   const [checando, setChecando] = useState(false);
   async function confirmar() {
     if (pin.length < 4) { setErro("Digite o PIN de 4 dígitos."); return; }
     setChecando(true); setErro("");
-    const op = await conferirPin(operadores, pin, exigirSupervisor);
+    const op = await conferirPin(operadores, pin, nivel);
     setChecando(false);
-    if (!op) { setErro(exigirSupervisor ? "PIN inválido ou não é supervisor." : "PIN inválido."); setPin(""); return; }
+    if (!op) { setErro(nivel === "qualquer" ? "PIN inválido." : `PIN inválido ou não é ${nivelLabel}.`); setPin(""); return; }
     onResolver({ ok: true, op });
   }
   return (
     <div className="fixed inset-0 z-[95] bg-black/50 flex items-center justify-center p-4" onClick={() => onResolver({ ok: false, op: null })}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-xs p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5 mb-1"><KeyRound size={16} className={exigirSupervisor ? "text-rose-500" : "text-indigo-500"} /> {titulo}</div>
+        <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5 mb-1"><KeyRound size={16} className={forte ? "text-rose-500" : "text-indigo-500"} /> {titulo}</div>
         {sub && <p className="text-[12px] text-gray-500 mb-2">{sub}</p>}
         {semOperador ? (
           <>
             <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2.5 mb-3">
-              Nenhum {exigirSupervisor ? "supervisor" : "operador"} cadastrado ainda. A ação será <b>liberada</b> e registrada no login do aparelho. Cadastre operadores em <b>Cadastros → Operadores</b> pra exigir PIN.
+              Nenhum {nivelLabel} cadastrado ainda. A ação será <b>liberada</b> e registrada no login do aparelho. Cadastre em <b>Cadastros → Operadores</b> pra exigir PIN.
             </div>
             <div className="flex gap-2">
               <button onClick={() => onResolver({ ok: false, op: null })} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
@@ -523,7 +564,7 @@ function PinModal({ titulo, sub, exigirSupervisor, operadores, onResolver }: {
             {erro && <div className="text-[12px] text-rose-600 dark:text-rose-400 mt-1.5">{erro}</div>}
             <div className="flex gap-2 mt-3">
               <button onClick={() => onResolver({ ok: false, op: null })} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
-              <button onClick={() => void confirmar()} disabled={checando || pin.length < 4} className={`flex-1 h-10 rounded-lg text-white text-sm font-bold disabled:opacity-40 ${exigirSupervisor ? "bg-rose-600" : "bg-indigo-600"}`}>{checando ? "…" : "Confirmar"}</button>
+              <button onClick={() => void confirmar()} disabled={checando || pin.length < 4} className={`flex-1 h-10 rounded-lg text-white text-sm font-bold disabled:opacity-40 ${forte ? "bg-rose-600" : "bg-indigo-600"}`}>{checando ? "…" : "Confirmar"}</button>
             </div>
           </>
         )}
@@ -533,9 +574,9 @@ function PinModal({ titulo, sub, exigirSupervisor, operadores, onResolver }: {
 }
 
 // Justificativa obrigatória + PIN pra transferir item/comanda pra Exclusões.
-function ExcluirModal({ tipo, label, valor, pedirPin, onClose, onConfirmar }: {
+function ExcluirModal({ tipo, label, valor, exigir, onClose, onConfirmar }: {
   tipo: "item" | "comanda"; label: string; valor: number;
-  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  exigir: (nivel: NivelOperador, titulo: string, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
   onClose: () => void; onConfirmar: (justificativa: string, op: ComandaOperador | null) => Promise<void>;
 }) {
   const [just, setJust] = useState("");
@@ -544,7 +585,7 @@ function ExcluirModal({ tipo, label, valor, pedirPin, onClose, onConfirmar }: {
   const motivos = ["Cliente desistiu", "Lançado errado", "Item devolvido", "Cortesia", "Comanda aberta por engano"];
   async function go() {
     if (just.trim().length < 3) { setErr("Explique o motivo — é obrigatório."); return; }
-    const r = await pedirPin("Confirmar exclusão", false, "Digite seu PIN de operador");
+    const r = await exigir("qualquer", "Confirmar exclusão", "Digite seu PIN de operador");
     if (!r.ok) return;
     setSaving(true);
     try { await onConfirmar(just, r.op); } finally { setSaving(false); }
@@ -578,15 +619,15 @@ function ExcluirModal({ tipo, label, valor, pedirPin, onClose, onConfirmar }: {
 }
 
 // ── Aba Exclusões: fila de pendentes (aprovar/devolver) + histórico ─────────
-function ExclusoesPanel({ exclusoes, abertas, pedirPin }: {
+function ExclusoesPanel({ exclusoes, abertas, exigir }: {
   exclusoes: ComandaExclusao[]; abertas: Comanda[];
-  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  exigir: (nivel: NivelOperador, titulo: string, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
 }) {
   const pend = exclusoes.filter((x) => x.status === "pendente");
   const hist = exclusoes.filter((x) => x.status !== "pendente").slice(0, 60);
   const [devolver, setDevolver] = useState<ComandaExclusao | null>(null);
   async function aprovar(x: ComandaExclusao) {
-    const r = await pedirPin("Aprovar exclusão", true, "PIN de supervisor — confirma que a exclusão é legítima");
+    const r = await exigir("supervisor", "Aprovar exclusão", "PIN de supervisor — confirma que a exclusão é legítima");
     if (!r.ok) return;
     await salvarExclusao({ ...x, status: "aprovada", resolvidoPorId: r.op?.id || null, resolvidoPorNome: r.op?.nome || "—", resolvidoEm: nowIso() });
   }
@@ -631,16 +672,16 @@ function ExclusoesPanel({ exclusoes, abertas, pedirPin }: {
           <div className="space-y-2 opacity-80">{hist.map(linha)}</div>
         </section>
       )}
-      {devolver && <DevolverModal exclusao={devolver} abertas={abertas} pedirPin={pedirPin} onClose={() => setDevolver(null)} />}
+      {devolver && <DevolverModal exclusao={devolver} abertas={abertas} exigir={exigir} onClose={() => setDevolver(null)} />}
     </div>
   );
 }
 
 // Devolver exclusão: escolhe a comanda de destino (a original, se aberta, ou
 // outra comanda — pra cobrar do responsável pelo erro). Exige PIN de supervisor.
-function DevolverModal({ exclusao, abertas, pedirPin, onClose }: {
+function DevolverModal({ exclusao, abertas, exigir, onClose }: {
   exclusao: ComandaExclusao; abertas: Comanda[];
-  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  exigir: (nivel: NivelOperador, titulo: string, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
   onClose: () => void;
 }) {
   const original = abertas.find((c) => c.id === exclusao.comandaId) || null;
@@ -651,7 +692,7 @@ function DevolverModal({ exclusao, abertas, pedirPin, onClose }: {
   async function go() {
     const destino = abertas.find((c) => c.id === alvoId);
     if (!destino) return;
-    const r = await pedirPin("Devolver para comanda", true, `PIN de supervisor — lançar em #${destino.numero}`);
+    const r = await exigir("supervisor", "Devolver para comanda", `PIN de supervisor — lançar em #${destino.numero}`);
     if (!r.ok) return;
     setSaving(true);
     try {
@@ -699,13 +740,19 @@ function OperadoresEditor({ rid }: { rid: string }) {
   useEffect(() => ouvirOperadores(rid, setOps), [rid]);
   const [nome, setNome] = useState("");
   const [pin, setPin] = useState("");
-  const [sup, setSup] = useState(false);
+  const [nivel, setNivel] = useState<"normal" | "supervisor" | "master">("normal");
   const [msg, setMsg] = useState("");
   async function add() {
     if (!nome.trim() || pin.length !== 4) { setMsg("Preencha nome e PIN de 4 dígitos."); return; }
     const id = uid();
-    await salvarOperador({ id, restaurantId: rid, nome: nome.trim(), pinHash: await hashPin(id, pin), supervisor: sup, ativo: true, criadoEm: nowIso() });
-    setNome(""); setPin(""); setSup(false); setMsg("");
+    await salvarOperador({ id, restaurantId: rid, nome: nome.trim(), pinHash: await hashPin(id, pin), supervisor: nivel !== "normal", master: nivel === "master", ativo: true, criadoEm: nowIso() });
+    setNome(""); setPin(""); setNivel("normal"); setMsg("");
+  }
+  // Ciclo de nível no clique: normal → supervisor → master → normal.
+  async function ciclarNivel(o: ComandaOperador) {
+    const atual = o.master ? "master" : o.supervisor ? "supervisor" : "normal";
+    const prox = atual === "normal" ? { supervisor: true, master: false } : atual === "supervisor" ? { supervisor: true, master: true } : { supervisor: false, master: false };
+    await salvarOperador({ ...o, ...prox });
   }
   async function trocarPin(o: ComandaOperador) {
     const p = prompt(`Novo PIN de 4 dígitos para ${o.nome}:`);
@@ -715,8 +762,12 @@ function OperadoresEditor({ rid }: { rid: string }) {
   }
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 text-[12px] text-indigo-800 dark:text-indigo-200">
-        <b>Operadores do caixa.</b> Cada um tem um PIN de 4 dígitos. O PIN é pedido pra <b>excluir</b>, <b>aprovar exclusões</b> e <b>fechar o caixa</b> — assim fica registrado quem fez. Só <b>supervisor</b> aprova exclusão e fecha caixa. É controle operacional, não senha do sistema.
+      <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 text-[12px] text-indigo-800 dark:text-indigo-200 space-y-1">
+        <div><b>Operadores do caixa.</b> Cada um tem um PIN de 4 dígitos (controle operacional, não senha do sistema). Três níveis:</div>
+        <div>· <b>Normal</b>: lança e abre comanda.</div>
+        <div>· <b>Supervisor</b>: + aprova/devolve exclusões e fecha o caixa.</div>
+        <div>· <b>Master</b>: + acessa a gestão (Cadastros, Estação, Locais e mesas, Relatórios, Trocar restaurante, Sair). Master também é supervisor.</div>
+        <div className="text-amber-700 dark:text-amber-300">Cadastre pelo menos <b>1 master</b> — senão a gestão fica liberada sem PIN.</div>
       </div>
       <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2">
         <div className="text-[12px] font-bold uppercase tracking-wider text-gray-500">Novo operador</div>
@@ -724,7 +775,11 @@ function OperadoresEditor({ rid }: { rid: string }) {
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome" className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
           <input type="password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="PIN (4 dígitos)" className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tracking-[0.3em]" />
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={sup} onChange={(e) => setSup(e.target.checked)} className="w-4 h-4" /> Supervisor (pode aprovar exclusões e fechar o caixa)</label>
+        <div className="flex gap-1.5">
+          {(["normal", "supervisor", "master"] as const).map((n) => (
+            <button key={n} onClick={() => setNivel(n)} className={`flex-1 h-9 rounded-lg text-[12px] font-bold border capitalize ${nivel === n ? "border-indigo-500 bg-indigo-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{n}</button>
+          ))}
+        </div>
         {msg && <div className="text-[12px] text-rose-600 dark:text-rose-400">{msg}</div>}
         <button onClick={() => void add()} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-bold inline-flex items-center gap-1"><Plus size={15} /> Adicionar</button>
       </div>
@@ -734,10 +789,10 @@ function OperadoresEditor({ rid }: { rid: string }) {
           <div key={o.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${o.ativo ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
             <UserCheck size={16} className="text-gray-400 shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{o.nome}{o.supervisor && <span className="ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">SUPERVISOR</span>}{!o.ativo && <span className="ml-1.5 text-[10px] text-gray-400">inativo</span>}</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{o.nome}{o.master ? <span className="ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">MASTER</span> : o.supervisor ? <span className="ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">SUPERVISOR</span> : null}{!o.ativo && <span className="ml-1.5 text-[10px] text-gray-400">inativo</span>}</div>
             </div>
             <button onClick={() => void trocarPin(o)} title="Trocar PIN" className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><KeyRound size={13} /> PIN</button>
-            <button onClick={() => void salvarOperador({ ...o, supervisor: !o.supervisor })} title="Alternar supervisor" className={`h-8 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 ${o.supervisor ? "border-indigo-300 text-indigo-700 dark:border-indigo-800 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-500"}`}><ShieldCheck size={13} /></button>
+            <button onClick={() => void ciclarNivel(o)} title="Mudar nível (normal → supervisor → master)" className={`h-8 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 ${o.master ? "border-rose-300 text-rose-700 dark:border-rose-800 dark:text-rose-300" : o.supervisor ? "border-indigo-300 text-indigo-700 dark:border-indigo-800 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-500"}`}>{o.master ? <KeyRound size={13} /> : <ShieldCheck size={13} />}</button>
             <button onClick={() => void salvarOperador({ ...o, ativo: !o.ativo })} title={o.ativo ? "Desativar" : "Ativar"} className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300">{o.ativo ? "Off" : "On"}</button>
             <button onClick={() => { if (confirm(`Excluir operador ${o.nome}?`)) void excluirOperador(o.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={15} /></button>
           </div>
@@ -938,10 +993,10 @@ function MovimentoCaixaModal({ tipo, meNome, onClose, onConfirmar }: {
   );
 }
 
-function FecharCaixaModal({ caixa, comandas, exclusoesPendentes, onIrExclusoes, pedirPin, onClose, onFechar }: {
+function FecharCaixaModal({ caixa, comandas, exclusoesPendentes, onIrExclusoes, exigir, onClose, onFechar }: {
   caixa: ComandaCaixa; comandas: Comanda[];
   exclusoesPendentes: number; onIrExclusoes: () => void;
-  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  exigir: (nivel: NivelOperador, titulo: string, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
   onClose: () => void; onFechar: (contadoDinheiro: number, obs: string, resumo: ComandaCaixa["resumo"], aprovador?: ComandaOperador | null) => Promise<void>;
 }) {
   const [conf, setConf] = useState<Record<string, number>>({});   // conferido por forma, em CENTAVOS
@@ -1044,7 +1099,7 @@ function FecharCaixaModal({ caixa, comandas, exclusoesPendentes, onIrExclusoes, 
           <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
           <button onClick={async () => {
             if (exclusoesPendentes > 0) { onIrExclusoes(); return; }
-            const r = await pedirPin("Fechar o caixa", true, "PIN de supervisor");
+            const r = await exigir("supervisor", "Fechar o caixa", "PIN de supervisor");
             if (!r.ok) return;
             setSaving(true); try { await onFechar(contadoDinheiro, obs, { ...resumo, diferenca: diferencaTotal, conferencia }, r.op); } finally { setSaving(false); }
           }} disabled={saving || !touched} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40 inline-flex items-center gap-1.5"><KeyRound size={15} /> {saving ? "Fechando…" : "Fechar caixa"}</button>
@@ -1247,10 +1302,10 @@ function AbrirComandaModal({ modo, clientes, mesas, blocos, mesasOcupadas, mesaI
 }
 
 // ── Detalhe da comanda (lançar itens, imprimir, fechar) ───────────────────
-function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fiscalCfg, podeOperar, meNome, nomeRest, rid, operador, pedirPin, onClose }: {
+function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fiscalCfg, podeOperar, meNome, nomeRest, rid, operador, exigir, onClose }: {
   comanda: Comanda; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; logoUrl: string | null; fiscalCfg: ComandaFiscalConfig | null; podeOperar: boolean; meNome: string; nomeRest: string; rid: string;
   operador: ComandaOperador | null;
-  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  exigir: (nivel: NivelOperador, titulo: string, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
   onClose: () => void;
 }) {
   const fechada = comanda.status === "fechada";
@@ -1739,7 +1794,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       </div>
 
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
-      {excluindo && <ExcluirModal tipo={excluindo.tipo} label={excluindo.label} valor={+excluindo.itens.reduce((s, i) => s + (i.total || 0), 0).toFixed(2)} pedirPin={pedirPin} onClose={() => setExcluindo(null)} onConfirmar={transferirExclusao} />}
+      {excluindo && <ExcluirModal tipo={excluindo.tipo} label={excluindo.label} valor={+excluindo.itens.reduce((s, i) => s + (i.total || 0), 0).toFixed(2)} exigir={exigir} onClose={() => setExcluindo(null)} onConfirmar={transferirExclusao} />}
       {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} fiscalCfg={fiscalCfg} onClose={() => setFechar(false)} onFechado={aposFecharVenda} />}
       {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} onImprimir={() => void reimprimirConta()} />}
       {cpfModal && (
