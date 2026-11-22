@@ -5,7 +5,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco, ComandaOperador, ComandaExclusao, ChecklistTemplate } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco, ComandaOperador, ComandaExclusao } from "../../core/types";
 
 export const uid = () => { try { return crypto.randomUUID(); } catch { return "c" + Date.now() + Math.random().toString(36).slice(2); } };
 
@@ -146,70 +146,6 @@ export async function conferirPin(operadores: ComandaOperador[], pin: string, ni
     if ((await hashPin(o.id, pin)) === o.pinHash) return o;
   }
   return null;
-}
-
-// ── Seed PROVISÓRIO: checklists de Abertura/Fechamento da Peixaria ──────
-// Cria/atualiza os 2 checklists no restaurante atual (ids fixos → reclicar
-// atualiza, não duplica). Marcados noCaixa=true. Temperaturas = itens de medição
-// com faixa ANVISA. Roda como o usuário logado (respeita as Firestore Rules).
-export async function seedChecklistsPeixaria(rid: string, criadoPor: string): Promise<void> {
-  const now = new Date().toISOString();
-  type I = { t: string; med?: [number, number]; obs?: boolean };
-  const mk = (base: string, arr: I[]) => arr.map((it, idx) => ({
-    id: `${base}_i${idx + 1}`, texto: it.t, ordem: idx, obrigatorio: false,
-    ...(it.obs ? { exigeObs: true } : {}),
-    ...(it.med ? { medicao: true, unidade: "°C", faixaMin: it.med[0], faixaMax: it.med[1] } : {}),
-  }));
-  const abertura: I[] = [
-    { t: "Ligar as luzes" },
-    { t: "Posicionar mesas e cadeiras" },
-    { t: "Verificar se mesas e cadeiras estão limpas" },
-    { t: "Verificar se os móveis do salão estão limpos" },
-    { t: "Verificar se as peças à venda (roupas, bolsas etc.) estão repostas" },
-    { t: "Freezer 1 — temperatura", med: [-25, -18] },
-    { t: "Freezer 2 — temperatura", med: [-25, -18] },
-    { t: "Geladeira 1 — temperatura", med: [0, 5] },
-    { t: "Geladeira 2 — temperatura", med: [0, 5] },
-    { t: "Vitrine expositora — temperatura", med: [0, 5] },
-    { t: "Fazer a sangria do chopp e da cidra" },
-    { t: "Verificar nível dos barris de chopp e cidra (repor hoje?)" },
-    { t: "Verificar nível do cilindro de gás (CO₂)" },
-    { t: "Repor insumos da vitrine refrigerada" },
-    { t: "Organizar o expositor (o que vence primeiro na frente, tudo bem exposto)" },
-    { t: "Produtos com etiqueta a vencer hoje → reavaliar e, se preciso, descartar ou trocar a etiqueta" },
-    { t: "Bancadas, tábuas e facas higienizadas" },
-    { t: "Pia abastecida (sabonete, álcool 70, papel-toalha)" },
-    { t: "Uniforme/avental/touca e mãos higienizadas" },
-    { t: "Lixeiras limpas e com saco" },
-    { t: "Abrir o caixa (fundo de troco)" },
-    { t: "Impressoras ligadas e abastecidas" },
-    { t: "Conferir preços e produtos do cardápio" },
-  ];
-  const fechamento: I[] = [
-    { t: "Recolher a vitrine de comidas prontas (freezers expositores ficam com os produtos)" },
-    { t: "Produtos com etiqueta a vencer → reavaliar e, se preciso, descartar ou trocar a etiqueta" },
-    { t: "Registrar sobras e perdas do dia", obs: true },
-    { t: "Freezer 1 — temperatura", med: [-25, -18] },
-    { t: "Freezer 2 — temperatura", med: [-25, -18] },
-    { t: "Geladeira 1 — temperatura", med: [0, 5] },
-    { t: "Geladeira 2 — temperatura", med: [0, 5] },
-    { t: "Vitrine expositora — temperatura", med: [0, 5] },
-    { t: "Limpar e sanitizar balcão, bancadas, tábuas, facas e vitrine" },
-    { t: "Se necessário, efetuar lavagem (chão, ralos, balcão)" },
-    { t: "Deixar toda a louça limpa, pia e bancada limpas" },
-    { t: "Repor os copos pra gelar (pro dia seguinte)" },
-    { t: "Esvaziar e higienizar as lixeiras; levar o lixo pra fora" },
-    { t: "Fechar o caixa (conferência)" },
-    { t: "Verificar se o ar-condicionado foi desligado" },
-    { t: "Conferir portas, janelas e luzes" },
-    { t: "Passar o relatório do serviço no grupo (WhatsApp)" },
-  ];
-  const baseA = `seed_peixaria_abertura_${rid}`;
-  const baseF = `seed_peixaria_fechamento_${rid}`;
-  const tplA: ChecklistTemplate = { id: baseA, restaurantId: rid, nome: "Abertura da loja (Peixaria)", frequencia: "diaria", turno: "abertura", itens: mk(baseA, abertura), ativo: true, noCaixa: true, criadoEm: now, criadoPor, atualizadoEm: now };
-  const tplF: ChecklistTemplate = { id: baseF, restaurantId: rid, nome: "Fechamento da loja (Peixaria)", frequencia: "diaria", turno: "fechamento", itens: mk(baseF, fechamento), ativo: true, noCaixa: true, criadoEm: now, criadoPor, atualizadoEm: now };
-  await setDoc(doc(db, "checklistTemplates", tplA.id), sanitizeForFirestore(tplA), { merge: true });
-  await setDoc(doc(db, "checklistTemplates", tplF.id), sanitizeForFirestore(tplF), { merge: true });
 }
 
 // ── Exclusões (transferência + aprovação) ──────────────────────────────

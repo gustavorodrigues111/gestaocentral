@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, ShieldCheck, KeyRound, RotateCcw, UserCheck, ClipboardList } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, ShieldCheck, KeyRound, RotateCcw, UserCheck } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -22,7 +22,7 @@ import {
   ouvirFiscalConfig, salvarFiscalConfig, ouvirLayout,
   ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
   ouvirOperadores, salvarOperador, excluirOperador, conferirPin, hashPin, operadorTemNivel, operadoresDoNivel,
-  ouvirExclusoes, salvarExclusao, seedChecklistsPeixaria,
+  ouvirExclusoes, salvarExclusao,
 } from "./comandasRepo";
 import type { NivelOperador } from "./comandasRepo";
 import { EstacaoImpressao, AppCaixaConfig } from "./EstacaoImpressao";
@@ -3070,7 +3070,6 @@ function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podePr
     if (podeProdutos) a.push({ id: "categorias", label: "Categorias" }, { id: "produtos", label: "Produtos" }, { id: "gorjeta", label: "Gorjeta" }, { id: "fiscal", label: "Fiscal" });
     if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
     a.push({ id: "operadores", label: "Operadores" });
-    a.push({ id: "checklistseed", label: "Checklists" });
     return a;
   }, [podeProdutos, podeEstacoes]);
   const [sub, setSub] = useState(subs[0]?.id || "produtos");
@@ -3088,31 +3087,6 @@ function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podePr
       {atual === "fiscal" && <FiscalPadraoEditor rid={rid} cfg={fiscalCfg} />}
       {atual === "impressoras" && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
       {atual === "operadores" && <OperadoresEditor rid={rid} />}
-      {atual === "checklistseed" && <SeedPeixariaCard rid={rid} />}
-    </div>
-  );
-}
-
-// Botão provisório: cria/atualiza os 2 checklists da Peixaria (Abertura/Fechamento)
-// no restaurante atual, num clique. Roda como o usuário logado (escreve no banco).
-function SeedPeixariaCard({ rid }: { rid: string }) {
-  const { pessoa: me } = useAuth();
-  const [st, setSt] = useState<"idle" | "saving" | "done" | "err">("idle");
-  async function go() {
-    setSt("saving");
-    try { await seedChecklistsPeixaria(rid, me?.id || ""); setSt("done"); }
-    catch (e) { console.error("[seedChecklistsPeixaria]", e); setSt("err"); }
-  }
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 text-[12px] text-indigo-800 dark:text-indigo-200">
-        <b>Checklists da Peixaria (provisório).</b> Cria/atualiza os 2 checklists — <b>Abertura</b> e <b>Fechamento</b> da loja — já com os itens, as medições de temperatura (faixas ANVISA) e marcados pra <b>aparecer no caixa</b>. Pode clicar de novo pra atualizar; não duplica.
-      </div>
-      <button onClick={() => void go()} disabled={st === "saving"} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold inline-flex items-center gap-1.5 disabled:opacity-40">
-        <ClipboardList size={16} /> {st === "saving" ? "Criando…" : "Criar/atualizar os 2 checklists"}
-      </button>
-      {st === "done" && <div className="text-[13px] text-emerald-600 dark:text-emerald-400 font-semibold">✓ Pronto! Abra a aba Checklists do caixa pra ver.</div>}
-      {st === "err" && <div className="text-[13px] text-rose-600 dark:text-rose-400">Falha ao criar. Confira se sua conta tem permissão de Checklists neste restaurante.</div>}
     </div>
   );
 }
