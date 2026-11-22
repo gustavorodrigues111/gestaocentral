@@ -9,7 +9,7 @@
 // Suspense e o usuário vê o splash bege por ~200-400ms até carregar.
 
 import { useEffect, useState } from "react";
-import { Lock, CircleHelp, Store, Tag } from "lucide-react";
+import { Lock, CircleHelp, Store, Tag, ClipboardList } from "lucide-react";
 import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
@@ -322,15 +322,25 @@ function ComandasKioskShell() {
   // estação, mesma origem) — assim o app do caixa emite e gerencia etiquetas e,
   // no app Electron, imprime direto na impressora USB (ponte de etiqueta).
   const podeValidade = !!rid && canUse(pessoa, rid, "estoqueValidade");
-  const naValidade = loc.pathname.includes("/estoqueValidade");
+  const podeChecklists = !!rid && canUse(pessoa, rid, "checklists");
+  // Launcher de módulos do painel da loja. Cada app aparece se a CONTA do caixa
+  // tem a permissão dele (vínculo = permissão da pessoa, cadastrada no app admin).
+  // Pra crescer (WhatsApp, Música…), basta adicionar um item aqui.
+  const apps: { id: string; label: string; icon: React.ReactNode; path: string; visivel: boolean; ativo: boolean }[] = [
+    { id: "comandas", label: "Comandas", icon: <Store size={15} />, path: `/r/${rid}/comandas`, visivel: true, ativo: loc.pathname.includes("/comandas") },
+    { id: "etiquetas", label: "Etiquetas", icon: <Tag size={15} />, path: `/r/${rid}/estoqueValidade`, visivel: podeValidade, ativo: loc.pathname.includes("/estoqueValidade") },
+    { id: "checklists", label: "Checklists", icon: <ClipboardList size={15} />, path: `/r/${rid}/checklists`, visivel: podeChecklists, ativo: loc.pathname.includes("/checklists") },
+  ];
+  const appsVisiveis = apps.filter((a) => a.visivel);
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Moldura central (o kiosk não tem o <main> do AppShell que dá margem) */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
-        {podeValidade && (
-          <div className="flex gap-2 mb-3">
-            <button onClick={() => nav(`/r/${rid}/comandas`)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${!naValidade ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}><Store size={15} /> Comandas</button>
-            <button onClick={() => nav(`/r/${rid}/estoqueValidade`)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${naValidade ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}><Tag size={15} /> Etiquetas</button>
+        {appsVisiveis.length > 1 && (
+          <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar">
+            {appsVisiveis.map((a) => (
+              <button key={a.id} onClick={() => nav(a.path)} className={`shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold border ${a.ativo ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{a.icon} {a.label}</button>
+            ))}
           </div>
         )}
         {fila.ativo && (fila.imprimindo || fila.pendentes > 0 || fila.ultimoErro) && (
@@ -346,6 +356,7 @@ function ComandasKioskShell() {
         <Routes>
           <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} onSwitchRestaurant={restaurants.length > 1 ? trocar : undefined} />} />
           {podeValidade && <Route path="/r/:rid/estoqueValidade" element={<EstoqueValidadePage />} />}
+          {podeChecklists && <Route path="/r/:rid/checklists" element={<ChecklistsPage />} />}
           <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
         </Routes>
       </div>
