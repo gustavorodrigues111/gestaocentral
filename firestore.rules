@@ -855,6 +855,8 @@ service cloud.firestore {
     match /comandasFiscalConfig/{id} { allow read, write: if authed(); }
     match /comandaCaixas/{id}    { allow read, write: if authed(); }
     match /comandaLayout/{id}    { allow read, write: if authed(); }  // planta do salão (visão superior)
+    match /comandaOperadores/{id} { allow read, write: if authed(); } // operadores do caixa (PIN de responsabilização)
+    match /comandaExclusoes/{id} { allow read, write: if authed(); }  // exclusões (transferência + aprovação)
 
     // ── /producaoSisp* ── Produção SISP (peixaria): fábrica, estoque, expedição ──
     // Operacional, acesso só autenticado (como as demais coleções do PDV/estoque).

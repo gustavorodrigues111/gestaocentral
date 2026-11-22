@@ -281,7 +281,13 @@ function TicketConteudo({ job, nomeRest, fonteProd = 22 }: { job: ComandaPrintJo
       <div style={{ minHeight: "100mm", color: "#000" }}>
         <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 0.85)}px`, letterSpacing: "3px" }}>PRODUÇÃO</div>
         <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 1.35)}px`, lineHeight: 1.05 }}>#{job.comandaNumero}</div>
-        {job.clienteNome && <div style={{ textAlign: "center", fontWeight: 700, fontSize: `${Math.round(f * 0.72)}px`, marginTop: "2px" }}>{job.clienteNome}</div>}
+        {/* LOCAL + CLIENTE em bloco invertido (preto/branco) — máximo destaque na térmica */}
+        {(job.local || job.clienteNome) && (
+          <div style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact", background: "#000", color: "#fff", textAlign: "center", borderRadius: "4px", padding: "6px 8px", margin: "8px 0 2px" } as React.CSSProperties}>
+            {job.local && <div style={{ fontWeight: 800, fontSize: `${Math.round(f * 0.95)}px`, lineHeight: 1.1, letterSpacing: "1px" }}>{job.local}</div>}
+            {job.clienteNome && <div style={{ fontWeight: 800, fontSize: `${Math.round(f * (job.local ? 0.72 : 0.9))}px`, lineHeight: 1.15, marginTop: job.local ? "2px" : "0" }}>{job.clienteNome}</div>}
+          </div>
+        )}
         <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
         {job.linhas.map((ln, i) => (
           <div key={i} style={{ fontSize: `${f}px`, fontWeight: 800, lineHeight: 1.4, margin: "3px 0" }}>

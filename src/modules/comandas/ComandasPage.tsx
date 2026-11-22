@@ -6,14 +6,14 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote, Copy, Pencil, MapPin, ShieldCheck, KeyRound, RotateCcw, UserCheck } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { APP_VERSION_LABEL } from "../../core/version";
-import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco } from "../../core/types";
+import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, ComandaCaixaMov, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco, ComandaOperador, ComandaExclusao } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
   ouvirComandas, salvarComanda, excluirComanda, criarPrintJob, superseedContaJobs,
@@ -21,6 +21,8 @@ import {
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
   ouvirFiscalConfig, salvarFiscalConfig, ouvirLayout,
   ouvirCaixaAberto, salvarCaixa, lerClientes, criarCliente,
+  ouvirOperadores, salvarOperador, excluirOperador, conferirPin, hashPin,
+  ouvirExclusoes, salvarExclusao,
 } from "./comandasRepo";
 import { EstacaoImpressao, AppCaixaConfig } from "./EstacaoImpressao";
 import { MesaLayoutEditor } from "./MesaLayoutEditor";
@@ -30,6 +32,7 @@ import QRCode from "qrcode";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
+const fmtDataHora = (iso: string) => { try { return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 // Sombreamento do botão de produto por categoria (por palavra-chave no nome):
 // pescados = azul claro, comidas/cozinha = vermelho claro, bebidas = amarelo claro.
 function corCategoria(nome?: string | null): string {
@@ -165,6 +168,24 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [comandas, detalhe]);
   useEffect(() => { if (!rid) return; return ouvirCaixaAberto(rid, setCaixa); }, [rid]);
+  // Operadores do caixa (PIN de responsabilização) + fila de exclusões.
+  const [operadores, setOperadores] = useState<ComandaOperador[]>([]);
+  const [exclusoes, setExclusoes] = useState<ComandaExclusao[]>([]);
+  useEffect(() => { if (!rid) return; return ouvirOperadores(rid, setOperadores); }, [rid]);
+  useEffect(() => { if (!rid) return; return ouvirExclusoes(rid, setExclusoes); }, [rid]);
+  const exclusoesPendentes = useMemo(() => exclusoes.filter((x) => x.status === "pendente"), [exclusoes]);
+  // Operador ATIVO do aparelho (lançamentos não pedem PIN; só escolhe quem é).
+  const [operadorAtivoId, setOperadorAtivoId] = useState<string | null>(() => { try { return localStorage.getItem("comandas_operador_ativo"); } catch { return null; } });
+  const [opMenu, setOpMenu] = useState(false);
+  const operadorAtivo = useMemo(() => operadores.find((o) => o.id === operadorAtivoId && o.ativo) || null, [operadores, operadorAtivoId]);
+  const escolherOperador = (id: string | null) => { setOperadorAtivoId(id); try { if (id) localStorage.setItem("comandas_operador_ativo", id); else localStorage.removeItem("comandas_operador_ativo"); } catch { /* */ } setOpMenu(false); };
+  // Gate de PIN (promessa): abre o modal e resolve com o operador validado.
+  // ok=false → cancelou; ok=true, op=null → nenhum operador elegível cadastrado
+  // (ação liberada e registrada no login do aparelho — ver aviso ao usuário).
+  const [pinReq, setPinReq] = useState<{ titulo: string; sub?: string; exigirSupervisor: boolean } | null>(null);
+  const pinResolveRef = useRef<((r: { ok: boolean; op: ComandaOperador | null }) => void) | null>(null);
+  const pedirPin = (titulo: string, exigirSupervisor: boolean, sub?: string) => new Promise<{ ok: boolean; op: ComandaOperador | null }>((resolve) => { pinResolveRef.current = resolve; setPinReq({ titulo, sub, exigirSupervisor }); });
+  const resolverPin = (r: { ok: boolean; op: ComandaOperador | null }) => { setPinReq(null); const fn = pinResolveRef.current; pinResolveRef.current = null; fn?.(r); };
   // Clientes (CRM) — carga única p/ o typeahead de abertura de comanda.
   useEffect(() => { if (!rid) return; let vivo = true; void lerClientes(rid).then((l) => { if (vivo) setClientes(l); }); return () => { vivo = false; }; }, [rid]);
   useEffect(() => { if (!rid) return; void lerLogoSite(rid).then(setLogoUrl); }, [rid]);
@@ -181,6 +202,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
   const abasDisp = useMemo(() => {
     const a: { id: string; label: string }[] = [{ id: "comandas", label: "Comandas" }];
     if (podeOperar) a.push({ id: "caixa", label: "Caixa" });
+    if (podeOperar) a.push({ id: "exclusoes", label: "Exclusões" });
     if (podeRelatorios) a.push({ id: "relatorios", label: "Relatórios" });
     if (podeProdutos || podeEstacoes) a.push({ id: "cadastros", label: "Cadastros" });
     return a;
@@ -216,6 +238,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       cpf: dados.cpf?.trim() || null, telefone: tel || null, clienteId, pessoas: dados.pessoas || 1,
       status: "aberta", caixaId: caixa.id, modo: dados.modo, itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
+      operadorId: operadorAtivo?.id || null, operadorNome: operadorAtivo?.nome || null,
     };
     setNovaComanda(c); setAbrindo(null); setDetalhe(c.id);   // abre o detalhe NA HORA (otimista)
     await salvarComanda(c);
@@ -228,6 +251,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       cpf: null, telefone: null, pessoas: 1,
       status: "aberta", caixaId: caixa.id, modo: "togo", itens: [], total: 0, pagamentos: [], valorPago: 0,
       criadoEm: nowIso(), criadoPor: me?.id, criadoPorNome: meNome,
+      operadorId: operadorAtivo?.id || null, operadorNome: operadorAtivo?.nome || null,
     };
     setNovaComanda(c); setDetalhe(c.id);   // abre direto na seleção de produtos (otimista)
     await salvarComanda(c);
@@ -240,9 +264,9 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
     if (!caixa) return;
     await salvarCaixa({ ...caixa, movimentos: [...(caixa.movimentos || []), mov] }); setCaixaModal(null);
   }
-  async function fecharCaixa(contadoDinheiro: number, obs: string, resumo: ComandaCaixa["resumo"]) {
+  async function fecharCaixa(contadoDinheiro: number, obs: string, resumo: ComandaCaixa["resumo"], aprovador?: ComandaOperador | null) {
     if (!caixa) return;
-    await salvarCaixa({ ...caixa, status: "fechado", fechadoPor: me?.id, fechadoPorNome: meNome, fechadoEm: nowIso(), contadoDinheiro, obs: obs.trim() || null, resumo }); setCaixaModal(null);
+    await salvarCaixa({ ...caixa, status: "fechado", fechadoPor: aprovador?.id || me?.id, fechadoPorNome: aprovador?.nome || meNome, fechadoEm: nowIso(), contadoDinheiro, obs: obs.trim() || null, resumo }); setCaixaModal(null);
   }
   const tabEfetiva = abasDisp.some((a) => a.id === tab) ? tab : "comandas";
 
@@ -255,6 +279,29 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           <p className="text-[10px] text-gray-400">planejamento.app · {APP_VERSION_LABEL}</p>
         </div>
         <div className="flex items-center gap-2">
+          {podeOperar && (
+            <div className="relative">
+              <button onClick={() => setOpMenu((v) => !v)} title="Operador do caixa — quem está lançando agora"
+                className={`h-9 px-2.5 rounded-lg border text-sm font-semibold inline-flex items-center gap-1.5 ${operadorAtivo ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300"}`}>
+                <UserCheck size={15} /> <span className="max-w-[9rem] truncate">{operadorAtivo ? operadorAtivo.nome : "Sem operador"}</span>
+              </button>
+              {opMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setOpMenu(false)} />
+                  <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5 max-h-80 overflow-y-auto">
+                    <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Quem está no caixa</div>
+                    {operadores.filter((o) => o.ativo).length === 0 && <div className="px-3 py-2 text-[12px] text-gray-400">Nenhum operador. Cadastre em <b>Cadastros → Operadores</b>.</div>}
+                    {operadores.filter((o) => o.ativo).map((o) => (
+                      <button key={o.id} onClick={() => escolherOperador(o.id)} className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${operadorAtivoId === o.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        <UserCheck size={15} /> {o.nome}{o.supervisor && <span className="ml-auto text-[9px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">SUP</span>}
+                      </button>
+                    ))}
+                    {operadorAtivo && <button onClick={() => escolherOperador(null)} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 mt-1"><X size={14} /> Limpar</button>}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <button onClick={toggleImprimirAqui} title="Este dispositivo imprime direto, sem o diálogo do Chrome (só faz sentido no PC do caixa com a impressora)"
             className={`h-9 px-2.5 rounded-lg border text-sm font-semibold hidden sm:inline-flex items-center gap-1.5 ${imprimirAqui ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
             <Printer size={15} /> Imprimir aqui <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${imprimirAqui ? "bg-emerald-600 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"}`}>{imprimirAqui ? "ON" : "OFF"}</span>
@@ -269,13 +316,14 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
                 {/* Navegação entre as telas do módulo (Config achatado em Produtos/Categorias/Impressoras) */}
                 {abasDisp.map((a) => {
-                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "caixa" ? <Banknote size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : <Package size={16} />;
+                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "caixa" ? <Banknote size={16} /> : a.id === "exclusoes" ? <ShieldCheck size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : <Package size={16} />;
                   const divisor = a.id === "cadastros";   // separa "operação" (Comandas/Caixa/Relatórios) da "config"
                   return (
                     <Fragment key={a.id}>
                       {divisor && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
                       <button onClick={() => { setTab(a.id); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${tabEfetiva === a.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
                         {ic} {a.label}
+                        {a.id === "exclusoes" && exclusoesPendentes.length > 0 && <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white tabular-nums">{exclusoesPendentes.length}</span>}
                       </button>
                     </Fragment>
                   );
@@ -300,6 +348,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
           fiscalCfg={fiscalCfg} podeOperar={podeOperar}
           meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
+          operador={operadorAtivo} pedirPin={pedirPin}
           onClose={fecharDetalhe}
         />
       ) : (<>
@@ -390,6 +439,10 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         <div className="max-w-lg mx-auto"><CaixaPanel caixa={caixa} comandas={comandas} onAbrir={() => setCaixaModal("abrir")} onSangria={() => setCaixaModal("sangria")} onReforco={() => setCaixaModal("reforco")} onFechar={() => setCaixaModal("fechar")} /></div>
       )}
 
+      {tabEfetiva === "exclusoes" && podeOperar && (
+        <ExclusoesPanel exclusoes={exclusoes} abertas={abertas} pedirPin={pedirPin} />
+      )}
+
       {tabEfetiva === "relatorios" && podeRelatorios && (
         <RelatorioComandas comandas={comandas} categorias={categorias} onAbrir={(id) => setDetalhe(id)} />
       )}
@@ -420,9 +473,277 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         <MovimentoCaixaModal tipo={caixaModal} meNome={meNome} onClose={() => setCaixaModal(null)} onConfirmar={addMovimentoCaixa} />
       )}
       {caixaModal === "fechar" && caixa && (
-        <FecharCaixaModal caixa={caixa} comandas={comandas} onClose={() => setCaixaModal(null)} onFechar={fecharCaixa} />
+        <FecharCaixaModal caixa={caixa} comandas={comandas} exclusoesPendentes={exclusoesPendentes.length} onIrExclusoes={() => { setCaixaModal(null); setTab("exclusoes"); }} pedirPin={pedirPin} onClose={() => setCaixaModal(null)} onFechar={fecharCaixa} />
       )}
+      {pinReq && <PinModal titulo={pinReq.titulo} sub={pinReq.sub} exigirSupervisor={pinReq.exigirSupervisor} operadores={operadores} onResolver={resolverPin} />}
     </PageContainer>
+  );
+}
+
+// ── PIN de operador (gate de ações sensíveis) ──────────────────────────────
+function PinModal({ titulo, sub, exigirSupervisor, operadores, onResolver }: {
+  titulo: string; sub?: string; exigirSupervisor: boolean; operadores: ComandaOperador[];
+  onResolver: (r: { ok: boolean; op: ComandaOperador | null }) => void;
+}) {
+  const elegiveis = operadores.filter((o) => o.ativo && (!exigirSupervisor || o.supervisor));
+  const semOperador = elegiveis.length === 0;
+  const [pin, setPin] = useState("");
+  const [erro, setErro] = useState("");
+  const [checando, setChecando] = useState(false);
+  async function confirmar() {
+    if (pin.length < 4) { setErro("Digite o PIN de 4 dígitos."); return; }
+    setChecando(true); setErro("");
+    const op = await conferirPin(operadores, pin, exigirSupervisor);
+    setChecando(false);
+    if (!op) { setErro(exigirSupervisor ? "PIN inválido ou não é supervisor." : "PIN inválido."); setPin(""); return; }
+    onResolver({ ok: true, op });
+  }
+  return (
+    <div className="fixed inset-0 z-[95] bg-black/50 flex items-center justify-center p-4" onClick={() => onResolver({ ok: false, op: null })}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-xs p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5 mb-1"><KeyRound size={16} className={exigirSupervisor ? "text-rose-500" : "text-indigo-500"} /> {titulo}</div>
+        {sub && <p className="text-[12px] text-gray-500 mb-2">{sub}</p>}
+        {semOperador ? (
+          <>
+            <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-lg p-2.5 mb-3">
+              Nenhum {exigirSupervisor ? "supervisor" : "operador"} cadastrado ainda. A ação será <b>liberada</b> e registrada no login do aparelho. Cadastre operadores em <b>Cadastros → Operadores</b> pra exigir PIN.
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => onResolver({ ok: false, op: null })} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
+              <button onClick={() => onResolver({ ok: true, op: null })} className="flex-1 h-10 rounded-lg bg-amber-600 text-white text-sm font-bold">Continuar</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <input autoFocus type="password" inputMode="numeric" pattern="[0-9]*" maxLength={4} value={pin}
+              onChange={(e) => { setPin(e.target.value.replace(/\D/g, "").slice(0, 4)); setErro(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") void confirmar(); }}
+              placeholder="● ● ● ●"
+              className="w-full h-14 text-center text-2xl tracking-[0.5em] font-bold rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100" />
+            {erro && <div className="text-[12px] text-rose-600 dark:text-rose-400 mt-1.5">{erro}</div>}
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => onResolver({ ok: false, op: null })} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
+              <button onClick={() => void confirmar()} disabled={checando || pin.length < 4} className={`flex-1 h-10 rounded-lg text-white text-sm font-bold disabled:opacity-40 ${exigirSupervisor ? "bg-rose-600" : "bg-indigo-600"}`}>{checando ? "…" : "Confirmar"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Justificativa obrigatória + PIN pra transferir item/comanda pra Exclusões.
+function ExcluirModal({ tipo, label, valor, pedirPin, onClose, onConfirmar }: {
+  tipo: "item" | "comanda"; label: string; valor: number;
+  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  onClose: () => void; onConfirmar: (justificativa: string, op: ComandaOperador | null) => Promise<void>;
+}) {
+  const [just, setJust] = useState("");
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const motivos = ["Cliente desistiu", "Lançado errado", "Item devolvido", "Cortesia", "Comanda aberta por engano"];
+  async function go() {
+    if (just.trim().length < 3) { setErr("Explique o motivo — é obrigatório."); return; }
+    const r = await pedirPin("Confirmar exclusão", false, "Digite seu PIN de operador");
+    if (!r.ok) return;
+    setSaving(true);
+    try { await onConfirmar(just, r.op); } finally { setSaving(false); }
+  }
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><ShieldCheck size={16} className="text-rose-500" /> Transferir para Exclusões</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <p className="text-[12px] text-gray-500 mb-2">O {tipo === "comanda" ? "conteúdo da comanda" : "item"} sai da conta agora, mas fica <b>pendente de aprovação</b> do supervisor no fechamento do caixa.</p>
+        <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm mb-3">
+          <div className="font-semibold text-gray-800 dark:text-gray-100">{label}</div>
+          <div className="text-[12px] text-gray-500 tabular-nums">{fmtR(valor)}</div>
+        </div>
+        <div className="text-[12px] font-semibold text-gray-600 dark:text-gray-300 mb-1">Motivo (obrigatório)</div>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {motivos.map((m) => <button key={m} onClick={() => { setJust(m); setErr(""); }} className={`text-[12px] px-2.5 py-1 rounded-full border ${just === m ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{m}</button>)}
+        </div>
+        <textarea value={just} onChange={(e) => { setJust(e.target.value); setErr(""); }} rows={2} placeholder="Descreva o motivo…"
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100" />
+        {err && <div className="text-[12px] text-rose-600 dark:text-rose-400 mt-1">{err}</div>}
+        <div className="flex gap-2 pt-3">
+          <button onClick={onClose} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
+          <button onClick={() => void go()} disabled={saving} className="flex-1 h-10 rounded-lg bg-rose-600 text-white text-sm font-bold disabled:opacity-40 inline-flex items-center justify-center gap-1.5"><KeyRound size={15} /> {saving ? "…" : "Transferir (PIN)"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Aba Exclusões: fila de pendentes (aprovar/devolver) + histórico ─────────
+function ExclusoesPanel({ exclusoes, abertas, pedirPin }: {
+  exclusoes: ComandaExclusao[]; abertas: Comanda[];
+  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+}) {
+  const pend = exclusoes.filter((x) => x.status === "pendente");
+  const hist = exclusoes.filter((x) => x.status !== "pendente").slice(0, 60);
+  const [devolver, setDevolver] = useState<ComandaExclusao | null>(null);
+  async function aprovar(x: ComandaExclusao) {
+    const r = await pedirPin("Aprovar exclusão", true, "PIN de supervisor — confirma que a exclusão é legítima");
+    if (!r.ok) return;
+    await salvarExclusao({ ...x, status: "aprovada", resolvidoPorId: r.op?.id || null, resolvidoPorNome: r.op?.nome || "—", resolvidoEm: nowIso() });
+  }
+  const linha = (x: ComandaExclusao) => (
+    <div key={x.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[11px] text-gray-400 inline-flex items-center gap-1.5">
+            <span className="font-bold px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">#{x.comandaNumero}</span>
+            {x.clienteNome && <span className="truncate">{x.clienteNome}</span>}
+            {x.local && <span className="inline-flex items-center gap-0.5"><MapPin size={10} /> {x.local}</span>}
+          </div>
+          <div className="mt-1 space-y-0.5">
+            {x.itens.map((i, k) => <div key={k} className="text-sm font-semibold text-gray-800 dark:text-gray-100">{i.porPeso ? fmtNum(i.qtd, 3) + " kg" : i.qtd + "x"} {i.nome} <span className="text-[11px] font-normal text-gray-400 tabular-nums">{fmtR(i.total)}</span></div>)}
+          </div>
+          <div className="text-[12px] text-gray-600 dark:text-gray-300 mt-1">Motivo: <b>{x.justificativa}</b></div>
+          <div className="text-[11px] text-gray-400 mt-0.5">Por {x.solicitadoPorNome} · {fmtDataHora(x.solicitadoEm)}{x.tipo === "comanda" ? " · comanda inteira" : ""}</div>
+          {x.status !== "pendente" && <div className={`text-[11px] mt-0.5 ${x.status === "aprovada" ? "text-emerald-600 dark:text-emerald-400" : "text-indigo-600 dark:text-indigo-400"}`}>{x.status === "aprovada" ? "✓ Aprovada" : "↩ Devolvida" + (x.destino ? ` → #${x.destino.comandaNumero}` : "")} por {x.resolvidoPorNome} · {x.resolvidoEm ? fmtDataHora(x.resolvidoEm) : ""}</div>}
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-base font-extrabold text-rose-600 dark:text-rose-400 tabular-nums">{fmtR(x.valorTotal)}</div>
+          {x.status === "pendente" && (
+            <div className="flex flex-col gap-1.5 mt-2">
+              <button onClick={() => void aprovar(x)} className="h-8 px-3 rounded-lg bg-emerald-600 text-white text-[12px] font-bold inline-flex items-center justify-center gap-1"><Check size={13} /> Aprovar</button>
+              <button onClick={() => setDevolver(x)} className="h-8 px-3 rounded-lg border border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-[12px] font-bold inline-flex items-center justify-center gap-1"><RotateCcw size={13} /> Devolver</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="max-w-xl mx-auto space-y-4">
+      <section>
+        <div className="text-[13px] font-bold text-gray-700 dark:text-gray-200 mb-2 inline-flex items-center gap-1.5"><ShieldCheck size={15} className="text-rose-500" /> Pendentes de aprovação <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white tabular-nums">{pend.length}</span></div>
+        {pend.length === 0 ? <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-gray-400 text-sm">Nenhuma exclusão pendente.</div>
+          : <div className="space-y-2">{pend.map(linha)}</div>}
+      </section>
+      {hist.length > 0 && (
+        <section>
+          <div className="text-[13px] font-bold text-gray-500 mb-2">Histórico</div>
+          <div className="space-y-2 opacity-80">{hist.map(linha)}</div>
+        </section>
+      )}
+      {devolver && <DevolverModal exclusao={devolver} abertas={abertas} pedirPin={pedirPin} onClose={() => setDevolver(null)} />}
+    </div>
+  );
+}
+
+// Devolver exclusão: escolhe a comanda de destino (a original, se aberta, ou
+// outra comanda — pra cobrar do responsável pelo erro). Exige PIN de supervisor.
+function DevolverModal({ exclusao, abertas, pedirPin, onClose }: {
+  exclusao: ComandaExclusao; abertas: Comanda[];
+  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  onClose: () => void;
+}) {
+  const original = abertas.find((c) => c.id === exclusao.comandaId) || null;
+  const [alvoId, setAlvoId] = useState<string>(original?.id || "");
+  const [busca, setBusca] = useState("");
+  const [saving, setSaving] = useState(false);
+  const lista = abertas.filter((c) => !busca.trim() || (c.clienteNome || "").toLowerCase().includes(busca.toLowerCase()) || (c.numero || "").includes(busca) || (c.local || "").toLowerCase().includes(busca.toLowerCase()));
+  async function go() {
+    const destino = abertas.find((c) => c.id === alvoId);
+    if (!destino) return;
+    const r = await pedirPin("Devolver para comanda", true, `PIN de supervisor — lançar em #${destino.numero}`);
+    if (!r.ok) return;
+    setSaving(true);
+    try {
+      const novos: ComandaItem[] = exclusao.itens.map((i) => ({ id: uid(), produtoId: i.produtoId || null, nome: i.nome, qtd: i.qtd, porPeso: !!i.porPeso, precoUnit: i.precoUnit, total: i.total, producao: !!i.producao, categoriaId: i.categoriaId || null, obs: i.obs || null, impressoEm: nowIso(), criadoEm: nowIso(), criadoPorNome: "Devolução", operadorId: r.op?.id || null, operadorNome: r.op?.nome || null }));
+      const itens = [...destino.itens, ...novos];
+      const total = +itens.reduce((s, i) => s + (i.total || 0), 0).toFixed(2);
+      await salvarComanda({ ...destino, itens, total });
+      await salvarExclusao({ ...exclusao, status: "devolvida", destino: { comandaId: destino.id, comandaNumero: destino.numero }, resolvidoPorId: r.op?.id || null, resolvidoPorNome: r.op?.nome || "—", resolvidoEm: nowIso() });
+      onClose();
+    } finally { setSaving(false); }
+  }
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-4 shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><RotateCcw size={16} className="text-indigo-500" /> Devolver para comanda</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <p className="text-[12px] text-gray-500 mb-3">Os itens voltam a ser cobrados na comanda escolhida — a original ou outra (pra cobrar do responsável pelo erro).</p>
+        {abertas.length === 0 ? <div className="text-sm text-gray-400 text-center py-4">Nenhuma comanda aberta. Abra uma comanda primeiro.</div> : (
+          <>
+            <div className="relative mb-2"><Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar comanda (nome, nº, local)" className="w-full h-10 pl-8 pr-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950" /></div>
+            <div className="space-y-1.5 max-h-60 overflow-y-auto">
+              {lista.map((c) => (
+                <button key={c.id} onClick={() => setAlvoId(c.id)} className={`w-full text-left rounded-lg border px-3 py-2 ${alvoId === c.id ? "border-indigo-400 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30" : "border-gray-200 dark:border-gray-800"}`}>
+                  <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">#{c.numero} · {c.clienteNome || "—"}{c.id === exclusao.comandaId ? " (original)" : ""}</div>
+                  {c.local && <div className="text-[11px] text-gray-400 inline-flex items-center gap-0.5"><MapPin size={10} /> {c.local}</div>}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-3">
+              <button onClick={onClose} className="flex-1 h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">Cancelar</button>
+              <button onClick={() => void go()} disabled={saving || !alvoId} className="flex-1 h-10 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40 inline-flex items-center justify-center gap-1.5"><KeyRound size={15} /> {saving ? "…" : "Devolver (PIN)"}</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Cadastro de operadores do caixa (nome + PIN + supervisor) ───────────────
+function OperadoresEditor({ rid }: { rid: string }) {
+  const [ops, setOps] = useState<ComandaOperador[]>([]);
+  useEffect(() => ouvirOperadores(rid, setOps), [rid]);
+  const [nome, setNome] = useState("");
+  const [pin, setPin] = useState("");
+  const [sup, setSup] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function add() {
+    if (!nome.trim() || pin.length !== 4) { setMsg("Preencha nome e PIN de 4 dígitos."); return; }
+    const id = uid();
+    await salvarOperador({ id, restaurantId: rid, nome: nome.trim(), pinHash: await hashPin(id, pin), supervisor: sup, ativo: true, criadoEm: nowIso() });
+    setNome(""); setPin(""); setSup(false); setMsg("");
+  }
+  async function trocarPin(o: ComandaOperador) {
+    const p = prompt(`Novo PIN de 4 dígitos para ${o.nome}:`);
+    if (p == null) return;
+    if (!/^\d{4}$/.test(p)) { alert("PIN precisa ter 4 dígitos."); return; }
+    await salvarOperador({ ...o, pinHash: await hashPin(o.id, p) });
+  }
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 text-[12px] text-indigo-800 dark:text-indigo-200">
+        <b>Operadores do caixa.</b> Cada um tem um PIN de 4 dígitos. O PIN é pedido pra <b>excluir</b>, <b>aprovar exclusões</b> e <b>fechar o caixa</b> — assim fica registrado quem fez. Só <b>supervisor</b> aprova exclusão e fecha caixa. É controle operacional, não senha do sistema.
+      </div>
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2">
+        <div className="text-[12px] font-bold uppercase tracking-wider text-gray-500">Novo operador</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome" className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <input type="password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="PIN (4 dígitos)" className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tracking-[0.3em]" />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={sup} onChange={(e) => setSup(e.target.checked)} className="w-4 h-4" /> Supervisor (pode aprovar exclusões e fechar o caixa)</label>
+        {msg && <div className="text-[12px] text-rose-600 dark:text-rose-400">{msg}</div>}
+        <button onClick={() => void add()} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-bold inline-flex items-center gap-1"><Plus size={15} /> Adicionar</button>
+      </div>
+      <div className="space-y-1.5">
+        {ops.length === 0 && <div className="text-sm text-gray-400 text-center py-3">Nenhum operador cadastrado.</div>}
+        {ops.map((o) => (
+          <div key={o.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${o.ativo ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
+            <UserCheck size={16} className="text-gray-400 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{o.nome}{o.supervisor && <span className="ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">SUPERVISOR</span>}{!o.ativo && <span className="ml-1.5 text-[10px] text-gray-400">inativo</span>}</div>
+            </div>
+            <button onClick={() => void trocarPin(o)} title="Trocar PIN" className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><KeyRound size={13} /> PIN</button>
+            <button onClick={() => void salvarOperador({ ...o, supervisor: !o.supervisor })} title="Alternar supervisor" className={`h-8 px-2 rounded-lg border text-[11px] font-semibold inline-flex items-center gap-1 ${o.supervisor ? "border-indigo-300 text-indigo-700 dark:border-indigo-800 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-500"}`}><ShieldCheck size={13} /></button>
+            <button onClick={() => void salvarOperador({ ...o, ativo: !o.ativo })} title={o.ativo ? "Desativar" : "Ativar"} className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300">{o.ativo ? "Off" : "On"}</button>
+            <button onClick={() => { if (confirm(`Excluir operador ${o.nome}?`)) void excluirOperador(o.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -617,8 +938,11 @@ function MovimentoCaixaModal({ tipo, meNome, onClose, onConfirmar }: {
   );
 }
 
-function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
-  caixa: ComandaCaixa; comandas: Comanda[]; onClose: () => void; onFechar: (contadoDinheiro: number, obs: string, resumo: ComandaCaixa["resumo"]) => Promise<void>;
+function FecharCaixaModal({ caixa, comandas, exclusoesPendentes, onIrExclusoes, pedirPin, onClose, onFechar }: {
+  caixa: ComandaCaixa; comandas: Comanda[];
+  exclusoesPendentes: number; onIrExclusoes: () => void;
+  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
+  onClose: () => void; onFechar: (contadoDinheiro: number, obs: string, resumo: ComandaCaixa["resumo"], aprovador?: ComandaOperador | null) => Promise<void>;
 }) {
   const [conf, setConf] = useState<Record<string, number>>({});   // conferido por forma, em CENTAVOS
   const [touched, setTouched] = useState(false);
@@ -711,9 +1035,19 @@ function FecharCaixaModal({ caixa, comandas, onClose, onFechar }: {
         )}
         <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1 mt-3">Observação (opcional)</label>
         <input value={obs} onChange={(e) => setObs(e.target.value)} placeholder="ex.: quebra por troco errado" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        {exclusoesPendentes > 0 && (
+          <button onClick={onIrExclusoes} className="w-full mt-3 text-left rounded-lg border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 px-3 py-2.5 text-[12px] text-rose-700 dark:text-rose-300 font-semibold inline-flex items-center gap-2">
+            <ShieldCheck size={16} /> {exclusoesPendentes} exclusão(ões) pendente(s) — resolva antes de fechar (toque pra abrir)
+          </button>
+        )}
         <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
           <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
-          <button onClick={async () => { setSaving(true); try { await onFechar(contadoDinheiro, obs, { ...resumo, diferenca: diferencaTotal, conferencia }); } finally { setSaving(false); } }} disabled={saving || !touched} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "Fechando…" : "Fechar caixa"}</button>
+          <button onClick={async () => {
+            if (exclusoesPendentes > 0) { onIrExclusoes(); return; }
+            const r = await pedirPin("Fechar o caixa", true, "PIN de supervisor");
+            if (!r.ok) return;
+            setSaving(true); try { await onFechar(contadoDinheiro, obs, { ...resumo, diferenca: diferencaTotal, conferencia }, r.op); } finally { setSaving(false); }
+          }} disabled={saving || !touched} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40 inline-flex items-center gap-1.5"><KeyRound size={15} /> {saving ? "Fechando…" : "Fechar caixa"}</button>
         </div>
       </div>
     </div>
@@ -913,8 +1247,10 @@ function AbrirComandaModal({ modo, clientes, mesas, blocos, mesasOcupadas, mesaI
 }
 
 // ── Detalhe da comanda (lançar itens, imprimir, fechar) ───────────────────
-function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fiscalCfg, podeOperar, meNome, nomeRest, rid, onClose }: {
+function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fiscalCfg, podeOperar, meNome, nomeRest, rid, operador, pedirPin, onClose }: {
   comanda: Comanda; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; logoUrl: string | null; fiscalCfg: ComandaFiscalConfig | null; podeOperar: boolean; meNome: string; nomeRest: string; rid: string;
+  operador: ComandaOperador | null;
+  pedirPin: (titulo: string, exigirSupervisor: boolean, sub?: string) => Promise<{ ok: boolean; op: ComandaOperador | null }>;
   onClose: () => void;
 }) {
   const fechada = comanda.status === "fechada";
@@ -984,6 +1320,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       id: uid(), produtoId: p.id, nome: p.nome, qtd, porPeso: !!p.porPeso,
       precoUnit: p.preco || 0, total: +(qtd * (p.preco || 0)).toFixed(2),
       producao: !!p.producao, categoriaId: p.categoriaId || null, impressoEm: null, criadoEm: nowIso(), criadoPorNome: meNome,
+      operadorId: operador?.id || null, operadorNome: operador?.nome || null,
     };
     const itens = [...comanda.itens, item];
     await patch(recompor(itens));
@@ -1008,14 +1345,39 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       await imprimirCancelamentoCozinha([{ nome: it!.nome, qtd: Math.min(-delta, it!.qtd), categoriaId: it!.categoriaId, porPeso: it!.porPeso }]);
     }
   }
-  async function removerItem(itemId: string) {
+  // Excluir agora é TRANSFERIR PARA EXCLUSÕES: pede justificativa + PIN e manda
+  // o item (ou a comanda inteira) pra fila de aprovação. Nada sai sem registro.
+  const [excluindo, setExcluindo] = useState<null | { tipo: "item" | "comanda"; itens: ComandaItem[]; label: string }>(null);
+  function pedirRemoverItem(itemId: string) {
     const it = comanda.itens.find((i) => i.id === itemId);
-    if (it && !confirm(`Remover "${it.nome}" da comanda?`)) return;
-    await patch(recompor(comanda.itens.filter((i) => i.id !== itemId)));
-    // Item de produção JÁ enviado à cozinha e removido → imprime cancelamento.
-    if (it && it.producao && it.impressoEm) {
-      await imprimirCancelamentoCozinha([{ nome: it.nome, qtd: it.qtd, categoriaId: it.categoriaId, porPeso: it.porPeso }]);
-    }
+    if (!it) return;
+    setExcluindo({ tipo: "item", itens: [it], label: `${it.porPeso ? fmtNum(it.qtd, 3) + " kg" : it.qtd + "x"} ${it.nome}` });
+  }
+  function pedirExcluirComanda() {
+    setExcluindo({ tipo: "comanda", itens: comanda.itens, label: `comanda #${comanda.numero}${comanda.clienteNome ? " · " + comanda.clienteNome : ""}` });
+  }
+  // Executa a transferência depois que a justificativa foi preenchida e o PIN OK.
+  async function transferirExclusao(justificativa: string, op: ComandaOperador | null) {
+    if (!excluindo) return;
+    const alvos = excluindo.itens;
+    const ex: ComandaExclusao = {
+      id: uid(), restaurantId: rid, tipo: excluindo.tipo, comandaId: comanda.id, comandaNumero: comanda.numero,
+      clienteNome: comanda.clienteNome || null, local: comanda.local || null,
+      itens: alvos.map((i) => ({ id: i.id, produtoId: i.produtoId || null, nome: i.nome, qtd: i.qtd, porPeso: !!i.porPeso, precoUnit: i.precoUnit, total: i.total, producao: !!i.producao, categoriaId: i.categoriaId || null, obs: i.obs || null, impressoEm: i.impressoEm || null })),
+      valorTotal: +alvos.reduce((s, i) => s + (i.total || 0), 0).toFixed(2),
+      justificativa: justificativa.trim(),
+      solicitadoPorId: op?.id || operador?.id || null, solicitadoPorNome: op?.nome || operador?.nome || meNome,
+      solicitadoEm: nowIso(), caixaId: comanda.caixaId || null, status: "pendente",
+    };
+    await salvarExclusao(ex);
+    // Cancelamento na cozinha dos itens de produção JÁ impressos (pra cozinha parar).
+    const paraCancelar = alvos.filter((i) => i.producao && i.impressoEm).map((i) => ({ nome: i.nome, qtd: i.qtd, categoriaId: i.categoriaId, porPeso: i.porPeso }));
+    if (paraCancelar.length) await imprimirCancelamentoCozinha(paraCancelar);
+    if (excluindo.tipo === "comanda") { try { await excluirComanda(comanda.id); } catch { /* ignore */ } setExcluindo(null); onClose(); return; }
+    // Item: sai da comanda na hora (para de contar no total e na produção).
+    const ids = new Set(alvos.map((i) => i.id));
+    await patch(recompor(comanda.itens.filter((i) => !ids.has(i.id))));
+    setExcluindo(null);
   }
 
   // Ticket de PRODUÇÃO: só os itens de produção ainda NÃO impressos.
@@ -1045,7 +1407,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
         const nomeEst = estacoes.find((e) => e.id === estacaoId)?.nome;
         const job: ComandaPrintJob = {
           id: uid(), restaurantId: rid, tipo: "producao", comandaId: comanda.id,
-          comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId, logoUrl,
+          comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, local: comanda.local || null, estacaoId, logoUrl,
           titulo: `PRODUÇÃO${nomeEst ? ` · ${nomeEst}` : ""} · #${comanda.numero}`,
           linhas: agruparItens(itens).map((g) => ({ nome: g.nome, qtd: g.porPeso ? `${fmtNum(g.qtd, 3)} kg` : `${g.qtd}x`, valor: null })),
           total: null, rodape: `${comanda.clienteNome} · ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${meNome}`,
@@ -1070,10 +1432,6 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     if (editavel && pendentesProducao.length && !confirm(`Há ${pendentesProducao.length} item(ns) de cozinha ainda NÃO enviados pra produção. Sair sem imprimir? (Cancele pra imprimir a cozinha)`)) return;
     // Comanda vazia (sem item e sem pagamento) não fica na lista — apaga ao sair.
     if (vazia) { try { await excluirComanda(comanda.id); } catch { /* ignore */ } }
-    onClose();
-  }
-  async function excluirComandaAtual() {
-    try { await excluirComanda(comanda.id); } catch { /* ignore */ }
     onClose();
   }
   async function reabrir() {
@@ -1289,7 +1647,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
                 </div>
               )}
               <div className="text-[13px] font-semibold tabular-nums shrink-0 w-[70px] text-right">{fmtR(i.total)}</div>
-              {editavel && <button onClick={() => void removerItem(i.id)} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={14} /></button>}
+              {editavel && <button onClick={() => pedirRemoverItem(i.id)} title="Transferir para Exclusões (pede justificativa + PIN)" className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={14} /></button>}
             </div>
           ))}
         </div>
@@ -1361,7 +1719,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
           comanda.itens.length === 0 ? (
             <>
               <span className="flex-1 text-[12px] text-gray-400 self-center pl-1">Nenhum item lançado ainda.</span>
-              <button onClick={() => void excluirComandaAtual()} className="h-11 px-4 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold inline-flex items-center justify-center gap-1.5"><Trash2 size={17} /> Excluir comanda</button>
+              <button onClick={() => pedirExcluirComanda()} className="h-11 px-4 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold inline-flex items-center justify-center gap-1.5"><Trash2 size={17} /> Excluir comanda</button>
             </>
           ) : (
           <>
@@ -1381,6 +1739,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       </div>
 
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
+      {excluindo && <ExcluirModal tipo={excluindo.tipo} label={excluindo.label} valor={+excluindo.itens.reduce((s, i) => s + (i.total || 0), 0).toFixed(2)} pedirPin={pedirPin} onClose={() => setExcluindo(null)} onConfirmar={transferirExclusao} />}
       {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} fiscalCfg={fiscalCfg} onClose={() => setFechar(false)} onFechado={aposFecharVenda} />}
       {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} onImprimir={() => void reimprimirConta()} />}
       {cpfModal && (
@@ -2623,6 +2982,7 @@ function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podePr
     const a: { id: string; label: string }[] = [];
     if (podeProdutos) a.push({ id: "categorias", label: "Categorias" }, { id: "produtos", label: "Produtos" }, { id: "gorjeta", label: "Gorjeta" }, { id: "fiscal", label: "Fiscal" });
     if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
+    a.push({ id: "operadores", label: "Operadores" });
     return a;
   }, [podeProdutos, podeEstacoes]);
   const [sub, setSub] = useState(subs[0]?.id || "produtos");
@@ -2639,6 +2999,7 @@ function CadastrosPanel({ rid, produtos, categorias, estacoes, fiscalCfg, podePr
       {atual === "gorjeta" && <GorjetaEditor rid={rid} cfg={fiscalCfg} categorias={categorias} produtos={produtos} />}
       {atual === "fiscal" && <FiscalPadraoEditor rid={rid} cfg={fiscalCfg} />}
       {atual === "impressoras" && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
+      {atual === "operadores" && <OperadoresEditor rid={rid} />}
     </div>
   );
 }

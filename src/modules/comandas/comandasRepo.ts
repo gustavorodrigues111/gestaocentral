@@ -5,7 +5,7 @@
 import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao, ComandaFiscalConfig, ComandaCaixa, Cliente, ComandaLayout, ComandaMesa, ComandaAreaBloco, ComandaOperador, ComandaExclusao } from "../../core/types";
 
 export const uid = () => { try { return crypto.randomUUID(); } catch { return "c" + Date.now() + Math.random().toString(36).slice(2); } };
 
@@ -108,6 +108,49 @@ export async function salvarProduto(p: ComandaProduto): Promise<void> {
   await setDoc(doc(db, "comandaProdutos", p.id), sanitizeForFirestore(p), { merge: true });
 }
 export async function excluirProduto(id: string): Promise<void> { await deleteDoc(doc(db, "comandaProdutos", id)); }
+
+// ── Operadores do caixa (PIN de responsabilização) ─────────────────────
+// O PIN é guardado como HASH (SHA-256 do PIN + id como salt). NÃO é segurança
+// forte — é controle operacional (saber quem fez). Ver comentário no tipo.
+export async function hashPin(id: string, pin: string): Promise<string> {
+  const data = new TextEncoder().encode(`${id}::${pin}`);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+export function ouvirOperadores(rid: string, cb: (l: ComandaOperador[]) => void): Unsubscribe {
+  const q = query(collection(db, "comandaOperadores"), where("restaurantId", "==", rid));
+  return onSnapshot(q, (snap) => {
+    const l = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ComandaOperador);
+    l.sort((a, b) => a.nome.localeCompare(b.nome));
+    cb(l);
+  }, (e) => console.error("[comandas] operadores", e));
+}
+export async function salvarOperador(o: ComandaOperador): Promise<void> {
+  await setDoc(doc(db, "comandaOperadores", o.id), sanitizeForFirestore(o), { merge: true });
+}
+export async function excluirOperador(id: string): Promise<void> { await deleteDoc(doc(db, "comandaOperadores", id)); }
+// Confere um PIN de 4 dígitos contra a lista; retorna o operador (ou null).
+// Se exigirSupervisor, só valida operadores marcados como supervisor.
+export async function conferirPin(operadores: ComandaOperador[], pin: string, exigirSupervisor: boolean): Promise<ComandaOperador | null> {
+  const cands = operadores.filter((o) => o.ativo && (!exigirSupervisor || o.supervisor));
+  for (const o of cands) {
+    if ((await hashPin(o.id, pin)) === o.pinHash) return o;
+  }
+  return null;
+}
+
+// ── Exclusões (transferência + aprovação) ──────────────────────────────
+export function ouvirExclusoes(rid: string, cb: (l: ComandaExclusao[]) => void): Unsubscribe {
+  const q = query(collection(db, "comandaExclusoes"), where("restaurantId", "==", rid));
+  return onSnapshot(q, (snap) => {
+    const l = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ComandaExclusao);
+    l.sort((a, b) => (b.solicitadoEm || "").localeCompare(a.solicitadoEm || ""));
+    cb(l);
+  }, (e) => console.error("[comandas] exclusoes", e));
+}
+export async function salvarExclusao(x: ComandaExclusao): Promise<void> {
+  await setDoc(doc(db, "comandaExclusoes", x.id), sanitizeForFirestore(x), { merge: true });
+}
 
 // ── Comandas ───────────────────────────────────────────────────────────
 // Ouve as ABERTAS (operacional) + as fechadas de hoje (pra fechar o caixa).

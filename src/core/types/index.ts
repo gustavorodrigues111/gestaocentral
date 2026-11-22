@@ -6706,6 +6706,8 @@ export type ComandaItem = {
   impressoEm?: string | null;          // quando o ticket de produção desse item foi impresso
   criadoEm: string;
   criadoPorNome?: string | null;
+  operadorId?: string | null;          // operador do caixa que lançou (responsabilização)
+  operadorNome?: string | null;
 };
 
 export type ComandaPagamento = {
@@ -6756,6 +6758,51 @@ export type ComandaCaixa = {
     conferencia?: Array<{ forma: string; esperado: number; conferido: number; diferenca: number }>;
   } | null;
   obs?: string | null;
+};
+
+// ─── Operadores do caixa (responsabilização por PIN) ────────────────────────
+// Lista leve por restaurante: quem opera o caixa. NÃO é login do sistema — é um
+// PIN de 4 dígitos pra SABER QUEM fez cada ação (abrir/lançar/excluir/fechar) e
+// DETER o excluir fácil. Segurança operacional, não autenticação forte: o
+// aparelho já está logado numa conta. PIN guardado como HASH (não em texto puro).
+export type ComandaOperador = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  pinHash: string;                     // SHA-256 hex do PIN de 4 dígitos (+ salt do id)
+  supervisor?: boolean;                // pode APROVAR exclusões e FECHAR o caixa
+  ativo: boolean;
+  criadoEm: string;
+};
+
+// ─── Exclusões (transferência + aprovação) ───────────────────────────────────
+// Em vez de excluir item/comanda direto, o operador TRANSFERE pra cá com
+// justificativa (exige PIN). O item sai da comanda na hora (para de contar no
+// total e na produção), mas o registro fica retido até um SUPERVISOR resolver:
+//  - aprovada  = exclusão legítima, sai de vez
+//  - devolvida = foi erro → item volta pra uma comanda (a original, se aberta, ou
+//    OUTRA comanda, pra cobrar do responsável pelo erro)
+export type ComandaExclusao = {
+  id: string;
+  restaurantId: string;
+  tipo: "item" | "comanda";            // 1 item (ou agrupado) × comanda inteira
+  comandaId: string;                   // comanda de origem
+  comandaNumero: string;
+  clienteNome?: string | null;
+  local?: string | null;
+  // snapshot do que saiu (pra reconstituir se devolver):
+  itens: Array<{ id?: string; produtoId?: string | null; nome: string; qtd: number; porPeso?: boolean; precoUnit: number; total: number; producao?: boolean; categoriaId?: string | null; obs?: string | null; impressoEm?: string | null }>;
+  valorTotal: number;
+  justificativa: string;
+  solicitadoPorId?: string | null;     // operador que pediu (PIN)
+  solicitadoPorNome: string;
+  solicitadoEm: string;
+  caixaId?: string | null;             // caixa em que ocorreu
+  status: "pendente" | "aprovada" | "devolvida";
+  resolvidoPorId?: string | null;      // supervisor que resolveu (PIN)
+  resolvidoPorNome?: string | null;
+  resolvidoEm?: string | null;
+  destino?: { comandaId: string; comandaNumero: string } | null;  // p/ onde voltou (se devolvida)
 };
 
 // ─── Planta do salão (visão superior) ───────────────────────────────────────
@@ -6814,6 +6861,8 @@ export type Comanda = {
   criadoEm: string;
   criadoPor?: string;
   criadoPorNome?: string;
+  operadorId?: string | null;          // operador do caixa que abriu a comanda
+  operadorNome?: string | null;
   fechadoEm?: string | null;
   fechadoPorNome?: string | null;
   // NFC-e (Focus NFe) — resultado da emissão fiscal, se houver.
@@ -6840,6 +6889,7 @@ export type ComandaPrintJob = {
   comandaId: string;
   comandaNumero: string;
   clienteNome: string;
+  local?: string | null;               // referência do local (ex.: "Calçada · Mesa 5") — destacado no ticket de produção
   estacaoId?: string | null;           // destino (multi-impressora); null = qualquer estação
   logoUrl?: string | null;             // logo do restaurante (módulo Sites) no topo do ticket
   titulo: string;
