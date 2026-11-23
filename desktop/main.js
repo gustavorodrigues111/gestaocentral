@@ -103,10 +103,25 @@ function createWindow() {
   // perder o foco (os eventos acima não disparam). Este monitor re-foca o
   // conteúdo só quando a JANELA está focada mas o teclado NÃO — é exatamente o
   // estado do bug, e não rouba foco de outros apps.
+  let ticksTravado = 0;
   const guardaFoco = setInterval(() => {
     try {
       if (win.isDestroyed()) return;
-      if (win.isFocused() && !win.webContents.isFocused()) win.webContents.focus();
+      const travado = win.isFocused() && !win.webContents.isFocused();
+      if (!travado) { ticksTravado = 0; return; }
+      ticksTravado++;
+      // 1ª tentativa: foco "leve" no conteúdo (resolve o caso comum).
+      win.webContents.focus();
+      // Persistiu (~2.4s)? O pipeline de input do Chromium travou mais fundo e o
+      // foco leve não re-arma — só um blur/focus NATIVO da janela resolve (é o
+      // que fechar e reabrir o app fazia). Só dispara no estado realmente travado,
+      // então não há flicker no uso normal.
+      if (ticksTravado >= 2) {
+        win.blur();
+        win.focus();
+        win.webContents.focus();
+        ticksTravado = 0;
+      }
     } catch { /* ignore */ }
   }, 1200);
   win.on("closed", () => { clearInterval(guardaFoco); });
@@ -191,6 +206,21 @@ ipcMain.handle("etiq-imprimir", async (_e, { pngBase64, opts }) => {
     return { ok: false, erro: String((err && err.message) || err) };
   } finally {
     try { if (!w.isDestroyed()) w.close(); } catch { /* ignore */ }
+    // A janela OCULTA de impressão rouba o foco de teclado da janela principal no
+    // Windows e, ao fechar, não devolve → caixa "clica mas não digita" até reabrir.
+    // Devolve o foco pro caixa (pequeno atraso: deixa o subsistema de impressão
+    // soltar o foco antes de a gente retomar).
+    try {
+      if (janelaPrincipal && !janelaPrincipal.isDestroyed()) {
+        setTimeout(() => {
+          try {
+            if (!janelaPrincipal || janelaPrincipal.isDestroyed()) return;
+            janelaPrincipal.focus();
+            janelaPrincipal.webContents.focus();
+          } catch { /* ignore */ }
+        }, 120);
+      }
+    } catch { /* ignore */ }
   }
 });
 // Salva a config editada na tela de Ajustes (IP, caixa, etc.) — grava no userData.

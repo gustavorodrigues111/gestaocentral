@@ -23,7 +23,7 @@ const APP_CAIXA_FEED = "https://comandas.planejamento.app/pdv-update";
 const APP_CAIXA_BUCKET = "gestaocentral-85b13.firebasestorage.app";
 const APP_CAIXA_TOKEN = "87522B2C-9534-4645-B0E0-F5348BB246C6";
 const storageUrl = (nome: string) => `https://firebasestorage.googleapis.com/v0/b/${APP_CAIXA_BUCKET}/o/${encodeURIComponent(`pdv-updates/${nome}`)}?alt=media&token=${APP_CAIXA_TOKEN}`;
-const APP_CAIXA_WIN_VER = "1.0.9";
+const APP_CAIXA_WIN_VER = "1.0.12";
 const APP_CAIXA_MAC_VER = "1.0.8";
 const APP_CAIXA_DOWNLOAD = {
   mac: storageUrl(`Planejamento PDV-${APP_CAIXA_MAC_VER}-arm64.dmg`),
