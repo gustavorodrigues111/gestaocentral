@@ -229,8 +229,9 @@ export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: 
       if (e.tipo === "texto") {
         const px = pxFonte(e.tam);
         setFonte(ctx, px, e.negrito ? 800 : 600, e.italico);
-        const linhas = (e.texto || " ").split("\n").flatMap((t) => quebrar(ctx, t || " ", W));
-        h += linhas.length * (px + 6);
+        // Linha vazia (sem texto) conta como 1 linha em branco → dá o espaço da fonte.
+        const linhas = (e.texto || "").split("\n").flatMap((t) => { const w = quebrar(ctx, t, W); return w.length ? w : [""]; });
+        h += Math.max(1, linhas.length) * (px + 6);
       } else if (e.tipo === "logo") {
         const img = imgs.get(e.url);
         const altPx = Math.round((e.alturaMm ?? 12) * PONTOS_POR_MM);
@@ -256,7 +257,8 @@ export async function desenharEtiquetaLivre(elementos: ElementoLivre[], bobina: 
     if (e.tipo === "texto") {
       const px = pxFonte(e.tam);
       setFonte(ctx, px, e.negrito ? 800 : 600, e.italico);
-      const linhas = (e.texto || " ").split("\n").flatMap((t) => quebrar(ctx, t || " ", W));
+      // Linha vazia conta como 1 linha em branco (mesma altura que a medição acima).
+      const linhas = (e.texto || "").split("\n").flatMap((t) => { const w = quebrar(ctx, t, W); return w.length ? w : [""]; });
       for (const l of linhas) {
         const x = xAlinhado(e.align, e.centro, W, ctx.measureText(l).width);
         ctx.fillText(l, x, y); y += px + 6;

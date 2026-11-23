@@ -56,6 +56,7 @@ const PRESETS: { nome: string; vAlign: AlinhV; gerar: () => ElemTemplate[] }[] =
 const LOGOS_FIXAS: LogoEtiqueta[] = [
   { id: "_logo_lobozo", restaurantIds: [], nome: "Lobozó", url: "/etiq-logos/lobozo.png", criadoEm: "" },
   { id: "_logo_sororoca", restaurantIds: [], nome: "Sororoca", url: "/etiq-logos/sororoca.png", criadoEm: "" },
+  { id: "_logo_sororoca_peixe", restaurantIds: [], nome: "Sororoca (peixe)", url: "/etiq-logos/sororoca-peixe.png", criadoEm: "" },
 ];
 
 // Logo guardado como imagem reduzida (data URL) no próprio doc — sem Storage,
@@ -205,6 +206,17 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
       <button type="button" onClick={() => set(px + 3)} className="h-8 w-8 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-lg leading-none">+</button>
     </div>;
   })();
+  // Tamanho da LOGO (altura em mm) — separado do tamanho de fonte.
+  const botAltLogo = (e: ElemTemplate, i: number) => e.tipo === "logo" && (() => {
+    const mm = e.alturaMm ?? 12;
+    const set = (v: number) => upd(i, { alturaMm: Math.max(4, Math.min(80, v)) } as Partial<ElemTemplate>);
+    return <div className="inline-flex items-center gap-1">
+      <span className="text-[10px] text-gray-400">Tamanho</span>
+      <button type="button" onClick={() => set(mm - 2)} className="h-8 w-8 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-lg leading-none">–</button>
+      <span className="w-12 text-center text-xs font-semibold tabular-nums">{mm} mm</span>
+      <button type="button" onClick={() => set(mm + 2)} className="h-8 w-8 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-lg leading-none">+</button>
+    </div>;
+  })();
   const alinhBtns = (e: ElemTemplate & { align?: "l" | "c" | "r"; centro?: boolean }, i: number) => {
     const atual = e.align || (e.centro ? "c" : "l");
     const opts: [("l" | "c" | "r"), typeof AlignLeft][] = [["l", AlignLeft], ["c", AlignCenter], ["r", AlignRight]];
@@ -265,6 +277,7 @@ function EditorTemplate({ template, bobina, largura, logos, naMaquininha, onSubi
             {(e.tipo === "texto" || e.tipo === "campo" || e.tipo === "logo") && (
               <div className="flex items-center gap-3 flex-wrap">
                 {botTam(e, i)}
+                {botAltLogo(e, i)}
                 {alinhBtns(e, i)}
                 {(e.tipo === "texto" || e.tipo === "campo") && <>
                   <button type="button" onClick={() => upd(i, { negrito: !e.negrito } as Partial<ElemTemplate>)} className={`h-8 w-8 rounded font-bold ${e.negrito ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}>N</button>

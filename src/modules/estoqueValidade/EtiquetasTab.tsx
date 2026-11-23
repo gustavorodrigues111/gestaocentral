@@ -11,7 +11,7 @@
 //  navegador, com a mesma imagem.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { Printer, Minus, Plus, ChevronLeft, ClipboardCheck, Settings2 } from "lucide-react";
+import { Printer, Minus, Plus, ChevronLeft, ClipboardCheck, Settings2, Tag } from "lucide-react";
 import { desenharEtiqueta, desenharEtiquetaLivre, larguraPx, type Bobina } from "../../core/impressao/etiquetaTermica";
 import { imprimirEtiquetas, statusSunmi, avisoStatus, destinosDisponiveis, destinoSalvo, salvarDestino, DESTINO_LABEL, listarImpressoras, impressoraSalva, salvarImpressora, type Destino } from "../../core/impressao/impressora";
 import type { LocalEstoque } from "../../core/types";
@@ -67,6 +67,9 @@ type Props = {
   // Maquininha: a home já tem Emitir/Baixa/Painel, então o wizard começa DIRETO
   // na emissão (sem a tela "início") e o voltar do topo sai pra home (onSair).
   pularInicio?: boolean; onSair?: () => void;
+  // Atalho pra tela de Etiqueta livre (botão na tela início). Opcional — só
+  // aparece quando o pai passa o callback.
+  onEtiquetaLivre?: () => void;
   // Config da máquina: ambientes visíveis (catálogo por localização) e modo
   // produção (etiqueta pode sair com a empresa de outro restaurante).
   ambienteIds?: string[]; modoProducao?: boolean; restaurantesAlvo?: string[];
@@ -74,7 +77,7 @@ type Props = {
 };
 
 export function EtiquetasTab(props: Props) {
-  const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos, pularInicio, onSair, ambienteIds, modoProducao, restaurantesAlvo, restaurantes } = props;
+  const { rid, produtos, config, ativas, locais, empresa, cnpj, responsavel, responsavelUid, podeOperar, podeEditar, onGerenciarProdutos, pularInicio, onSair, onEtiquetaLivre, ambienteIds, modoProducao, restaurantesAlvo, restaurantes } = props;
   // Modo produção: escolhe o alvo ANTES de tudo (restaurante → CNPJ e produtos,
   // ou "Venda externa" → sem identificação). Mostra o passo quando há ao menos
   // 1 restaurante (sempre há a opção Venda externa junto).
@@ -360,6 +363,15 @@ export function EtiquetasTab(props: Props) {
             </div>
           </button>
         </div>
+
+        {/* Etiqueta livre: botão largura cheia (dos dois acima), amarelo. */}
+        {onEtiquetaLivre && (
+          <button type="button" onClick={onEtiquetaLivre}
+            className="w-full rounded-3xl bg-amber-400 dark:bg-amber-500 text-amber-950 px-6 py-6 flex items-center justify-center gap-2.5 shadow-sm active:bg-amber-500 dark:active:bg-amber-600 border-2 border-amber-500 dark:border-amber-600">
+            <Tag size={28} className="opacity-90" />
+            <span className="text-2xl font-bold">Etiqueta livre</span>
+          </button>
+        )}
       </div>
     );
   }
