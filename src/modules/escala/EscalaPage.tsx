@@ -1136,6 +1136,34 @@ function DedupEmpregadoModal({ group, escala, cargos, onClose }: {
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao remover."); setSaving(false); }
   }
 
+  // NÃO É DUPLICADO → são PERÍODOS diferentes (ex.: freela mensalista → CLT).
+  // Encerra cada cadastro mais antigo na véspera da admissão do próximo; o mais
+  // recente segue vigente. Nada é apagado: a escala/cargo de cada período fica
+  // preservada na sua janela de datas.
+  const addDias = (iso: string, n: number) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  async function separar() {
+    const ordenados = [...group].sort((a, b) => admissaoDe(a).localeCompare(admissaoDe(b)));
+    const datas = ordenados.map(admissaoDe);
+    if (datas.some(d => !d) || new Set(datas).size < datas.length) {
+      setErro("Pra separar em períodos, cada cadastro precisa de uma data de admissão distinta."); return;
+    }
+    const resumo = ordenados.slice(0, -1).map((e, i) => `• ${e.nome} (${cargoNome(e.cargoId)}): encerra em ${addDias(datas[i + 1], -1).split("-").reverse().join("/")}`).join("\n");
+    if (!window.confirm(`Tratar como PERÍODOS diferentes (NÃO é duplicado)?\n\nCada cadastro mais antigo é encerrado na véspera da admissão do próximo; o mais recente segue vigente. Nada é apagado — a escala e o cargo de cada período ficam preservados.\n\n${resumo}`)) return;
+    setSaving(true); setErro("");
+    try {
+      for (let i = 0; i < ordenados.length - 1; i++) {
+        const e = ordenados[i];
+        const fim = addDias(datas[i + 1], -1);
+        const periodos = [...(e.periodos || [])];
+        const li = periodos.length - 1;
+        if (li >= 0) periodos[li] = { ...periodos[li], demissao: fim, motivoDemissao: periodos[li].motivoDemissao || "Mudança de período (cobertura/vínculo)" };
+        await updateDoc(doc(db, "empregados", e.id), { periodos, estaAtivo: false, admissaoAtual: null, demitidoEm: fim });
+      }
+      onClose();
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao separar."); setSaving(false); }
+  }
+  const podeSeparar = group.length >= 2 && new Set(group.map(admissaoDe)).size === group.length && group.every(e => admissaoDe(e));
+
   return (
     <Modal title={<span className="inline-flex items-center gap-1.5"><AlertTriangle size={18} className="text-amber-500" /> Empregado duplicado</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
@@ -1162,10 +1190,20 @@ function DedupEmpregadoModal({ group, escala, cargos, onClose }: {
             );
           })}
         </div>
+        {podeSeparar && (
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-950/30 px-3 py-2.5 text-[12px] text-gray-600 dark:text-gray-300">
+            <b className="text-gray-900 dark:text-gray-100">Não é duplicado?</b> Se são <b>períodos diferentes</b> da mesma pessoa (ex.: freela mensalista que virou CLT, ou coberturas em datas distintas), use <b>Separar</b>: encerra o mais antigo na véspera da admissão do mais novo e mantém os dois — nada é apagado.
+          </div>
+        )}
         {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void aplicar()} disabled={saving}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> {saving ? "Removendo…" : "Manter 1 e apagar o resto"}</span></Button>
+        <div className="flex justify-between gap-2 pt-1">
+          {podeSeparar
+            ? <Button variant="secondary" onClick={() => void separar()} disabled={saving}><span className="inline-flex items-center gap-1.5"><CalendarDays size={14} /> {saving ? "Separando…" : "Separar (não é duplicado)"}</span></Button>
+            : <span />}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+            <Button variant="danger" onClick={() => void aplicar()} disabled={saving}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> {saving ? "Removendo…" : "Manter 1 e apagar o resto"}</span></Button>
+          </div>
         </div>
       </div>
     </Modal>
