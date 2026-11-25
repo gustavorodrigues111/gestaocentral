@@ -145,7 +145,7 @@ export function QuadrosSubTab({ rid }: Props) {
         setEmpregados(all.filter((e) => e.estaAtivo !== false));
       },
     );
-    const u2 = onSnapshot(collection(db, "cargos"), (snap) => {
+    const u2 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), (snap) => {
       setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo));
     });
     return () => { u1(); u2(); };

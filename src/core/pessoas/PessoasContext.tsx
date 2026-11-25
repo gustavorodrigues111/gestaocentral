@@ -4,11 +4,15 @@
 //  onSnapshot(collection("pessoas")) e reliam o cadastro INTEIRO a cada abertura
 //  → uma das maiores fontes de leitura do Firestore. Agora todos consomem daqui.
 //
-//  Lê a coleção inteira (mesmo comportamento dos call-sites antigos, que também
-//  não filtravam) — só que uma vez por sessão em vez de por-modal.
+//  ESCOPO POR EMPRESA (nov/2026): deixou de ler a coleção INTEIRA. Agora só as
+//  pessoas das empresas do usuário (`restaurantIds array-contains-any rids`).
+//  Fecha a superexposição de cadastro (CPF, etc.) e corta leitura do Firestore.
+//  Fallback seguro p/ NÃO quebrar nada: master, usuário sem empresa, ou com mais
+//  de 10 empresas → mantém a leitura completa de antes. Só mexe no CLIENTE; a
+//  regra do Firestore segue permissiva (hardening de regra é passo seguinte).
 // ════════════════════════════════════════════════════════════════════════════
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../auth/AuthContext";
 import type { Pessoa } from "../types";
@@ -17,20 +21,34 @@ type PessoasCtxValue = { pessoas: Pessoa[]; loading: boolean };
 const PessoasCtx = createContext<PessoasCtxValue>({ pessoas: [], loading: true });
 
 export function PessoasProvider({ children }: { children: ReactNode }) {
-  const { fbUser } = useAuth();
+  const { fbUser, pessoa, pessoaReal } = useAuth();
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Master (real ou efetivo) lê tudo — comportamento de antes, preservado.
+  const isMaster = !!(pessoa?.isMaster || pessoaReal?.isMaster);
+  // Chave estável das empresas do usuário (evita re-subscribe à toa).
+  const ridsKey = useMemo(
+    () => (pessoa?.restaurantIds ?? []).filter(Boolean).join(","),
+    [pessoa?.restaurantIds],
+  );
 
   useEffect(() => {
     if (!fbUser) { setPessoas([]); setLoading(false); return; }
     setLoading(true);
+    const rids = ridsKey ? ridsKey.split(",") : [];
+    // array-contains-any aceita 1..10 valores. Fora disso (ou master) → full.
+    const escopar = !isMaster && rids.length >= 1 && rids.length <= 10;
+    const ref = escopar
+      ? query(collection(db, "pessoas"), where("restaurantIds", "array-contains-any", rids))
+      : collection(db, "pessoas");
     const unsub = onSnapshot(
-      collection(db, "pessoas"),
+      ref,
       (snap) => { setPessoas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa)); setLoading(false); },
       () => setLoading(false),   // permission/rede — mantém o último valor
     );
     return () => unsub();
-  }, [fbUser]);
+  }, [fbUser, isMaster, ridsKey]);
 
   const value = useMemo(() => ({ pessoas, loading }), [pessoas, loading]);
   return <PessoasCtx.Provider value={value}>{children}</PessoasCtx.Provider>;

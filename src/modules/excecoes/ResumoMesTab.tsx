@@ -129,14 +129,15 @@ export function ResumoMesTab({ rid }: Props) {
     return () => u();
   }, [rid]);
 
-  // ─── Cargos globais (pra resolver bate-ponto) ─────────────────────────
+  // ─── Cargos da empresa (pra resolver bate-ponto) ──────────────────────
   const [cargos, setCargos] = useState<Cargo[]>([]);
   useEffect(() => {
-    const u = onSnapshot(collection(db, "cargos"), (snap) => {
+    if (!rid) return;
+    const u = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), (snap) => {
       setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo));
     });
     return () => u();
-  }, []);
+  }, [rid]);
 
   // ─── Caches de relatório do restaurante (todas as semanas) ────────────
   const [caches, setCaches] = useState<ExcecaoStatusSemana[]>([]);

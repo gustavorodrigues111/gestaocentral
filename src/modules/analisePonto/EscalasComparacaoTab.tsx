@@ -162,7 +162,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
     if (!rid) return;
     const u1 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)),
       (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)));
-    const u2 = onSnapshot(collection(db, "cargos"),
+    const u2 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)),
       (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo)));
     return () => { u1(); u2(); };
   }, [rid]);
