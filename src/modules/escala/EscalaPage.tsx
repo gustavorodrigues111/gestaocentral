@@ -355,7 +355,25 @@ export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
       if (!key) continue;
       (byKey[key] ||= []).push(e);
     }
-    return Object.values(byKey).filter(g => g.length > 1);
+    // Só é DUPLICADO de verdade se os períodos se SOBREPÕEM. Dois cadastros da
+    // mesma pessoa em períodos sequenciais (ex.: mensalista até 16/11 → CLT a
+    // partir de 17/11, ou coberturas em datas distintas) NÃO são duplicata.
+    // `demissao` é exclusivo (1º dia fora), então janelas encostadas não colidem.
+    const periodosDe = (e: Empregado) => (e.periodos?.length
+      ? e.periodos
+      : [{ admissao: e.admissaoAtual || "0000-01-01", demissao: e.demitidoEm || null }]);
+    const seSobrepoem = (a: Empregado, b: Empregado) => {
+      for (const pa of periodosDe(a)) for (const pb of periodosDe(b)) {
+        const aEnd = pa.demissao || "9999-12-31", bEnd = pb.demissao || "9999-12-31";
+        if (pa.admissao < bEnd && pb.admissao < aEnd) return true;
+      }
+      return false;
+    };
+    const temParSobreposto = (g: Empregado[]) => {
+      for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) if (seSobrepoem(g[i], g[j])) return true;
+      return false;
+    };
+    return Object.values(byKey).filter(g => g.length > 1 && temParSobreposto(g));
   }, [empregadosDoMes, podeConfig]);
 
   const dias = daysInMonth(ano, mes);
