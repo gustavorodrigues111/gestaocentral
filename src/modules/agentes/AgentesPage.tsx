@@ -237,7 +237,7 @@ function CardapioPreview({ e }: { e: CardEstado }) {
   );
 }
 
-function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void }) {
+export function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void }) {
   // Uma conversa contínua por (agente, pessoa). Persiste em agenteMensagens.
   const conversaId = `${agente.id}__${pessoaId || "anon"}`;
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);

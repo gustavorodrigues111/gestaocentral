@@ -96,6 +96,8 @@ export type ModuleId =
   | "prazos"
   // Agentes de IA
   | "agentes"
+  // Copiloto do DP (chat de IA embarcado — leitura + escrita reversível)
+  | "copilotoDp"
   // Hub de conectores com plataformas externas (GetIn, Altec/Riser, iFood…)
   | "conectores"
   // Gestão de Estoques e Validades (etiquetas + lotes + giro PVPS/PEPS)

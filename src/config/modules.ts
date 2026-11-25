@@ -61,6 +61,9 @@ export const MODULES: ModuleDef[] = [
 
   // ═══ 👥 PESSOAS & DP ═══
 
+  // ── Copiloto ─────────────────────────────────────────────────────
+  { id: "copilotoDp",  area: "dp", subarea: "Copiloto", label: "Copiloto DP", icon: "sparkles", status: "ativo", etapa: "em_desenvolvimento", desc: "Assistente de IA do Departamento Pessoal: conversa pra consultar e — com confirmação — cadastrar/editar pessoas, cargos, escala, ponto e admissões. Toda escrita é reversível (histórico com Desfazer). Acesso controlado por perfil.", dependsOn: ["pessoas"] },
+
   // ── Cadastros e Documentos ───────────────────────────────────────
   { id: "pessoas",     area: "dp", subarea: "Cadastros e Documentos", label: "Pessoas",         icon: "users", status: "ativo", desc: "Pessoas, empregados, cargos e templates de permissão" },
   { id: "documentos",  area: "dp", subarea: "Cadastros e Documentos", label: "Gerador de Documentos", icon: "file-text", status: "ativo", etapa: "beta", desc: "Fábrica de documentos trabalhistas: escolhe o modelo do escritório, puxa empresa (cadastro) e empregado (Pessoas), a IA redige os textos livres e entrega o DOCX preenchido pra assinatura.", dependsOn: ["pessoas"] },

@@ -76,6 +76,7 @@ import { FolhasPage } from "../../modules/folhas/FolhasPage";
 import { PrazosPage } from "../../modules/prazos/PrazosPage";
 import { SegurancaPage } from "../../modules/seguranca/SegurancaPage";
 import { AgentesPage } from "../../modules/agentes/AgentesPage";
+import { CopilotoDpPage } from "../../modules/agentes/CopilotoDpPage";
 import { ConectoresPage } from "../../modules/conectores/ConectoresPage";
 import { EstoqueValidadePage } from "../../modules/estoqueValidade/EstoqueValidadePage";
 import { FechamentoFinPage } from "../../modules/fechamentoFin/FechamentoFinPage";
@@ -168,6 +169,7 @@ function ModuleRouter() {
     case "prazos":        return <PrazosPage key={k} />;
     case "seguranca":     return <SegurancaPage key={k} />;
     case "agentes":       return <AgentesPage key={k} />;
+    case "copilotoDp":    return <CopilotoDpPage key={k} />;
     case "conectores":    return <ConectoresPage key={k} />;
     case "fichas":        return <FichasPage key={k} />;
     case "exames":        return <ExamesPage key={k} />;

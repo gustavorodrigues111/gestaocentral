@@ -38,6 +38,11 @@ const READ_TOOLS: Record<string, { desc: string; cols: string[] }> = {
   ler_admissoes:        { desc: "Consulta processos de admissão em andamento.", cols: ["admissoes"] },
   ler_proc_seletivo:    { desc: "Consulta vagas abertas e candidaturas do processo seletivo.", cols: ["vagas", "candidaturasTrabalhe"] },
   ler_prazos_trab:      { desc: "Consulta dados de prazos trabalhistas: empregados (datas de admissão p/ experiência), exames e entregas de uniforme.", cols: ["empregados", "examesEmpregado", "entregasUniforme"] },
+  ler_demissoes:        { desc: "Consulta processos de DEMISSÃO em andamento.", cols: ["demissoes"] },
+  ler_pessoas:          { desc: "Consulta o cadastro de PESSOAS (nome, cpf, whatsapp, pix, empresas vinculadas). Filtre por busca (nome/cpf).", cols: ["pessoas"] },
+  ler_empregados:       { desc: "Consulta EMPREGADOS (vínculo trabalhista: cargo, admissão/demissão, benefícios, jornada).", cols: ["empregados"] },
+  ler_cargos:           { desc: "Consulta CARGOS (área, pontos de gorjeta, salário-base, flags semGorjeta/recebeProducao).", cols: ["cargos"] },
+  ler_ponto:            { desc: "Consulta o PONTO do PTRP: batidas espelhadas do registrador e os ajustes/tratamentos já lançados. Filtre por periodo (YYYY-MM-DD) e/ou busca (cpf).", cols: ["ptrpBatidas", "ptrpAjustes"] },
 };
 
 // ── SKILL TOOLS ─────────────────────────────────────────────────────────────
@@ -685,6 +690,192 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
   },
 };
 
+// ── SKILL TOOLS — COPILOTO DP ────────────────────────────────────────────────
+// Escritas REVERSÍVEIS no nosso Firestore. Cada escrita grava o "antes" em
+// `copilotoDpAcoes`, pra desfazer pela tela OU pela própria IA (desfazer_acao).
+// Ações EXTERNAS (contrato, WhatsApp) NÃO têm tool aqui: a IA só propõe e manda
+// o humano disparar no módulo — não dá pra des-enviar.
+const novoIdCdp = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+async function registrarAcaoDp(
+  ctx: { pessoaId: string; pessoaNome: string; restaurantId?: string },
+  info: { acao: string; colecao: string; docId: string; antes: Doc | null; depois: Doc | null; descricao: string },
+): Promise<string> {
+  const id = novoIdCdp("cdp");
+  try {
+    await firestoreCriar("copilotoDpAcoes", id, {
+      id, acao: info.acao, colecao: info.colecao, docId: info.docId,
+      antes: info.antes ?? null, depois: info.depois ?? null, descricao: info.descricao,
+      pessoaId: ctx.pessoaId, pessoaNome: ctx.pessoaNome, restaurantId: ctx.restaurantId ?? null,
+      criadoEm: new Date().toISOString(), desfeita: false,
+    });
+  } catch { /* log de desfazer é best-effort */ }
+  return id;
+}
+
+// Campos que "neutralizam" um doc recém-criado (desfazer de CRIAÇÃO), por coleção.
+const INATIVAR_POR_COLECAO: Record<string, Doc> = {
+  pessoas: { ativa: false }, cargos: { ativo: false }, ptrpAjustes: { cancelado: true },
+};
+
+async function desfazerAcaoDp(acaoId?: string): Promise<{ ok: boolean; msg: string; acaoId?: string }> {
+  const acoes = (await firestoreListar("copilotoDpAcoes")) as Doc[];
+  const pendentes = acoes.filter(a => !a.desfeita).sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
+  const alvo = acaoId ? acoes.find(a => a.id === acaoId) : pendentes[0];
+  if (!alvo) return { ok: false, msg: "Não achei nenhuma ação pra desfazer." };
+  if (alvo.desfeita) return { ok: false, msg: "Essa ação já foi desfeita." };
+  const col = String(alvo.colecao), docId = String(alvo.docId);
+  const antes = (alvo.antes || null) as Doc | null;
+  if (antes && Object.keys(antes).length) {
+    await firestoreAtualizar(col, docId, { ...antes, _cdpDesfeita: true });   // edição → restaura o "antes"
+  } else {
+    await firestoreAtualizar(col, docId, { ...(INATIVAR_POR_COLECAO[col] || {}), _cdpDesfeita: true });   // criação → neutraliza
+  }
+  await firestoreAtualizar("copilotoDpAcoes", String(alvo.id), { desfeita: true, desfeitaEm: new Date().toISOString() });
+  return { ok: true, msg: `Desfeito: ${alvo.descricao}`, acaoId: String(alvo.id) };
+}
+
+const SKILL_TOOLS_DP: Record<string, SkillTool> = {
+  cadastrar_pessoa: {
+    desc: "Cadastra uma PESSOA nova (colaborador) no cadastro. Campos: nome (obrig.), cpf, whatsapp, email, pix. Reversível. PROPONHA e confirme ANTES de chamar.",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      nome: { type: "string" }, cpf: { type: "string" }, whatsapp: { type: "string" }, email: { type: "string" }, pix: { type: "string" },
+    }, required: ["nome"] },
+    exec: async (a, ctx) => {
+      const rid = ctx.restaurantId || "";
+      const id = novoIdCdp("pes");
+      const doc: Doc = {
+        id, nome: String(a.nome || "").trim(), cpf: String(a.cpf || "").replace(/\D/g, ""),
+        whatsapp: a.whatsapp ? String(a.whatsapp) : "", email: a.email ? String(a.email) : "", pix: a.pix ? String(a.pix) : "",
+        restaurantIds: rid ? [rid] : [], ativa: true, isMaster: false, criadoEm: new Date().toISOString(), criadaPorCopiloto: true,
+      };
+      await firestoreCriar("pessoas", id, doc);
+      await registrarAcaoDp(ctx, { acao: "cadastrar_pessoa", colecao: "pessoas", docId: id, antes: null, depois: doc, descricao: `Cadastrou ${doc.nome}` });
+      return { resumo: `pessoa ${doc.nome} criada`, conteudo: JSON.stringify({ ok: true, id, pessoa: doc, reversivel: true }) };
+    },
+  },
+  editar_pessoa: {
+    desc: "Edita campos de uma PESSOA existente. Passe pessoaId (ou cpf pra localizar) e `campos` (objeto com nome/whatsapp/email/pix/ativa). Reversível. Confirme ANTES.",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      pessoaId: { type: "string" }, cpf: { type: "string" }, campos: { type: "object", description: "campos a alterar, ex.: {whatsapp:'...'}" },
+    }, required: ["campos"] },
+    exec: async (a, ctx) => {
+      const campos = (a.campos || {}) as Doc;
+      let id = a.pessoaId ? String(a.pessoaId) : "";
+      let atual = id ? await firestoreLer("pessoas", id) : null;
+      if (!atual && a.cpf) {
+        const cpf = String(a.cpf).replace(/\D/g, "");
+        atual = ((await firestoreListar("pessoas")) as Doc[]).find(p => String(p.cpf || "").replace(/\D/g, "") === cpf) || null;
+        id = atual ? String(atual.id) : "";
+      }
+      if (!atual || !id) return { resumo: "pessoa não encontrada", conteudo: JSON.stringify({ ok: false, erro: "Pessoa não encontrada. Busque com ler_pessoas." }) };
+      const antes: Doc = {}; for (const k of Object.keys(campos)) antes[k] = (atual as Doc)[k] ?? null;
+      await firestoreAtualizar("pessoas", id, campos);
+      await registrarAcaoDp(ctx, { acao: "editar_pessoa", colecao: "pessoas", docId: id, antes, depois: campos, descricao: `Editou ${atual.nome || id}` });
+      return { resumo: `pessoa ${atual.nome || id} editada`, conteudo: JSON.stringify({ ok: true, id, mudou: campos, reversivel: true }) };
+    },
+  },
+  cadastrar_cargo: {
+    desc: "SENSÍVEL — Cadastra um CARGO (premissa: pontos de gorjeta, salário-base, área). Campos: nome (obrig.), area (Bar/Cozinha/Salão/Limpeza), tipoVinculo, pontos, semGorjeta, recebeProducao, salarioBase. Afeta gorjeta/folha de quem tiver esse cargo: confirme DUAS vezes e ALERTE o impacto antes. Reversível.",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      nome: { type: "string" }, area: { type: "string" }, tipoVinculo: { type: "string" },
+      pontos: { type: "number" }, semGorjeta: { type: "boolean" }, recebeProducao: { type: "boolean" }, salarioBase: { type: "number" },
+    }, required: ["nome", "area"] },
+    exec: async (a, ctx) => {
+      const rid = ctx.restaurantId || "";
+      const id = novoIdCdp("cargo");
+      const doc: Doc = {
+        id, restaurantId: rid, nome: String(a.nome || "").trim(), area: String(a.area || "Salão"),
+        tipoVinculo: String(a.tipoVinculo || "registrado"), pontos: Number(a.pontos ?? 0),
+        semGorjeta: !!a.semGorjeta, recebeProducao: !!a.recebeProducao,
+        salarioBase: a.salarioBase != null ? Number(a.salarioBase) : null,
+        ativo: true, ordem: 999, createdAt: new Date().toISOString(), criadoPorCopiloto: true,
+      };
+      await firestoreCriar("cargos", id, doc);
+      await registrarAcaoDp(ctx, { acao: "cadastrar_cargo", colecao: "cargos", docId: id, antes: null, depois: doc, descricao: `Cadastrou cargo ${doc.nome} (${doc.pontos} pts)` });
+      return { resumo: `cargo ${doc.nome} criado`, conteudo: JSON.stringify({ ok: true, id, cargo: doc, reversivel: true }) };
+    },
+  },
+  editar_cargo: {
+    desc: "SENSÍVEL — Edita um CARGO existente. Passe cargoId e `campos` (pontos/salarioBase/semGorjeta/recebeProducao/nome/area). Afeta gorjeta/folha: confirme DUAS vezes e ALERTE o impacto. Reversível.",
+    tipo: "write",
+    schema: { type: "object", properties: { cargoId: { type: "string" }, campos: { type: "object" } }, required: ["cargoId", "campos"] },
+    exec: async (a, ctx) => {
+      const id = String(a.cargoId || "");
+      const atual = id ? await firestoreLer("cargos", id) : null;
+      if (!atual) return { resumo: "cargo não encontrado", conteudo: JSON.stringify({ ok: false, erro: "Cargo não encontrado. Busque com ler_cargos." }) };
+      const campos = (a.campos || {}) as Doc;
+      const antes: Doc = {}; for (const k of Object.keys(campos)) antes[k] = (atual as Doc)[k] ?? null;
+      await firestoreAtualizar("cargos", id, campos);
+      await registrarAcaoDp(ctx, { acao: "editar_cargo", colecao: "cargos", docId: id, antes, depois: campos, descricao: `Editou cargo ${atual.nome || id}` });
+      return { resumo: `cargo ${atual.nome || id} editado`, conteudo: JSON.stringify({ ok: true, id, mudou: campos, reversivel: true }) };
+    },
+  },
+  registrar_ajuste_ponto: {
+    desc: "Lança um AJUSTE/tratamento de ponto no PTRP (NOSSO — não vai pra Sólides). Campos: colaboradorId (ou cpf), data (YYYY-MM-DD), tipo (abono/atestado/falta/inclusao/reclassificacao/folga/ferias), statusEscala (status que imprime na praticada: trabalho/folga/falta_j/falta_i/ferias), motivo. Reversível. Confirme ANTES.",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      colaboradorId: { type: "string" }, cpf: { type: "string" }, data: { type: "string" },
+      tipo: { type: "string" }, statusEscala: { type: "string" }, motivo: { type: "string" },
+    }, required: ["data", "tipo"] },
+    exec: async (a, ctx) => {
+      const rid = ctx.restaurantId || "";
+      const id = novoIdCdp("ptaj");
+      const doc: Doc = {
+        id, empresaKey: rid, restaurantId: rid,
+        colaboradorId: a.colaboradorId ? String(a.colaboradorId) : "", cpf: a.cpf ? String(a.cpf).replace(/\D/g, "") : "",
+        data: String(a.data || ""), tipo: String(a.tipo || "abono"), statusEscala: a.statusEscala ? String(a.statusEscala) : "",
+        motivo: a.motivo ? String(a.motivo) : "", autor: ctx.pessoaNome, criadoEm: new Date().toISOString(), cancelado: false, criadoPorCopiloto: true,
+      };
+      await firestoreCriar("ptrpAjustes", id, doc);
+      await registrarAcaoDp(ctx, { acao: "registrar_ajuste_ponto", colecao: "ptrpAjustes", docId: id, antes: null, depois: doc, descricao: `Ajuste de ponto ${doc.tipo} em ${doc.data}` });
+      return { resumo: `ajuste ${doc.tipo} lançado`, conteudo: JSON.stringify({ ok: true, id, ajuste: doc, reversivel: true }) };
+    },
+  },
+  mover_candidatura: {
+    desc: "Move uma CANDIDATURA de etapa no processo seletivo. Passe candidaturaId e etapa (nova/entrevista/aprovado/rejeitado). NÃO envia nada externo. Reversível. Confirme ANTES.",
+    tipo: "write",
+    schema: { type: "object", properties: { candidaturaId: { type: "string" }, etapa: { type: "string" } }, required: ["candidaturaId", "etapa"] },
+    exec: async (a, ctx) => {
+      const id = String(a.candidaturaId || "");
+      const atual = id ? await firestoreLer("candidaturasTrabalhe", id) : null;
+      if (!atual) return { resumo: "candidatura não encontrada", conteudo: JSON.stringify({ ok: false, erro: "Candidatura não encontrada." }) };
+      const antes: Doc = { etapa: (atual as Doc).etapa ?? null };
+      const campos: Doc = { etapa: String(a.etapa) };
+      await firestoreAtualizar("candidaturasTrabalhe", id, campos);
+      await registrarAcaoDp(ctx, { acao: "mover_candidatura", colecao: "candidaturasTrabalhe", docId: id, antes, depois: campos, descricao: `Moveu ${atual.nome || id} → ${a.etapa}` });
+      return { resumo: `candidatura → ${a.etapa}`, conteudo: JSON.stringify({ ok: true, id, reversivel: true }) };
+    },
+  },
+  mover_card_admissao: {
+    desc: "Move um card de ADMISSÃO de status (a_admitir/formulario_enviado/formulario_preenchido/solicitacao_contabilidade/pronto_admissao). NÃO envia nada externo (só muda o card). Passe admissaoId e status. Reversível. Confirme ANTES.",
+    tipo: "write",
+    schema: { type: "object", properties: { admissaoId: { type: "string" }, status: { type: "string" } }, required: ["admissaoId", "status"] },
+    exec: async (a, ctx) => {
+      const id = String(a.admissaoId || "");
+      const atual = id ? await firestoreLer("admissoes", id) : null;
+      if (!atual) return { resumo: "admissão não encontrada", conteudo: JSON.stringify({ ok: false, erro: "Admissão não encontrada." }) };
+      const antes: Doc = { status: (atual as Doc).status ?? null };
+      const campos: Doc = { status: String(a.status) };
+      await firestoreAtualizar("admissoes", id, campos);
+      await registrarAcaoDp(ctx, { acao: "mover_card_admissao", colecao: "admissoes", docId: id, antes, depois: campos, descricao: `Admissão ${atual.candidato && (atual.candidato as Doc).nome ? (atual.candidato as Doc).nome : id} → ${a.status}` });
+      return { resumo: `admissão → ${a.status}`, conteudo: JSON.stringify({ ok: true, id, reversivel: true }) };
+    },
+  },
+  desfazer_acao: {
+    desc: "Desfaz a ÚLTIMA ação do copiloto (ou uma específica por acaoId). Use quando o usuário pedir pra desfazer/reverter o que você acabou de fazer.",
+    tipo: "write",
+    schema: { type: "object", properties: { acaoId: { type: "string" } }, required: [] },
+    exec: async (a) => {
+      const r = await desfazerAcaoDp(a.acaoId ? String(a.acaoId) : undefined);
+      return { resumo: r.ok ? "desfeito" : "nada a desfazer", conteudo: JSON.stringify(r) };
+    },
+  },
+};
+
 function noEscopo(d: Doc, escopo: Escopo): boolean {
   if (escopo === "todas") return true;
   const rid = (d.restaurantId || d.rid) as string | undefined;
@@ -782,7 +973,8 @@ export async function runAgenteCore(
   const ehCardapio = agente.tipo === "cardapio";
   const ehCardapioSite = agente.tipo === "cardapio_site";
   const ehCardapioLobozo = agente.tipo === "cardapio_lobozo";
-  const SKILLS = ehCardapioSite ? SKILL_TOOLS_SITE : ehCardapioLobozo ? SKILL_TOOLS_LOBOZO : SKILL_TOOLS;
+  const ehDp = agente.tipo === "dp";
+  const SKILLS = ehDp ? SKILL_TOOLS_DP : ehCardapioSite ? SKILL_TOOLS_SITE : ehCardapioLobozo ? SKILL_TOOLS_LOBOZO : SKILL_TOOLS;
   const agenteRid = Array.isArray(agente.entidades) && agente.entidades.length ? String(agente.entidades[0]) : "";
   const skillDisp = Object.keys(SKILLS).filter(k => ehCardapio || ehCardapioSite || ehCardapioLobozo || toolsLigadas[k]);
   const temWrite = skillDisp.some(k => SKILLS[k].tipo === "write");
@@ -815,7 +1007,9 @@ export async function runAgenteCore(
       // cardápios: Comidas, Bebidas, Carta de Vinhos, Especiais do Dia e
       // Especiais de Almoço (esta é uma SEÇÃO do dobrável Comidas e Bebidas).
       ? " ESTRUTURA DOS CARDÁPIOS (o Puba tem 3 PEÇAS): (A) o DOBRÁVEL 'Comidas e Bebidas' — UMA peça que reúne 3 SEÇÕES: *Comidas*, *Bebidas* e *Especiais de Almoço*; (B) a *Carta de Vinhos* (peça própria, com curadoria); (C) a filipeta *Especiais do Dia* (peça própria). ATENÇÃO: *Especiais de Almoço* NÃO é uma peça/cardápio separado — é SEÇÃO do dobrável Comidas e Bebidas; quando listar os cardápios, apresente as 3 peças (deixando claro que Especiais de Almoço é seção do dobrável). FLUXO DE ALTERAÇÃO (CONFIRME antes de mexer): (1) Quando pedirem uma alteração, primeiro IDENTIFIQUE onde está o item — use ler_cardapio e veja se é seção *Comidas*, *Bebidas* ou *Especiais de Almoço* (todas no dobrável), ou *Carta de Vinhos*, ou *Especiais do Dia*. (2) ANTES de aplicar, mande UMA mensagem curta CONFIRMANDO, nomeando o que SAI, o que ENTRA e em QUAL cardápio (ex.: 'Vou tirar *Prato X* e colocar *Prato Y* no cardápio de *Comidas* — confirma?'). NUNCA aplique sem esse ok. (3) Se faltar info pra fazer (preço, descrição, seção/categoria, ou em qual cardápio), PEÇA primeiro — não invente. (4) Só com o OK ('pode', 'confirma', 'isso', 'sim') chame aplicar_cardapio; depois responda 'Feito ✅' com 1 linha do que mudou e PERGUNTE se quer o PDF reformado (NÃO gere sozinho). (5) Na menor DÚVIDA (não achou o item, item parecido em mais de um cardápio, pedido ambíguo), PERGUNTE em vez de adivinhar. (6) Quando o usuário PEDIR o PDF/filipeta diretamente ('manda o pdf', 'gera a filipeta', 'quero o pdf de comidas'), aí sim gere e mande NA HORA, sem reconfirmar. (7) Quando pedirem TODOS os cardápios / 'os 3' / 'manda tudo', gere as 3 PEÇAS SEPARADAS chamando gerar_pdf TRÊS vezes — 'dobravel', 'vinhos' e 'especiais' — NUNCA use cardapio='todos' (que junta tudo numa peça só). Cada PDF é entregue como um arquivo próprio."
-      : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
+      : ehDp
+        ? " COPILOTO DE DP — regras de escrita: (1) Antes de QUALQUER leitura/escrita sobre uma pessoa/cargo/candidatura, LOCALIZE primeiro com a ferramenta de leitura (ler_pessoas, ler_cargos, ler_admissoes, ler_proc_seletivo) — nunca invente IDs. (2) Pra TODA escrita, primeiro PROPONHA em texto o que vai mudar (quem, qual campo, valor novo) e peça confirmação explícita; só chame a tool de escrita DEPOIS que o usuário responder 'confirma'/'pode'. (3) Ações SENSÍVEIS — cadastrar_cargo e editar_cargo mexem na GORJETA e na FOLHA de todo mundo que tem esse cargo: peça confirmação DUAS vezes e ALERTE explicitamente o impacto ('⚠️ isso altera a gorjeta/folha de quem tem esse cargo') antes de aplicar. (4) GERAR CONTRATO e ENVIAR WHATSAPP são EXTERNOS e NÃO têm como desfazer: você NÃO tem ferramenta pra isso — apenas PREPARE o texto/os dados e diga pro usuário disparar no módulo (Admissão/Documentos). NUNCA afirme que enviou. (5) Toda escrita sua é REVERSÍVEL e fica registrada no histórico; se o usuário pedir pra desfazer/reverter o que você fez, use desfazer_acao. (6) Valores em R$, datas dd/mm/aaaa; se não achar, diga que não encontrou."
+        : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = !temCardapioClassico ? ""
     : ehCardapioSite

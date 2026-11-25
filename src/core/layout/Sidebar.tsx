@@ -163,6 +163,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       if (pessoa.isMaster) return true;
       return canUse(pessoa, rid, "escala");
     }
+    // Copiloto DP: rollout controlado — master sempre, e quem tiver a permissão
+    // no perfil (não depende de ativar o módulo por empresa).
+    if (moduleId === "copilotoDp") {
+      if (pessoa.isMaster) return true;
+      return canUse(pessoa, rid, "copilotoDp");
+    }
     if (!modulosAtivos.includes(moduleId)) return false;
     if (pessoa.isMaster) return true;
     return canUse(pessoa, rid, moduleId);

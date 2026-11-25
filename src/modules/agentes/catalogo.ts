@@ -22,16 +22,24 @@ export type FerramentaDef = {
 
 export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
   dp: [
+    { key: "ler_pessoas",           label: "Ler pessoas",              tipo: "read",  permissao: "pessoas",           desc: "Cadastro de pessoas (nome, cpf, whatsapp, pix)" },
+    { key: "ler_empregados",        label: "Ler empregados",           tipo: "read",  permissao: "pessoas",           desc: "Vínculo trabalhista: cargo, admissão, benefícios" },
+    { key: "ler_cargos",            label: "Ler cargos",               tipo: "read",  permissao: "pessoas",           desc: "Cargos: área, pontos de gorjeta, salário-base" },
     { key: "ler_escala",            label: "Ler escalas",              tipo: "read",  permissao: "escala",            desc: "Escalas planejadas por pessoa/período" },
-    { key: "ler_ponto",             label: "Ler ponto / folha",        tipo: "read",  permissao: "analise-ponto",     desc: "Marcações e folha de ponto (Sólides)" },
+    { key: "ler_ponto",             label: "Ler ponto (PTRP)",         tipo: "read",  permissao: "ptrp",              desc: "Batidas e ajustes do PTRP" },
     { key: "ler_admissoes",         label: "Ler admissões",            tipo: "read",  permissao: "admissao",          desc: "Processos de admissão em andamento" },
     { key: "ler_demissoes",         label: "Ler demissões",            tipo: "read",  permissao: "demissao",          desc: "Processos de demissão em andamento" },
     { key: "ler_prazos_trab",       label: "Ler prazos trabalhistas",  tipo: "read",  permissao: "prazos",            desc: "Experiência (45/90), exames, uniformes (módulo Prazos)" },
     { key: "ler_proc_seletivo",     label: "Ler processo seletivo",    tipo: "read",  permissao: "processoSeletivo",  desc: "Vagas abertas e candidaturas" },
     { key: "ler_gorjetas",          label: "Ler gorjetas",             tipo: "read",  permissao: "gorjetas",          desc: "Gorjetas por período/pessoa" },
-    { key: "registrar_ajuste_ponto",label: "Registrar ajuste de ponto",tipo: "write", permissao: "analise-ponto",     desc: "Propõe correção de ponto (confirmação)" },
-    { key: "mover_candidatura",     label: "Mover candidatura",        tipo: "write", permissao: "processoSeletivo",  desc: "Muda etapa no kanban (confirmação)" },
-    { key: "prorrogar_experiencia", label: "Prorrogar experiência",    tipo: "write", permissao: "prazos",            desc: "Renova contrato de experiência (confirmação)" },
+    { key: "cadastrar_pessoa",      label: "Cadastrar pessoa",         tipo: "write", permissao: "pessoas",           desc: "Cria uma pessoa nova (reversível, confirmação)" },
+    { key: "editar_pessoa",         label: "Editar pessoa",            tipo: "write", permissao: "pessoas",           desc: "Edita campos de uma pessoa (reversível, confirmação)" },
+    { key: "cadastrar_cargo",       label: "Cadastrar cargo",          tipo: "write", permissao: "pessoas",           desc: "⚠️ Cria cargo (afeta gorjeta/folha; confirmação dupla)" },
+    { key: "editar_cargo",          label: "Editar cargo",             tipo: "write", permissao: "pessoas",           desc: "⚠️ Edita cargo (afeta gorjeta/folha; confirmação dupla)" },
+    { key: "registrar_ajuste_ponto",label: "Registrar ajuste de ponto",tipo: "write", permissao: "ptrp",              desc: "Lança ajuste/tratamento no PTRP (reversível, confirmação)" },
+    { key: "mover_candidatura",     label: "Mover candidatura",        tipo: "write", permissao: "processoSeletivo",  desc: "Muda etapa no kanban (reversível, confirmação)" },
+    { key: "mover_card_admissao",   label: "Mover card de admissão",   tipo: "write", permissao: "admissao",          desc: "Muda o status do card de admissão (reversível, confirmação)" },
+    { key: "desfazer_acao",         label: "Desfazer ação",            tipo: "write", permissao: "pessoas",           desc: "Desfaz a última ação do copiloto" },
   ],
   financeiro: [
     { key: "ler_contas_fixas",      label: "Ler contas a pagar",       tipo: "read",  permissao: "prazos",            desc: "Contas recorrentes: vencimentos e status (módulo Prazos)" },

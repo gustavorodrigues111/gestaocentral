@@ -56,6 +56,12 @@ export function HomePage() {
 
   function visibleModule(moduleId: ModuleId) {
     if (!pessoa) return false;
+    // Copiloto DP: rollout controlado — master sempre, e quem tiver a permissão
+    // no perfil (não depende de ativar o módulo por empresa).
+    if (moduleId === "copilotoDp") {
+      if (pessoa.isMaster) return true;
+      return canUse(pessoa, rid, "copilotoDp");
+    }
     // modulosAtivos vale pra todos (inclusive master): desativado não aparece.
     if (!modulosAtivos.includes(moduleId)) return false;
     if (pessoa.isMaster) return true;       // master ignora só a permissão
