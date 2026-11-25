@@ -18,12 +18,20 @@ import { fmtBR } from "../../core/utils/date";
 import type { AgenteIA } from "../../core/types";
 import { CATALOGO, DOMINIO_META } from "./catalogo";
 import { AgenteChat } from "./AgentesPage";
-import { Sparkles, History, Undo2, ShieldAlert, Loader2 } from "lucide-react";
+import { Sparkles, History, Undo2, ShieldAlert, Loader2, Check, X } from "lucide-react";
 
 type AcaoDp = {
   id: string; acao: string; colecao: string; docId: string; descricao: string;
   antes: Record<string, unknown> | null; pessoaNome?: string; restaurantId?: string | null;
   criadoEm: string; desfeita?: boolean; desfeitaEm?: string;
+};
+
+// Proposta de escrita aguardando aprovação (card com Aprovar/Recusar).
+type PropDp = {
+  id: string; acao: string; colecao: string; docId: string; tipoOp: "criar" | "editar";
+  payload: Record<string, unknown>; resumoCampos: { label: string; valor: string }[];
+  titulo: string; descricao: string; sensivel?: boolean;
+  restaurantId?: string | null; pessoaNome?: string; criadoEm: string; status: string;
 };
 
 // Campos que "neutralizam" um doc recém-criado ao desfazer uma CRIAÇÃO.
@@ -40,6 +48,8 @@ export function CopilotoDpPage() {
   const [erro, setErro] = useState("");
   const [acoes, setAcoes] = useState<AcaoDp[]>([]);
   const [desfazendo, setDesfazendo] = useState<string | null>(null);
+  const [pendentes, setPendentes] = useState<PropDp[]>([]);
+  const [agindo, setAgindo] = useState<string | null>(null);
 
   // Garante (idempotente) um agente DP por restaurante.
   useEffect(() => {
@@ -95,6 +105,59 @@ export function CopilotoDpPage() {
     }
   }
 
+  // Propostas aguardando aprovação (um where só — filtra status no cliente pra
+  // não exigir índice composto no Firestore).
+  useEffect(() => {
+    if (!rid) return;
+    const u = onSnapshot(
+      query(collection(db, "copilotoDpPendentes"), where("restaurantId", "==", rid)),
+      (s) => setPendentes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as PropDp)
+        .filter((p) => p.status === "aguardando")
+        .sort((a, b) => String(a.criadoEm).localeCompare(String(b.criadoEm)))),
+      () => { /* permissão/rede */ },
+    );
+    return () => u();
+  }, [rid]);
+
+  async function logAcao(x: { acao: string; colecao: string; docId: string; antes: Record<string, unknown> | null; descricao: string }) {
+    const id = `cdp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    await setDoc(doc(db, "copilotoDpAcoes", id), sanitizeForFirestore({
+      id, acao: x.acao, colecao: x.colecao, docId: x.docId, antes: x.antes ?? null, descricao: x.descricao,
+      pessoaNome: pessoa?.nome || "", restaurantId: rid, criadoEm: new Date().toISOString(), desfeita: false,
+    }));
+  }
+
+  async function aprovar(p: PropDp) {
+    if (agindo) return;
+    setAgindo(p.id);
+    try {
+      if (p.tipoOp === "criar") {
+        await setDoc(doc(db, p.colecao, p.docId), sanitizeForFirestore(p.payload));
+        await logAcao({ acao: p.acao, colecao: p.colecao, docId: p.docId, antes: null, descricao: p.descricao });
+      } else {
+        const snap = await getDoc(doc(db, p.colecao, p.docId));
+        const atual = (snap.exists() ? snap.data() : {}) as Record<string, unknown>;
+        const antes: Record<string, unknown> = {};
+        for (const k of Object.keys(p.payload)) antes[k] = atual[k] ?? null;
+        await updateDoc(doc(db, p.colecao, p.docId), sanitizeForFirestore(p.payload));
+        await logAcao({ acao: p.acao, colecao: p.colecao, docId: p.docId, antes, descricao: p.descricao });
+      }
+      await updateDoc(doc(db, "copilotoDpPendentes", p.id), { status: "aprovada", aprovadaEm: new Date().toISOString(), aprovadaPor: pessoa?.nome || "" });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao aprovar.");
+    } finally { setAgindo(null); }
+  }
+
+  async function recusar(p: PropDp) {
+    if (agindo) return;
+    setAgindo(p.id);
+    try {
+      await updateDoc(doc(db, "copilotoDpPendentes", p.id), { status: "recusada", recusadaEm: new Date().toISOString() });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao recusar.");
+    } finally { setAgindo(null); }
+  }
+
   const SENSIVEL = new Set(["cadastrar_cargo", "editar_cargo"]);
   const fmtQuando = (iso: string) => {
     try { const d = new Date(iso); return `${fmtBR(iso)} ${d.toTimeString().slice(0, 5)}`; } catch { return iso; }
@@ -127,6 +190,11 @@ export function CopilotoDpPage() {
             }`}
           >
             <Ic size={15} />{label}
+            {k === "chat" && pendentes.length > 0 && (
+              <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                {pendentes.length}
+              </span>
+            )}
             {k === "hist" && acoes.some((a) => !a.desfeita) && (
               <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
                 {acoes.filter((a) => !a.desfeita).length}
@@ -141,21 +209,55 @@ export function CopilotoDpPage() {
       )}
 
       {aba === "chat" && (
-        !agente ? (
-          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-16 justify-center">
-            <Loader2 size={16} className="animate-spin" /> Preparando o copiloto…
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden" style={{ height: "calc(100vh - 230px)", minHeight: 420 }}>
-            <AgenteChat
-              agente={agente}
-              pessoaId={pessoa?.id}
-              pessoaNome={pessoa?.nome}
-              onVoltar={() => setAba("hist")}
-              onConfig={() => setAba("hist")}
-            />
-          </div>
-        )
+        <div className="space-y-3">
+          {/* Cards de aprovação — o copiloto propõe aqui; a escrita só acontece no Aprovar. */}
+          {pendentes.map((p) => (
+            <div key={p.id} className={`rounded-2xl border p-3.5 ${p.sensivel
+              ? "border-amber-300 bg-amber-50 dark:border-amber-700/60 dark:bg-amber-950/30"
+              : "border-indigo-200 bg-indigo-50/60 dark:border-indigo-800 dark:bg-indigo-950/30"}`}>
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                {p.sensivel ? <ShieldAlert size={16} className="text-amber-500 flex-none" /> : <Sparkles size={16} className="text-indigo-500 flex-none" />}
+                <b className="text-sm text-gray-900 dark:text-gray-100">{p.titulo}</b>
+                {p.sensivel && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100">afeta gorjeta/folha</span>}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 mb-3">
+                {(p.resumoCampos || []).map((c, i) => (
+                  <div key={i} className="flex gap-2 text-xs min-w-0">
+                    <span className="text-gray-400 dark:text-gray-500 w-24 flex-none">{c.label}</span>
+                    <span className="text-gray-800 dark:text-gray-200 font-medium break-words min-w-0">{c.valor}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => aprovar(p)} disabled={agindo === p.id}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white enabled:hover:bg-emerald-700 disabled:opacity-50">
+                  {agindo === p.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Aprovar
+                </button>
+                <button onClick={() => recusar(p)} disabled={agindo === p.id}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 enabled:hover:bg-gray-50 enabled:dark:hover:bg-gray-800 disabled:opacity-50">
+                  <X size={14} /> Recusar
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {!agente ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-16 justify-center">
+              <Loader2 size={16} className="animate-spin" /> Preparando o copiloto…
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden"
+              style={{ height: pendentes.length ? "calc(100vh - 380px)" : "calc(100vh - 230px)", minHeight: 360 }}>
+              <AgenteChat
+                agente={agente}
+                pessoaId={pessoa?.id}
+                pessoaNome={pessoa?.nome}
+                onVoltar={() => setAba("hist")}
+                onConfig={() => setAba("hist")}
+              />
+            </div>
+          )}
+        </div>
       )}
 
       {aba === "hist" && (

@@ -691,26 +691,28 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
 };
 
 // ── SKILL TOOLS — COPILOTO DP ────────────────────────────────────────────────
-// Escritas REVERSÍVEIS no nosso Firestore. Cada escrita grava o "antes" em
-// `copilotoDpAcoes`, pra desfazer pela tela OU pela própria IA (desfazer_acao).
-// Ações EXTERNAS (contrato, WhatsApp) NÃO têm tool aqui: a IA só propõe e manda
-// o humano disparar no módulo — não dá pra des-enviar.
+// Fluxo em DUAS FASES: a ferramenta de escrita NÃO aplica na hora — ela monta
+// uma PROPOSTA (doc em `copilotoDpPendentes`) que vira um CARD de aprovação na
+// tela. Só quando o usuário clica em APROVAR é que a escrita acontece (no
+// cliente), com log em `copilotoDpAcoes` pra desfazer. Ações EXTERNAS (contrato,
+// WhatsApp) NÃO têm tool: a IA só descreve e o humano dispara no módulo.
 const novoIdCdp = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+type CampoResumo = { label: string; valor: string };
 
-async function registrarAcaoDp(
+// Monta uma proposta pendente de aprovação e devolve ao modelo que ela aguarda
+// o card. NÃO grava no dado real — só na fila de aprovação.
+async function stageProposta(
   ctx: { pessoaId: string; pessoaNome: string; restaurantId?: string },
-  info: { acao: string; colecao: string; docId: string; antes: Doc | null; depois: Doc | null; descricao: string },
-): Promise<string> {
-  const id = novoIdCdp("cdp");
-  try {
-    await firestoreCriar("copilotoDpAcoes", id, {
-      id, acao: info.acao, colecao: info.colecao, docId: info.docId,
-      antes: info.antes ?? null, depois: info.depois ?? null, descricao: info.descricao,
-      pessoaId: ctx.pessoaId, pessoaNome: ctx.pessoaNome, restaurantId: ctx.restaurantId ?? null,
-      criadoEm: new Date().toISOString(), desfeita: false,
-    });
-  } catch { /* log de desfazer é best-effort */ }
-  return id;
+  p: { acao: string; colecao: string; docId: string; tipoOp: "criar" | "editar"; payload: Doc; resumoCampos: CampoResumo[]; titulo: string; descricao: string; sensivel?: boolean },
+): Promise<{ resumo: string; conteudo: string }> {
+  const id = novoIdCdp("prop");
+  await firestoreCriar("copilotoDpPendentes", id, {
+    id, acao: p.acao, colecao: p.colecao, docId: p.docId, tipoOp: p.tipoOp, payload: p.payload,
+    resumoCampos: p.resumoCampos, titulo: p.titulo, descricao: p.descricao, sensivel: !!p.sensivel,
+    restaurantId: ctx.restaurantId ?? null, pessoaId: ctx.pessoaId, pessoaNome: ctx.pessoaNome,
+    criadoEm: new Date().toISOString(), status: "aguardando",
+  });
+  return { resumo: `proposta: ${p.descricao}`, conteudo: JSON.stringify({ ok: true, aguardandoAprovacao: true, titulo: p.titulo, descricao: p.descricao, campos: p.resumoCampos, sensivel: !!p.sensivel }) };
 }
 
 // Campos que "neutralizam" um doc recém-criado (desfazer de CRIAÇÃO), por coleção.
@@ -737,7 +739,7 @@ async function desfazerAcaoDp(acaoId?: string): Promise<{ ok: boolean; msg: stri
 
 const SKILL_TOOLS_DP: Record<string, SkillTool> = {
   cadastrar_pessoa: {
-    desc: "Cadastra uma PESSOA nova (colaborador) no cadastro. Campos: nome (obrig.), cpf, whatsapp, email, pix. Reversível. PROPONHA e confirme ANTES de chamar.",
+    desc: "Monta uma PROPOSTA de cadastrar uma PESSOA nova (vira um card de aprovação; não aplica na hora). Campos: nome (obrig.), cpf, whatsapp, email, pix.",
     tipo: "write",
     schema: { type: "object", properties: {
       nome: { type: "string" }, cpf: { type: "string" }, whatsapp: { type: "string" }, email: { type: "string" }, pix: { type: "string" },
@@ -745,18 +747,18 @@ const SKILL_TOOLS_DP: Record<string, SkillTool> = {
     exec: async (a, ctx) => {
       const rid = ctx.restaurantId || "";
       const id = novoIdCdp("pes");
-      const doc: Doc = {
-        id, nome: String(a.nome || "").trim(), cpf: String(a.cpf || "").replace(/\D/g, ""),
-        whatsapp: a.whatsapp ? String(a.whatsapp) : "", email: a.email ? String(a.email) : "", pix: a.pix ? String(a.pix) : "",
-        restaurantIds: rid ? [rid] : [], ativa: true, isMaster: false, criadoEm: new Date().toISOString(), criadaPorCopiloto: true,
-      };
-      await firestoreCriar("pessoas", id, doc);
-      await registrarAcaoDp(ctx, { acao: "cadastrar_pessoa", colecao: "pessoas", docId: id, antes: null, depois: doc, descricao: `Cadastrou ${doc.nome}` });
-      return { resumo: `pessoa ${doc.nome} criada`, conteudo: JSON.stringify({ ok: true, id, pessoa: doc, reversivel: true }) };
+      const nome = String(a.nome || "").trim();
+      if (!nome) return { resumo: "nome vazio", conteudo: JSON.stringify({ ok: false, erro: "Informe o nome." }) };
+      const cpf = String(a.cpf || "").replace(/\D/g, ""), whatsapp = a.whatsapp ? String(a.whatsapp) : "", email = a.email ? String(a.email) : "", pix = a.pix ? String(a.pix) : "";
+      const payload: Doc = { id, nome, cpf, whatsapp, email, pix, restaurantIds: rid ? [rid] : [], ativa: true, isMaster: false, criadoEm: new Date().toISOString(), criadaPorCopiloto: true };
+      const resumoCampos: CampoResumo[] = [{ label: "Nome", valor: nome },
+        ...(cpf ? [{ label: "CPF", valor: cpf }] : []), ...(whatsapp ? [{ label: "WhatsApp", valor: whatsapp }] : []),
+        ...(email ? [{ label: "E-mail", valor: email }] : []), ...(pix ? [{ label: "PIX", valor: pix }] : [])];
+      return stageProposta(ctx, { acao: "cadastrar_pessoa", colecao: "pessoas", docId: id, tipoOp: "criar", payload, resumoCampos, titulo: "Cadastrar pessoa", descricao: `Cadastrar ${nome}` });
     },
   },
   editar_pessoa: {
-    desc: "Edita campos de uma PESSOA existente. Passe pessoaId (ou cpf pra localizar) e `campos` (objeto com nome/whatsapp/email/pix/ativa). Reversível. Confirme ANTES.",
+    desc: "Monta uma PROPOSTA de editar uma PESSOA existente (card de aprovação). Passe pessoaId (ou cpf) e `campos` (nome/whatsapp/email/pix/ativa).",
     tipo: "write",
     schema: { type: "object", properties: {
       pessoaId: { type: "string" }, cpf: { type: "string" }, campos: { type: "object", description: "campos a alterar, ex.: {whatsapp:'...'}" },
@@ -771,14 +773,13 @@ const SKILL_TOOLS_DP: Record<string, SkillTool> = {
         id = atual ? String(atual.id) : "";
       }
       if (!atual || !id) return { resumo: "pessoa não encontrada", conteudo: JSON.stringify({ ok: false, erro: "Pessoa não encontrada. Busque com ler_pessoas." }) };
-      const antes: Doc = {}; for (const k of Object.keys(campos)) antes[k] = (atual as Doc)[k] ?? null;
-      await firestoreAtualizar("pessoas", id, campos);
-      await registrarAcaoDp(ctx, { acao: "editar_pessoa", colecao: "pessoas", docId: id, antes, depois: campos, descricao: `Editou ${atual.nome || id}` });
-      return { resumo: `pessoa ${atual.nome || id} editada`, conteudo: JSON.stringify({ ok: true, id, mudou: campos, reversivel: true }) };
+      const nome = String((atual as Doc).nome ?? id);
+      const resumoCampos: CampoResumo[] = Object.keys(campos).map(k => ({ label: k, valor: String(campos[k]) }));
+      return stageProposta(ctx, { acao: "editar_pessoa", colecao: "pessoas", docId: id, tipoOp: "editar", payload: campos, resumoCampos, titulo: `Editar ${nome}`, descricao: `Editar ${nome}` });
     },
   },
   cadastrar_cargo: {
-    desc: "SENSÍVEL — Cadastra um CARGO (premissa: pontos de gorjeta, salário-base, área). Campos: nome (obrig.), area (Bar/Cozinha/Salão/Limpeza), tipoVinculo, pontos, semGorjeta, recebeProducao, salarioBase. Afeta gorjeta/folha de quem tiver esse cargo: confirme DUAS vezes e ALERTE o impacto antes. Reversível.",
+    desc: "SENSÍVEL — Monta uma PROPOSTA de cadastrar um CARGO (card de aprovação). Afeta gorjeta/folha de quem tiver esse cargo. Campos: nome (obrig.), area (Bar/Cozinha/Salão/Limpeza), tipoVinculo, pontos, semGorjeta, recebeProducao, salarioBase.",
     tipo: "write",
     schema: { type: "object", properties: {
       nome: { type: "string" }, area: { type: "string" }, tipoVinculo: { type: "string" },
@@ -787,20 +788,18 @@ const SKILL_TOOLS_DP: Record<string, SkillTool> = {
     exec: async (a, ctx) => {
       const rid = ctx.restaurantId || "";
       const id = novoIdCdp("cargo");
-      const doc: Doc = {
-        id, restaurantId: rid, nome: String(a.nome || "").trim(), area: String(a.area || "Salão"),
-        tipoVinculo: String(a.tipoVinculo || "registrado"), pontos: Number(a.pontos ?? 0),
-        semGorjeta: !!a.semGorjeta, recebeProducao: !!a.recebeProducao,
-        salarioBase: a.salarioBase != null ? Number(a.salarioBase) : null,
-        ativo: true, ordem: 999, createdAt: new Date().toISOString(), criadoPorCopiloto: true,
-      };
-      await firestoreCriar("cargos", id, doc);
-      await registrarAcaoDp(ctx, { acao: "cadastrar_cargo", colecao: "cargos", docId: id, antes: null, depois: doc, descricao: `Cadastrou cargo ${doc.nome} (${doc.pontos} pts)` });
-      return { resumo: `cargo ${doc.nome} criado`, conteudo: JSON.stringify({ ok: true, id, cargo: doc, reversivel: true }) };
+      const nome = String(a.nome || "").trim(), area = String(a.area || "Salão"), pontos = Number(a.pontos ?? 0);
+      const payload: Doc = { id, restaurantId: rid, nome, area, tipoVinculo: String(a.tipoVinculo || "registrado"), pontos,
+        semGorjeta: !!a.semGorjeta, recebeProducao: !!a.recebeProducao, salarioBase: a.salarioBase != null ? Number(a.salarioBase) : null,
+        ativo: true, ordem: 999, createdAt: new Date().toISOString(), criadoPorCopiloto: true };
+      const resumoCampos: CampoResumo[] = [{ label: "Cargo", valor: nome }, { label: "Área", valor: area }, { label: "Pontos gorjeta", valor: String(pontos) },
+        ...(a.salarioBase != null ? [{ label: "Salário-base", valor: `R$ ${Number(a.salarioBase)}` }] : []),
+        { label: "Recebe produção", valor: a.recebeProducao ? "sim" : "não" }];
+      return stageProposta(ctx, { acao: "cadastrar_cargo", colecao: "cargos", docId: id, tipoOp: "criar", payload, resumoCampos, titulo: "Cadastrar cargo", descricao: `Cadastrar cargo ${nome} (${pontos} pts)`, sensivel: true });
     },
   },
   editar_cargo: {
-    desc: "SENSÍVEL — Edita um CARGO existente. Passe cargoId e `campos` (pontos/salarioBase/semGorjeta/recebeProducao/nome/area). Afeta gorjeta/folha: confirme DUAS vezes e ALERTE o impacto. Reversível.",
+    desc: "SENSÍVEL — Monta uma PROPOSTA de editar um CARGO (card de aprovação). Afeta gorjeta/folha. Passe cargoId e `campos` (pontos/salarioBase/semGorjeta/recebeProducao/nome/area).",
     tipo: "write",
     schema: { type: "object", properties: { cargoId: { type: "string" }, campos: { type: "object" } }, required: ["cargoId", "campos"] },
     exec: async (a, ctx) => {
@@ -808,14 +807,13 @@ const SKILL_TOOLS_DP: Record<string, SkillTool> = {
       const atual = id ? await firestoreLer("cargos", id) : null;
       if (!atual) return { resumo: "cargo não encontrado", conteudo: JSON.stringify({ ok: false, erro: "Cargo não encontrado. Busque com ler_cargos." }) };
       const campos = (a.campos || {}) as Doc;
-      const antes: Doc = {}; for (const k of Object.keys(campos)) antes[k] = (atual as Doc)[k] ?? null;
-      await firestoreAtualizar("cargos", id, campos);
-      await registrarAcaoDp(ctx, { acao: "editar_cargo", colecao: "cargos", docId: id, antes, depois: campos, descricao: `Editou cargo ${atual.nome || id}` });
-      return { resumo: `cargo ${atual.nome || id} editado`, conteudo: JSON.stringify({ ok: true, id, mudou: campos, reversivel: true }) };
+      const nome = String((atual as Doc).nome ?? id);
+      const resumoCampos: CampoResumo[] = Object.keys(campos).map(k => ({ label: k, valor: String(campos[k]) }));
+      return stageProposta(ctx, { acao: "editar_cargo", colecao: "cargos", docId: id, tipoOp: "editar", payload: campos, resumoCampos, titulo: `Editar cargo ${nome}`, descricao: `Editar cargo ${nome}`, sensivel: true });
     },
   },
   registrar_ajuste_ponto: {
-    desc: "Lança um AJUSTE/tratamento de ponto no PTRP (NOSSO — não vai pra Sólides). Campos: colaboradorId (ou cpf), data (YYYY-MM-DD), tipo (abono/atestado/falta/inclusao/reclassificacao/folga/ferias), statusEscala (status que imprime na praticada: trabalho/folga/falta_j/falta_i/ferias), motivo. Reversível. Confirme ANTES.",
+    desc: "Monta uma PROPOSTA de AJUSTE/tratamento de ponto no PTRP (card de aprovação; NÃO vai pra Sólides). Campos: colaboradorId (ou cpf), data (YYYY-MM-DD), tipo (abono/atestado/falta/inclusao/reclassificacao/folga/ferias), statusEscala (trabalho/folga/falta_j/falta_i/ferias), motivo.",
     tipo: "write",
     schema: { type: "object", properties: {
       colaboradorId: { type: "string" }, cpf: { type: "string" }, data: { type: "string" },
@@ -824,45 +822,42 @@ const SKILL_TOOLS_DP: Record<string, SkillTool> = {
     exec: async (a, ctx) => {
       const rid = ctx.restaurantId || "";
       const id = novoIdCdp("ptaj");
-      const doc: Doc = {
-        id, empresaKey: rid, restaurantId: rid,
-        colaboradorId: a.colaboradorId ? String(a.colaboradorId) : "", cpf: a.cpf ? String(a.cpf).replace(/\D/g, "") : "",
-        data: String(a.data || ""), tipo: String(a.tipo || "abono"), statusEscala: a.statusEscala ? String(a.statusEscala) : "",
-        motivo: a.motivo ? String(a.motivo) : "", autor: ctx.pessoaNome, criadoEm: new Date().toISOString(), cancelado: false, criadoPorCopiloto: true,
-      };
-      await firestoreCriar("ptrpAjustes", id, doc);
-      await registrarAcaoDp(ctx, { acao: "registrar_ajuste_ponto", colecao: "ptrpAjustes", docId: id, antes: null, depois: doc, descricao: `Ajuste de ponto ${doc.tipo} em ${doc.data}` });
-      return { resumo: `ajuste ${doc.tipo} lançado`, conteudo: JSON.stringify({ ok: true, id, ajuste: doc, reversivel: true }) };
+      const tipo = String(a.tipo || "abono"), data = String(a.data || "");
+      const payload: Doc = { id, empresaKey: rid, restaurantId: rid, colaboradorId: a.colaboradorId ? String(a.colaboradorId) : "",
+        cpf: a.cpf ? String(a.cpf).replace(/\D/g, "") : "", data, tipo, statusEscala: a.statusEscala ? String(a.statusEscala) : "",
+        motivo: a.motivo ? String(a.motivo) : "", autor: ctx.pessoaNome, criadoEm: new Date().toISOString(), cancelado: false, criadoPorCopiloto: true };
+      const resumoCampos: CampoResumo[] = [{ label: "Tipo", valor: tipo }, { label: "Data", valor: data },
+        ...(a.statusEscala ? [{ label: "Status", valor: String(a.statusEscala) }] : []),
+        ...(a.cpf ? [{ label: "CPF", valor: String(a.cpf).replace(/\D/g, "") }] : []),
+        ...(a.motivo ? [{ label: "Motivo", valor: String(a.motivo) }] : [])];
+      return stageProposta(ctx, { acao: "registrar_ajuste_ponto", colecao: "ptrpAjustes", docId: id, tipoOp: "criar", payload, resumoCampos, titulo: "Ajuste de ponto", descricao: `Ajuste ${tipo} em ${data}` });
     },
   },
   mover_candidatura: {
-    desc: "Move uma CANDIDATURA de etapa no processo seletivo. Passe candidaturaId e etapa (nova/entrevista/aprovado/rejeitado). NÃO envia nada externo. Reversível. Confirme ANTES.",
+    desc: "Monta uma PROPOSTA de mover uma CANDIDATURA de etapa (card de aprovação). Passe candidaturaId e etapa (nova/entrevista/aprovado/rejeitado).",
     tipo: "write",
     schema: { type: "object", properties: { candidaturaId: { type: "string" }, etapa: { type: "string" } }, required: ["candidaturaId", "etapa"] },
     exec: async (a, ctx) => {
       const id = String(a.candidaturaId || "");
       const atual = id ? await firestoreLer("candidaturasTrabalhe", id) : null;
       if (!atual) return { resumo: "candidatura não encontrada", conteudo: JSON.stringify({ ok: false, erro: "Candidatura não encontrada." }) };
-      const antes: Doc = { etapa: (atual as Doc).etapa ?? null };
-      const campos: Doc = { etapa: String(a.etapa) };
-      await firestoreAtualizar("candidaturasTrabalhe", id, campos);
-      await registrarAcaoDp(ctx, { acao: "mover_candidatura", colecao: "candidaturasTrabalhe", docId: id, antes, depois: campos, descricao: `Moveu ${atual.nome || id} → ${a.etapa}` });
-      return { resumo: `candidatura → ${a.etapa}`, conteudo: JSON.stringify({ ok: true, id, reversivel: true }) };
+      const nome = String((atual as Doc).nome ?? id), etapa = String(a.etapa);
+      const resumoCampos: CampoResumo[] = [{ label: "Candidato", valor: nome }, { label: "Nova etapa", valor: etapa }];
+      return stageProposta(ctx, { acao: "mover_candidatura", colecao: "candidaturasTrabalhe", docId: id, tipoOp: "editar", payload: { etapa }, resumoCampos, titulo: "Mover candidatura", descricao: `${nome} → ${etapa}` });
     },
   },
   mover_card_admissao: {
-    desc: "Move um card de ADMISSÃO de status (a_admitir/formulario_enviado/formulario_preenchido/solicitacao_contabilidade/pronto_admissao). NÃO envia nada externo (só muda o card). Passe admissaoId e status. Reversível. Confirme ANTES.",
+    desc: "Monta uma PROPOSTA de mover um card de ADMISSÃO de status (card de aprovação; não envia nada externo). Passe admissaoId e status (a_admitir/formulario_enviado/formulario_preenchido/solicitacao_contabilidade/pronto_admissao).",
     tipo: "write",
     schema: { type: "object", properties: { admissaoId: { type: "string" }, status: { type: "string" } }, required: ["admissaoId", "status"] },
     exec: async (a, ctx) => {
       const id = String(a.admissaoId || "");
       const atual = id ? await firestoreLer("admissoes", id) : null;
       if (!atual) return { resumo: "admissão não encontrada", conteudo: JSON.stringify({ ok: false, erro: "Admissão não encontrada." }) };
-      const antes: Doc = { status: (atual as Doc).status ?? null };
-      const campos: Doc = { status: String(a.status) };
-      await firestoreAtualizar("admissoes", id, campos);
-      await registrarAcaoDp(ctx, { acao: "mover_card_admissao", colecao: "admissoes", docId: id, antes, depois: campos, descricao: `Admissão ${atual.candidato && (atual.candidato as Doc).nome ? (atual.candidato as Doc).nome : id} → ${a.status}` });
-      return { resumo: `admissão → ${a.status}`, conteudo: JSON.stringify({ ok: true, id, reversivel: true }) };
+      const cand = (atual as Doc).candidato as Doc | undefined;
+      const nome = String(cand && cand.nome ? cand.nome : id), status = String(a.status);
+      const resumoCampos: CampoResumo[] = [{ label: "Admissão", valor: nome }, { label: "Novo status", valor: status }];
+      return stageProposta(ctx, { acao: "mover_card_admissao", colecao: "admissoes", docId: id, tipoOp: "editar", payload: { status }, resumoCampos, titulo: "Mover admissão", descricao: `${nome} → ${status}` });
     },
   },
   desfazer_acao: {
@@ -1008,7 +1003,7 @@ export async function runAgenteCore(
       // Especiais de Almoço (esta é uma SEÇÃO do dobrável Comidas e Bebidas).
       ? " ESTRUTURA DOS CARDÁPIOS (o Puba tem 3 PEÇAS): (A) o DOBRÁVEL 'Comidas e Bebidas' — UMA peça que reúne 3 SEÇÕES: *Comidas*, *Bebidas* e *Especiais de Almoço*; (B) a *Carta de Vinhos* (peça própria, com curadoria); (C) a filipeta *Especiais do Dia* (peça própria). ATENÇÃO: *Especiais de Almoço* NÃO é uma peça/cardápio separado — é SEÇÃO do dobrável Comidas e Bebidas; quando listar os cardápios, apresente as 3 peças (deixando claro que Especiais de Almoço é seção do dobrável). FLUXO DE ALTERAÇÃO (CONFIRME antes de mexer): (1) Quando pedirem uma alteração, primeiro IDENTIFIQUE onde está o item — use ler_cardapio e veja se é seção *Comidas*, *Bebidas* ou *Especiais de Almoço* (todas no dobrável), ou *Carta de Vinhos*, ou *Especiais do Dia*. (2) ANTES de aplicar, mande UMA mensagem curta CONFIRMANDO, nomeando o que SAI, o que ENTRA e em QUAL cardápio (ex.: 'Vou tirar *Prato X* e colocar *Prato Y* no cardápio de *Comidas* — confirma?'). NUNCA aplique sem esse ok. (3) Se faltar info pra fazer (preço, descrição, seção/categoria, ou em qual cardápio), PEÇA primeiro — não invente. (4) Só com o OK ('pode', 'confirma', 'isso', 'sim') chame aplicar_cardapio; depois responda 'Feito ✅' com 1 linha do que mudou e PERGUNTE se quer o PDF reformado (NÃO gere sozinho). (5) Na menor DÚVIDA (não achou o item, item parecido em mais de um cardápio, pedido ambíguo), PERGUNTE em vez de adivinhar. (6) Quando o usuário PEDIR o PDF/filipeta diretamente ('manda o pdf', 'gera a filipeta', 'quero o pdf de comidas'), aí sim gere e mande NA HORA, sem reconfirmar. (7) Quando pedirem TODOS os cardápios / 'os 3' / 'manda tudo', gere as 3 PEÇAS SEPARADAS chamando gerar_pdf TRÊS vezes — 'dobravel', 'vinhos' e 'especiais' — NUNCA use cardapio='todos' (que junta tudo numa peça só). Cada PDF é entregue como um arquivo próprio."
       : ehDp
-        ? " COPILOTO DE DP — regras de escrita: (1) Antes de QUALQUER leitura/escrita sobre uma pessoa/cargo/candidatura, LOCALIZE primeiro com a ferramenta de leitura (ler_pessoas, ler_cargos, ler_admissoes, ler_proc_seletivo) — nunca invente IDs. (2) Pra TODA escrita, primeiro PROPONHA em texto o que vai mudar (quem, qual campo, valor novo) e peça confirmação explícita; só chame a tool de escrita DEPOIS que o usuário responder 'confirma'/'pode'. (3) Ações SENSÍVEIS — cadastrar_cargo e editar_cargo mexem na GORJETA e na FOLHA de todo mundo que tem esse cargo: peça confirmação DUAS vezes e ALERTE explicitamente o impacto ('⚠️ isso altera a gorjeta/folha de quem tem esse cargo') antes de aplicar. (4) GERAR CONTRATO e ENVIAR WHATSAPP são EXTERNOS e NÃO têm como desfazer: você NÃO tem ferramenta pra isso — apenas PREPARE o texto/os dados e diga pro usuário disparar no módulo (Admissão/Documentos). NUNCA afirme que enviou. (5) Toda escrita sua é REVERSÍVEL e fica registrada no histórico; se o usuário pedir pra desfazer/reverter o que você fez, use desfazer_acao. (6) Valores em R$, datas dd/mm/aaaa; se não achar, diga que não encontrou."
+        ? " COPILOTO DE DP — seja CURTO e objetivo (1 a 2 linhas, tom de conversa; NUNCA textão nem listas longas). (1) Pra achar uma pessoa/cargo/candidatura, use a ferramenta de leitura primeiro (ler_pessoas, ler_cargos, ler_admissoes, ler_proc_seletivo) — nunca invente IDs. (2) Pra ESCREVER, é só chamar a ferramenta de escrita: ela NÃO aplica na hora — monta um CARD de aprovação pro usuário clicar. Depois de chamar, responda só uma linha curta tipo 'Montei a proposta 👇 confere e aprova' — NÃO repita os campos no texto, o card já mostra tudo. (3) Cargo (cadastrar_cargo/editar_cargo) mexe na gorjeta e na folha: acrescente no seu texto UMA linha '⚠️ muda a gorjeta/folha de quem tem esse cargo'. (4) CONTRATO e WHATSAPP são EXTERNOS: você NÃO tem ferramenta — descreva em 1 linha o que fazer e diga pro usuário disparar no módulo (Admissão/Documentos); nunca diga que enviou. (5) Pra desfazer o que foi aplicado, use desfazer_acao. (6) Datas dd/mm/aaaa, valores R$; se não achar, diga em uma linha."
         : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = !temCardapioClassico ? ""
