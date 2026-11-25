@@ -877,12 +877,30 @@ function noEscopo(d: Doc, escopo: Escopo): boolean {
   return !rid || escopo.includes(rid);
 }
 
+// Normaliza texto pra busca: tira acento e pontuação, baixa caixa, vira tokens.
+// "Cozinheiro(a) III – 30h" → "cozinheiro a iii 30h". Assim a busca não quebra
+// por acento, parênteses, hífen ou ordem das palavras.
+const nrmBusca = (s: unknown) =>
+  String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
 // Filtro genérico dirigido pelos argumentos que o modelo passa.
 function aplicaArgs(rows: Doc[], args: { restaurantId?: string; periodo?: string; busca?: string }): Doc[] {
   let r = rows;
   if (args.restaurantId) r = r.filter(d => (d.restaurantId || d.rid) === args.restaurantId);
   if (args.periodo) { const p = String(args.periodo); r = r.filter(d => Object.values(d).some(v => typeof v === "string" && v.startsWith(p))); }
-  if (args.busca) { const q = String(args.busca).toLowerCase(); r = r.filter(d => JSON.stringify(d).toLowerCase().includes(q)); }
+  if (args.busca) {
+    const raw = String(args.busca);
+    const qTokens = nrmBusca(raw).split(" ").filter(t => t.length >= 2); // cada palavra do termo
+    const qDigits = raw.replace(/\D/g, "");                              // CPF/telefone (com ou sem máscara)
+    r = r.filter(d => {
+      const blob = JSON.stringify(d);
+      // CPF/telefone: compara só dígitos (resolve máscara 415.890.868-05 vs 41589086805).
+      if (qDigits.length >= 5 && blob.replace(/\D/g, "").includes(qDigits)) return true;
+      // Texto: todas as palavras do termo têm que aparecer (qualquer ordem).
+      const hay = nrmBusca(blob);
+      return qTokens.length > 0 && qTokens.every(t => hay.includes(t));
+    });
+  }
   return r;
 }
 
@@ -1003,7 +1021,7 @@ export async function runAgenteCore(
       // Especiais de Almoço (esta é uma SEÇÃO do dobrável Comidas e Bebidas).
       ? " ESTRUTURA DOS CARDÁPIOS (o Puba tem 3 PEÇAS): (A) o DOBRÁVEL 'Comidas e Bebidas' — UMA peça que reúne 3 SEÇÕES: *Comidas*, *Bebidas* e *Especiais de Almoço*; (B) a *Carta de Vinhos* (peça própria, com curadoria); (C) a filipeta *Especiais do Dia* (peça própria). ATENÇÃO: *Especiais de Almoço* NÃO é uma peça/cardápio separado — é SEÇÃO do dobrável Comidas e Bebidas; quando listar os cardápios, apresente as 3 peças (deixando claro que Especiais de Almoço é seção do dobrável). FLUXO DE ALTERAÇÃO (CONFIRME antes de mexer): (1) Quando pedirem uma alteração, primeiro IDENTIFIQUE onde está o item — use ler_cardapio e veja se é seção *Comidas*, *Bebidas* ou *Especiais de Almoço* (todas no dobrável), ou *Carta de Vinhos*, ou *Especiais do Dia*. (2) ANTES de aplicar, mande UMA mensagem curta CONFIRMANDO, nomeando o que SAI, o que ENTRA e em QUAL cardápio (ex.: 'Vou tirar *Prato X* e colocar *Prato Y* no cardápio de *Comidas* — confirma?'). NUNCA aplique sem esse ok. (3) Se faltar info pra fazer (preço, descrição, seção/categoria, ou em qual cardápio), PEÇA primeiro — não invente. (4) Só com o OK ('pode', 'confirma', 'isso', 'sim') chame aplicar_cardapio; depois responda 'Feito ✅' com 1 linha do que mudou e PERGUNTE se quer o PDF reformado (NÃO gere sozinho). (5) Na menor DÚVIDA (não achou o item, item parecido em mais de um cardápio, pedido ambíguo), PERGUNTE em vez de adivinhar. (6) Quando o usuário PEDIR o PDF/filipeta diretamente ('manda o pdf', 'gera a filipeta', 'quero o pdf de comidas'), aí sim gere e mande NA HORA, sem reconfirmar. (7) Quando pedirem TODOS os cardápios / 'os 3' / 'manda tudo', gere as 3 PEÇAS SEPARADAS chamando gerar_pdf TRÊS vezes — 'dobravel', 'vinhos' e 'especiais' — NUNCA use cardapio='todos' (que junta tudo numa peça só). Cada PDF é entregue como um arquivo próprio."
       : ehDp
-        ? " COPILOTO DE DP — seja CURTO e objetivo (1 a 2 linhas, tom de conversa; NUNCA textão nem listas longas). (1) Pra achar uma pessoa/cargo/candidatura, use a ferramenta de leitura primeiro (ler_pessoas, ler_cargos, ler_admissoes, ler_proc_seletivo) — nunca invente IDs. (2) Pra ESCREVER, é só chamar a ferramenta de escrita: ela NÃO aplica na hora — monta um CARD de aprovação pro usuário clicar. Depois de chamar, responda só uma linha curta tipo 'Montei a proposta 👇 confere e aprova' — NÃO repita os campos no texto, o card já mostra tudo. (3) Cargo (cadastrar_cargo/editar_cargo) mexe na gorjeta e na folha: acrescente no seu texto UMA linha '⚠️ muda a gorjeta/folha de quem tem esse cargo'. (4) CONTRATO e WHATSAPP são EXTERNOS: você NÃO tem ferramenta — descreva em 1 linha o que fazer e diga pro usuário disparar no módulo (Admissão/Documentos); nunca diga que enviou. (5) Pra desfazer o que foi aplicado, use desfazer_acao. (6) Datas dd/mm/aaaa, valores R$; se não achar, diga em uma linha."
+        ? " COPILOTO DE DP — seja CURTO e objetivo (1 a 2 linhas, tom de conversa; NUNCA textão nem listas longas). (1) Pra achar uma pessoa/cargo/candidatura, use a leitura primeiro (ler_pessoas, ler_cargos, ler_admissoes, ler_proc_seletivo) e BUSQUE pelo termo mais simples e distintivo: só o PRIMEIRO NOME, ou só os DÍGITOS do CPF — nunca o nome completo com sobrenomes nem o CPF com pontos. Se vier 0, refaça com um termo mais curto (primeiro nome) ANTES de concluir que não existe; nunca invente IDs. (1b) NÃO se contradiga: se numa leitura anterior desta MESMA conversa você já achou e confirmou alguém/um cargo, ele EXISTE — não diga depois 'não achei' nem 'foi erro meu, inventei'. Uma busca que agora volta 0 é quase sempre o termo (sobrenome a mais, CPF com máscara): refaça pelo primeiro nome/CPF e siga. (2) Pra ESCREVER, é só chamar a ferramenta de escrita: ela NÃO aplica na hora — monta um CARD de aprovação pro usuário clicar. Depois de chamar, responda só uma linha curta tipo 'Montei a proposta 👇 confere e aprova' — NÃO repita os campos no texto, o card já mostra tudo. (3) Cargo (cadastrar_cargo/editar_cargo) mexe na gorjeta e na folha: acrescente no seu texto UMA linha '⚠️ muda a gorjeta/folha de quem tem esse cargo'. (4) CONTRATO e WHATSAPP são EXTERNOS: você NÃO tem ferramenta — descreva em 1 linha o que fazer e diga pro usuário disparar no módulo (Admissão/Documentos); nunca diga que enviou. (5) Pra desfazer o que foi aplicado, use desfazer_acao. (6) Datas dd/mm/aaaa, valores R$; se não achar, diga em uma linha."
         : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = !temCardapioClassico ? ""
