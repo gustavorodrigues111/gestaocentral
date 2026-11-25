@@ -467,6 +467,29 @@ export type Cargo = {
   // Sólides do restaurante. Salvo automaticamente quando o nome casa
   // (case-insensitive sem acento) na aba Compatibilidade de cadastros.
   solidesId?: number;
+
+  // ─── Bloco JURÍDICO / CONTRATO (FONTE ÚNICA) ──────────────────────────────
+  // Absorve o antigo `documentosCargos` e o catálogo estático
+  // api/_contratos/references/cargos.json. Opcional e ADITIVO — telas que não
+  // usam seguem funcionando. A jornada NÃO mora aqui: é derivada do
+  // `workSchedules` do empregado (jornada.ts); os campos *DiasHorarios/
+  // horarioFallback só valem como texto quando ainda não há empregado
+  // vinculado (ex.: pré-preenchimento antes da admissão).
+  contrato?: {
+    cbo?: string;
+    funcaoLegal?: string;                 // se difere de `nome`
+    regime?: "presencial" | "hibrido" | "externo";
+    atribuicoes?: string[];               // cláusulas de atribuição (canônico)
+    gorjetaClausula?: string;             // texto da cláusula de gorjeta
+    gorjetaEstimativaMensal?: number | null;
+    ajudaCustoHomeOffice?: number | null;
+    modeloPadrao?: string;                // template de contrato default
+    observacoes?: string;
+    horarioFallback?: string;
+    presencialDiasHorarios?: string;
+    homeOfficeDiasHorarios?: string;
+    atualizadoEm?: string;
+  };
 };
 
 // Default por TipoVinculo — base da cascata empregado→cargo→default.
