@@ -35,6 +35,10 @@ const addDiasYmd = (ymd: string, n: number): string => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 
+// Linha do editor de coberturas (freela mensalista com vários períodos).
+// ultimoDia é INCLUSIVO (o que o usuário digita); "" = em aberto.
+type CoberturaRow = { cargoId: string; primeiroDia: string; ultimoDia: string; motivo: string };
+
 export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId, cargos, onClose, onSaved, initialTab }: Props) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
@@ -84,8 +88,36 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   );
   // ÚLTIMO DIA de cobertura (inclusivo — o que o usuário vê/digita). "" = em aberto.
   // O período guarda `demissao` = 1º dia FORA, então o último dia = demissao − 1.
-  const [coberturaFim, setCoberturaFim] = useState<string>(ultimoPeriodo?.demissao ? addDiasYmd(ultimoPeriodo.demissao, -1) : "");
-  const [coberturaMotivo, setCoberturaMotivo] = useState<string>(ultimoPeriodo?.motivo || "");
+  // Seeds da cobertura legada (um período) — hoje a edição é pela lista `coberturas`.
+  const [coberturaFim] = useState<string>(ultimoPeriodo?.demissao ? addDiasYmd(ultimoPeriodo.demissao, -1) : "");
+  const [coberturaMotivo] = useState<string>(ultimoPeriodo?.motivo || "");
+  // Freela mensalista com MÚLTIPLOS períodos de cobertura: cada um com cargo +
+  // janela + motivo. Semeado dos `periodos` existentes (1 período → 1 linha);
+  // sem períodos, começa com 1 linha a partir do cargo/admissão atuais.
+  const seedCoberturas = (): CoberturaRow[] => {
+    const ps = empregado?.periodos || [];
+    if (ps.length) return ps.map(p => ({
+      cargoId: p.cargoId || empregado?.cargoId || cargosAtivos[0]?.id || "",
+      primeiroDia: p.admissao,
+      ultimoDia: p.demissao ? addDiasYmd(p.demissao, -1) : "",
+      motivo: p.motivo || "",
+    }));
+    return [{ cargoId: empregado?.cargoId || cargosAtivos[0]?.id || "", primeiroDia: admissao, ultimoDia: coberturaFim, motivo: coberturaMotivo }];
+  };
+  const [coberturas, setCoberturas] = useState<CoberturaRow[]>(seedCoberturas);
+  // Cobertura "vigente hoje" (ou a mais recente) → vira o snapshot cargoId/admissaoAtual.
+  const hojeYmd = todayYmd();
+  const coberturaAtiva = (() => {
+    const valid = coberturas.filter(r => r.primeiroDia && r.cargoId);
+    const cobre = valid.find(r => r.primeiroDia <= hojeYmd && (!r.ultimoDia || hojeYmd <= r.ultimoDia));
+    return cobre || [...valid].sort((a, b) => a.primeiroDia.localeCompare(b.primeiroDia)).pop() || null;
+  })();
+  const cargoIdFinal = freelaMensalista ? (coberturaAtiva?.cargoId || cargoId) : cargoId;
+  const admissaoAtivaFreela = coberturaAtiva?.primeiroDia || admissao;
+  const admissaoBaseFreela = [...coberturas.filter(r => r.primeiroDia)].sort((a, b) => a.primeiroDia.localeCompare(b.primeiroDia))[0]?.primeiroDia || admissao;
+  const addCobertura = () => setCoberturas(cs => [...cs, { cargoId: cargosAtivos[0]?.id || "", primeiroDia: "", ultimoDia: "", motivo: "" }]);
+  const setCobertura = (i: number, patch: Partial<CoberturaRow>) => setCoberturas(cs => cs.map((r, k) => k === i ? { ...r, ...patch } : r));
+  const removeCobertura = (i: number) => setCoberturas(cs => cs.length > 1 ? cs.filter((_, k) => k !== i) : cs);
   const [empCode, setEmpCode] = useState(empregado?.empCode || "");
   const [codigoContabil, setCodigoContabil] = useState(empregado?.codigoContabil || "");
   const [emergenciaNome, setEmergenciaNome] = useState(empregado?.emergenciaNome || "");
@@ -140,7 +172,12 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     const cargoNovoId = cargoId;
     const cargoNovoNome = cargosAtivos.find(c => c.id === cargoNovoId)?.nome || cargoNovoId;
     const cargoAntigoNome = cargosAtivos.find(c => c.id === empregado.cargoId)?.nome || empregado.cargoId;
-    if (empregado.cargoId !== cargoNovoId) {
+    // Freela mensalista: o cargo é gerido POR PERÍODO (coberturas), então não
+    // passa pelo versionamento de "mudança de cargo" — o snapshot `cargoId`
+    // (cargo vigente hoje) é só atualizado como não-crítico.
+    if (freelaMensalista) {
+      if (empregado.cargoId !== cargoIdFinal) nonCritical.cargoId = cargoIdFinal;
+    } else if (empregado.cargoId !== cargoNovoId) {
       criticas.push({
         campo: "cargoId",
         label: "Cargo",
@@ -238,15 +275,25 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   function buildPeriodos() {
     const now = new Date().toISOString();
     const dem = demissaoPeriodo();
-    // Freela mensalista: edita a JANELA do último período (início + fim + motivo).
+    // Freela mensalista: UM período por linha de cobertura (cargo + janela +
+    // motivo). ultimoDia (inclusivo) → demissao = ultimoDia + 1 (1º dia fora).
     if (freelaMensalista) {
-      const mot = coberturaMotivo.trim() || null;
-      const p = { admissao, demissao: dem, ...(mot ? { motivo: mot } : {}), registradoEm: now, registradoPor: me!.id };
-      if (!empregado?.periodos?.length) return [p];
-      const last = empregado.periodos[empregado.periodos.length - 1];
-      if (last.admissao === admissao && (last.demissao || null) === dem && (last.motivo || "") === (mot || "")) return empregado.periodos;
-      const { motivo: _drop, ...lastSemMotivo } = last;
-      return [...empregado.periodos.slice(0, -1), { ...lastSemMotivo, admissao, demissao: dem, ...(mot ? { motivo: mot } : {}) }];
+      const existentes = empregado?.periodos || [];
+      const linhas = coberturas
+        .filter(r => r.primeiroDia && r.cargoId)
+        .sort((a, b) => a.primeiroDia.localeCompare(b.primeiroDia));
+      return linhas.map((r, i) => {
+        const prev = existentes[i];
+        const mot = r.motivo.trim();
+        return {
+          admissao: r.primeiroDia,
+          demissao: r.ultimoDia ? addDiasYmd(r.ultimoDia, 1) : null,
+          ...(mot ? { motivo: mot } : {}),
+          cargoId: r.cargoId,
+          registradoEm: prev?.registradoEm || now,
+          registradoPor: prev?.registradoPor || me!.id,
+        };
+      });
     }
     // ── fluxo normal ──
     const periodoNovo = { admissao, demissao: null, registradoEm: now, registradoPor: me!.id };
@@ -261,7 +308,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
 
   async function salvar() {
     if (!cargoId) { setErr("Cargo obrigatório"); return; }
-    if (!admissao) { setErr("Admissão obrigatória"); return; }
+    if (freelaMensalista) {
+      if (!coberturas.some(r => r.primeiroDia && r.cargoId)) { setErr("Adicione ao menos um período de cobertura com cargo e primeiro dia."); return; }
+    } else if (!admissao) { setErr("Admissão obrigatória"); return; }
     if (!usaPessoa && !nomeProvisorio.trim()) {
       setErr("Nome obrigatório (empregado provisório, sem Pessoa)");
       return;
@@ -299,7 +348,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           pessoaId: pessoa?.id || null,
           nome: usaPessoa ? pessoa.nome : nomeProvisorio.trim(),
           cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
-          cargoId,
+          cargoId: cargoIdFinal,
           // Freela mensalista não bate ponto mesmo em cargo CLT.
           ...(freelaMensalista ? { batePonto: false } : (batePonto !== null ? { batePonto } : {})),
           ...(freelaMensalista ? { freelaMensalista: true } : {}),
@@ -312,7 +361,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           // Freela mensalista segue ATIVO após o fim da cobertura (fica de
           // sobreaviso p/ próximas coberturas); a escala/gorjeta usam o período.
           estaAtivo: freelaMensalista ? true : !demissaoPeriodo(),
-          admissaoAtual: (freelaMensalista || !demissaoPeriodo()) ? admissao : null,
+          admissaoAtual: freelaMensalista ? admissaoAtivaFreela : (!demissaoPeriodo() ? admissao : null),
           demitidoEm: freelaMensalista ? null : demissaoPeriodo(),
           vtAtivo: !!vtAtivo,
           ...((parseFloat(vtAuxilioFixoMensal) || 0) > 0 ? {
@@ -347,13 +396,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           registradoPor: me.id,
         });
         // Auto-evento de trilha: admissão
+        const cargoEvento = cargosAtivos.find(c => c.id === cargoIdFinal);
         await registrarAdmissao({
           restaurantId,
           empregadoId: ref.id,
           empregadoNome: data.nome,
-          cargoNome: cargo?.nome || "(cargo)",
-          area: cargo?.area || "(área)",
-          admissao,
+          cargoNome: cargoEvento?.nome || "(cargo)",
+          area: cargoEvento?.area || "(área)",
+          admissao: freelaMensalista ? admissaoBaseFreela : admissao,
           registradoPor: me.id,
         });
         // Atualiza state local pra continuar editando (sem fechar) e pula
@@ -380,12 +430,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     const { criticas, nonCritical } = diffCriticoEmpregado();
     // periodos sempre vai junto se admissao mudou
     const periodos = buildPeriodos();
-    const admissaoMudou = empregado!.admissaoAtual !== admissao;
+    const admissaoBase = freelaMensalista ? admissaoBaseFreela : admissao;
+    const admissaoMudou = empregado!.admissaoAtual !== admissaoBase;
     if (JSON.stringify(periodos) !== JSON.stringify(empregado!.periodos)) {
       nonCritical.periodos = periodos;
       const dem = demissaoPeriodo();
-      // Freela mensalista segue ativo mesmo com a cobertura encerrada.
-      nonCritical.admissaoAtual = (freelaMensalista || !dem) ? admissao : null;
+      // Freela mensalista segue ativo mesmo com a cobertura encerrada; a
+      // admissaoAtual é a da cobertura vigente (ou a mais recente).
+      nonCritical.admissaoAtual = freelaMensalista ? admissaoAtivaFreela : (!dem ? admissao : null);
       nonCritical.estaAtivo = freelaMensalista ? true : !dem;
       nonCritical.demitidoEm = freelaMensalista ? null : dem;
     }
@@ -667,32 +719,60 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
               <span className="text-xs text-gray-500">(entra na escala e na gorjeta só no período)</span>
             </label>
             {freelaMensalista ? (
-              <>
-                <div className="grid grid-cols-2 gap-2 pl-6">
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Primeiro dia de cobertura *</label>
-                    <input type="date" value={admissao} onChange={(e) => setAdmissao(e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Último dia de cobertura</label>
-                    <input type="date" value={coberturaFim} min={admissao || undefined} onChange={(e) => setCoberturaFim(e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-                  </div>
-                </div>
-                <div className="pl-6">
-                  <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Motivo da cobertura</label>
-                  <input type="text" value={coberturaMotivo} onChange={(e) => setCoberturaMotivo(e.target.value)}
-                    placeholder="ex: cobertura de férias do Fulano"
-                    className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-                </div>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 pl-6">
-                  Usa o cargo <strong>"{cargo.nome}"</strong> (pontos/área da gorjeta). Só entra na escala/gorjeta entre as datas. <strong>Não bate ponto</strong> — fecha pela prevista na Análise de Ponto. Segue como freela ativo após o fim.
+              <div className="pl-6 space-y-2.5">
+                {coberturas.map((r, i) => {
+                  const cObj = cargosAtivos.find(c => c.id === r.cargoId);
+                  return (
+                    <div key={i} className="rounded-lg border border-violet-200 dark:border-violet-800/50 bg-white/70 dark:bg-gray-900/40 p-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-500">Período {i + 1}</span>
+                        {coberturas.length > 1 && (
+                          <button type="button" onClick={() => removeCobertura(i)}
+                            className="ml-auto text-gray-400 hover:text-rose-500" title="Remover período"><Trash2 size={14} /></button>
+                        )}
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Cargo da cobertura * <span className="text-gray-400">(define pontos/área da gorjeta)</span></label>
+                        <select value={r.cargoId} onChange={(e) => setCobertura(i, { cargoId: e.target.value })}
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                          {cargosAtivos.map(c => (
+                            <option key={c.id} value={c.id}>{c.nome}{c.area ? ` · ${c.area}` : ""} · {c.pontos ?? 0} pts</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Primeiro dia *</label>
+                          <input type="date" value={r.primeiroDia} onChange={(e) => setCobertura(i, { primeiroDia: e.target.value })}
+                            className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Último dia</label>
+                          <input type="date" value={r.ultimoDia} min={r.primeiroDia || undefined} onChange={(e) => setCobertura(i, { ultimoDia: e.target.value })}
+                            className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Motivo</label>
+                        <input type="text" value={r.motivo} onChange={(e) => setCobertura(i, { motivo: e.target.value })}
+                          placeholder="ex: cobertura de férias do Fulano"
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                      </div>
+                      {cObj && <p className="text-[10px] text-gray-500 dark:text-gray-400">Nesses dias entra na gorjeta como <strong>{cObj.nome}</strong> ({cObj.pontos ?? 0} pts{cObj.area ? ` · ${cObj.area}` : ""}).</p>}
+                    </div>
+                  );
+                })}
+                <button type="button" onClick={addCobertura}
+                  className="text-xs font-semibold text-violet-600 dark:text-violet-400 hover:underline inline-flex items-center gap-1">
+                  <CalendarDays size={13} /> + Adicionar período de cobertura
+                </button>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Cada período entra na escala/gorjeta só entre as datas, com os <strong>pontos/área do cargo escolhido</strong>. Pra cobrir alguém, escolha o <strong>cargo de quem está sendo coberto</strong> (ex.: se um Garçom 1 cobre férias de um Garçom 3, ponha <strong>Garçom 3</strong> pra ganhar a gorjeta do cargo maior). <strong>Não bate ponto</strong> — fecha pela prevista na Análise de Ponto. Segue como freela ativo após o fim.
                 </p>
-              </>
+              </div>
             ) : (
               <p className="text-[11px] text-gray-500 dark:text-gray-400 pl-6">
-                Marque se esta pessoa é freela cobrindo um período (ex: férias de um CLT) e deve <strong>entrar na gorjeta</strong> desses dias, no cargo escolhido acima. Diarista pago por turno é no módulo <strong>Freelas</strong>.
+                Marque se esta pessoa é freela cobrindo um período (ex: férias de um CLT) e deve <strong>entrar na gorjeta</strong> desses dias, no cargo escolhido. Diarista pago por turno é no módulo <strong>Freelas</strong>.
               </p>
             )}
           </div>
@@ -722,12 +802,15 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           </div>
         )}
 
-        <Input
-          label="Data de admissão *"
-          type="date"
-          value={admissao}
-          onChange={(e) => setAdmissao(e.target.value)}
-        />
+        {/* Freela mensalista define as datas pela lista de períodos acima. */}
+        {!freelaMensalista && (
+          <Input
+            label="Data de admissão *"
+            type="date"
+            value={admissao}
+            onChange={(e) => setAdmissao(e.target.value)}
+          />
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Input
