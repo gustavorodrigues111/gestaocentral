@@ -518,6 +518,11 @@ export type EmpregadoPeriodo = {
   motivoDemissao?: string;
   // Motivo da COBERTURA (freela mensalista): ex "cobertura de férias do Fulano".
   motivo?: string;
+  // Cargo VIGENTE NESTE período. Usado quando a mesma pessoa faz coberturas em
+  // períodos diferentes com cargos diferentes (freela mensalista) — a escala e a
+  // gorjeta resolvem o cargo do dia por aqui. Ausente = cai no `Empregado.cargoId`
+  // atual (comportamento antigo, sem mudança pra quem já existe).
+  cargoId?: string;
   registradoEm: string;          // ISO
   registradoPor: string;         // pessoaId
 };

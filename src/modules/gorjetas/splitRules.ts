@@ -1,7 +1,7 @@
 // Lógica de regras de divisão (SplitVersion). Portado do AppTip.
 
 import type { Area, AreaPercentConfig, Empregado, SplitVersion } from "../../core/types";
-import { empregadoAtivoEm } from "../../core/utils/empregado";
+import { empregadoAtivoEm, cargoIdDoEmpregadoEm } from "../../core/utils/empregado";
 
 // Pega a SplitVersion vigente em uma data específica.
 //
@@ -38,7 +38,7 @@ export function countEmpregadosRegistradosNaArea(
   date: string,
 ): number {
   return empregados.filter(e => {
-    const cargo = cargoMap[e.cargoId];
+    const cargo = cargoMap[cargoIdDoEmpregadoEm(e, date)];
     if (!cargo) return false;
     if (cargo.area !== area) return false;
     if (cargo.tipoVinculo !== "registrado") return false;

@@ -50,3 +50,19 @@ export function empregadoAtivoEm(emp: Empregado, dateStr: string): boolean {
   }
   return false;
 }
+
+// Cargo vigente do empregado NUMA data específica. Se algum período que cobre a
+// data tem `cargoId` próprio (freela mensalista que cobre com cargos diferentes
+// em períodos diferentes), usa esse cargo; senão cai no `cargoId` atual do
+// empregado. ADITIVO: pra empregado sem `cargoId` nos períodos (todos os
+// existentes hoje), retorna exatamente `emp.cargoId` — zero mudança de
+// comportamento. `demissao` é exclusivo (1º dia FORA), igual a empregadoAtivoEm.
+export function cargoIdDoEmpregadoEm(emp: Empregado, dateStr: string): string {
+  for (const p of emp.periodos || []) {
+    if (!p.cargoId) continue;
+    if (dateStr < p.admissao) continue;
+    if (p.demissao && dateStr >= p.demissao) continue;
+    return p.cargoId;
+  }
+  return emp.cargoId;
+}

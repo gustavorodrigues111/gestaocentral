@@ -3,7 +3,7 @@ import type {
   Unidade,
 } from "../../core/types";
 import { AREAS } from "../../core/types";
-import { empregadoAtivoEm } from "../../core/utils/empregado";
+import { empregadoAtivoEm, cargoIdDoEmpregadoEm } from "../../core/utils/empregado";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import { statusEfetivoComDerivado } from "../../core/escala/statusEfetivo";
 import { computeAreaPercentages, countEmpregadosRegistradosNaArea } from "./splitRules";
@@ -136,7 +136,8 @@ export function calcularDivisaoDia(
   // 1) Eligibilidade — quem recebe gorjeta neste dia?
   for (const e of empregados) {
     if (!empregadoAtivoEm(e, date)) continue;
-    const cargo = cargoMap[e.cargoId];
+    // Cargo DO DIA: respeita cobertura por período (cargoId no período); fallback = cargo atual.
+    const cargo = cargoMap[cargoIdDoEmpregadoEm(e, date)];
     if (!cargo || cargo.semGorjeta || cargo.pontos <= 0) continue;
 
     let motivo: DivisaoItem["motivo"] | null = null;

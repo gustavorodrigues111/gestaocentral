@@ -1147,17 +1147,20 @@ function DedupEmpregadoModal({ group, escala, cargos, onClose }: {
     if (datas.some(d => !d) || new Set(datas).size < datas.length) {
       setErro("Pra separar em períodos, cada cadastro precisa de uma data de admissão distinta."); return;
     }
-    const resumo = ordenados.slice(0, -1).map((e, i) => `• ${e.nome} (${cargoNome(e.cargoId)}): encerra em ${addDias(datas[i + 1], -1).split("-").reverse().join("/")}`).join("\n");
+    // `demissao` é EXCLUSIVO (primeiro dia FORA) = admissão do próximo. Assim o
+    // último dia trabalhado do antigo = véspera da admissão do novo, sem lacuna
+    // nem sobreposição.
+    const resumo = ordenados.slice(0, -1).map((e, i) => `• ${e.nome} (${cargoNome(e.cargoId)}): último dia ${addDias(datas[i + 1], -1).split("-").reverse().join("/")}`).join("\n");
     if (!window.confirm(`Tratar como PERÍODOS diferentes (NÃO é duplicado)?\n\nCada cadastro mais antigo é encerrado na véspera da admissão do próximo; o mais recente segue vigente. Nada é apagado — a escala e o cargo de cada período ficam preservados.\n\n${resumo}`)) return;
     setSaving(true); setErro("");
     try {
       for (let i = 0; i < ordenados.length - 1; i++) {
         const e = ordenados[i];
-        const fim = addDias(datas[i + 1], -1);
+        const demissao = datas[i + 1]; // primeiro dia fora = admissão do próximo
         const periodos = [...(e.periodos || [])];
         const li = periodos.length - 1;
-        if (li >= 0) periodos[li] = { ...periodos[li], demissao: fim, motivoDemissao: periodos[li].motivoDemissao || "Mudança de período (cobertura/vínculo)" };
-        await updateDoc(doc(db, "empregados", e.id), { periodos, estaAtivo: false, admissaoAtual: null, demitidoEm: fim });
+        if (li >= 0) periodos[li] = { ...periodos[li], demissao, motivoDemissao: periodos[li].motivoDemissao || "Mudança de período (cobertura/vínculo)" };
+        await updateDoc(doc(db, "empregados", e.id), { periodos, estaAtivo: false, admissaoAtual: null, demitidoEm: demissao });
       }
       onClose();
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao separar."); setSaving(false); }
