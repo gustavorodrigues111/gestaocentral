@@ -10,9 +10,10 @@
 //  propostas aguardando aprovação e o que já foi feito). No mobile vira abas.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useState } from "react";
-import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { applyVersionedChange } from "../../core/audit/versionedChange";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -27,6 +28,7 @@ type AcaoDp = {
   id: string; acao: string; colecao: string; docId: string; descricao: string;
   antes: Record<string, unknown> | null; pessoaNome?: string; restaurantId?: string | null;
   criadoEm: string; desfeita?: boolean; desfeitaEm?: string;
+  agendadaId?: string | null;   // mudança de cargo agendada (desfazer = deletar o doc)
 };
 
 // Proposta de escrita aguardando aprovação (card com Aprovar/Recusar).
@@ -35,6 +37,9 @@ type PropDp = {
   payload: Record<string, unknown>; resumoCampos: { label: string; valor: string }[];
   titulo: string; descricao: string; sensivel?: boolean;
   restaurantId?: string | null; pessoaNome?: string; criadoEm: string; status: string;
+  // Promoção (promover_empregado): metadados pro applyVersionedChange.
+  vigenteApartir?: string; cargoAntesId?: string; cargoAntesNome?: string;
+  cargoNovoId?: string; cargoNovoNome?: string; empregadoNome?: string; motivo?: string;
 };
 
 // Campos que "neutralizam" um doc recém-criado ao desfazer uma CRIAÇÃO.
@@ -42,7 +47,7 @@ const INATIVAR: Record<string, Record<string, unknown>> = {
   pessoas: { ativa: false }, cargos: { ativo: false }, ptrpAjustes: { cancelado: true },
 };
 
-const SENSIVEL = new Set(["cadastrar_cargo", "editar_cargo"]);
+const SENSIVEL = new Set(["cadastrar_cargo", "editar_cargo", "promover_empregado"]);
 
 export function CopilotoDpPage() {
   const { pessoa } = useAuth();
@@ -71,13 +76,17 @@ export function CopilotoDpPage() {
       try {
         const ref = doc(db, "agentesIA", agenteId);
         const snap = await getDoc(ref);
+        const tools = Object.fromEntries(CATALOGO.dp.map((f) => [f.key, true])); // leituras + escritas (catálogo atual)
         if (!snap.exists()) {
-          const tools = Object.fromEntries(CATALOGO.dp.map((f) => [f.key, true])); // leituras + escritas
           await setDoc(ref, sanitizeForFirestore({
             id: agenteId, nome: `Copiloto DP · ${activeRestaurant?.nome || ""}`.trim(), tipo: "dp",
             systemPrompt: DOMINIO_META.dp.promptPadrao, tools, entidades: [rid],
             modoEscrita: "confirmar", ativo: true, criadoEm: new Date().toISOString(), criadoPor: pessoa?.id || null,
           }));
+        } else {
+          // Mantém as tools em dia com o catálogo (habilita ferramentas novas
+          // sem precisar recriar o agente). Merge: só o campo tools.
+          await setDoc(ref, { tools }, { merge: true });
         }
         const fresh = await getDoc(ref);
         if (alive && fresh.exists()) setAgente({ id: agenteId, ...(fresh.data() as object) } as AgenteIA);
@@ -104,10 +113,16 @@ export function CopilotoDpPage() {
     if (a.desfeita || desfazendo) return;
     setDesfazendo(a.id);
     try {
-      const patch = a.antes && Object.keys(a.antes).length
-        ? { ...a.antes, _cdpDesfeita: true }               // edição → restaura o "antes"
-        : { ...(INATIVAR[a.colecao] || {}), _cdpDesfeita: true }; // criação → neutraliza
-      await updateDoc(doc(db, a.colecao, a.docId), sanitizeForFirestore(patch));
+      if (a.agendadaId) {
+        // Promoção AGENDADA (vigência futura): a mudança ainda não entrou no
+        // cargo — basta apagar o agendamento. O cargo vivo não mudou.
+        await deleteDoc(doc(db, "mudancasAgendadas", a.agendadaId));
+      } else {
+        const patch = a.antes && Object.keys(a.antes).length
+          ? { ...a.antes, _cdpDesfeita: true }               // edição → restaura o "antes"
+          : { ...(INATIVAR[a.colecao] || {}), _cdpDesfeita: true }; // criação → neutraliza
+        await updateDoc(doc(db, a.colecao, a.docId), sanitizeForFirestore(patch));
+      }
       await updateDoc(doc(db, "copilotoDpAcoes", a.id), { desfeita: true, desfeitaEm: new Date().toISOString() });
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao desfazer.");
@@ -130,10 +145,11 @@ export function CopilotoDpPage() {
     return () => u();
   }, [rid, reconectar]);
 
-  async function logAcao(x: { acao: string; colecao: string; docId: string; antes: Record<string, unknown> | null; descricao: string }) {
+  async function logAcao(x: { acao: string; colecao: string; docId: string; antes: Record<string, unknown> | null; descricao: string; agendadaId?: string | null }) {
     const id = `cdp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await setDoc(doc(db, "copilotoDpAcoes", id), sanitizeForFirestore({
       id, acao: x.acao, colecao: x.colecao, docId: x.docId, antes: x.antes ?? null, descricao: x.descricao,
+      agendadaId: x.agendadaId ?? null,
       pessoaNome: pessoa?.nome || "", restaurantId: rid, criadoEm: new Date().toISOString(), desfeita: false,
     }));
   }
@@ -142,7 +158,19 @@ export function CopilotoDpPage() {
     if (agindo) return;
     setAgindo(p.id);
     try {
-      if (p.tipoOp === "criar") {
+      if (p.acao === "promover_empregado") {
+        // Mudança de cargo do EMPREGADO: usa o MESMO motor versionado do app
+        // (imediato se vigência <= hoje; senão agenda). Mantém histórico+auditoria.
+        const novoCargoId = String(p.cargoNovoId || (p.payload as Record<string, unknown>).cargoId || "");
+        const r = await applyVersionedChange({
+          entityType: "empregado", entityId: p.docId, restaurantId: rid,
+          campo: "cargoId", valorAntes: p.cargoAntesId ?? null, valorDepois: novoCargoId,
+          vigenteApartir: p.vigenteApartir || new Date().toISOString().slice(0, 10),
+          motivo: p.motivo || `Promoção: ${p.cargoAntesNome || "?"} → ${p.cargoNovoNome || ""}`,
+          registradoPor: pessoa?.id || "",
+        });
+        await logAcao({ acao: p.acao, colecao: "empregados", docId: p.docId, antes: { cargoId: p.cargoAntesId ?? null }, descricao: p.descricao, agendadaId: r.agendadaId ?? null });
+      } else if (p.tipoOp === "criar") {
         await setDoc(doc(db, p.colecao, p.docId), sanitizeForFirestore(p.payload));
         await logAcao({ acao: p.acao, colecao: p.colecao, docId: p.docId, antes: null, descricao: p.descricao });
       } else {

@@ -703,12 +703,13 @@ type CampoResumo = { label: string; valor: string };
 // o card. NÃO grava no dado real — só na fila de aprovação.
 async function stageProposta(
   ctx: { pessoaId: string; pessoaNome: string; restaurantId?: string },
-  p: { acao: string; colecao: string; docId: string; tipoOp: "criar" | "editar"; payload: Doc; resumoCampos: CampoResumo[]; titulo: string; descricao: string; sensivel?: boolean },
+  p: { acao: string; colecao: string; docId: string; tipoOp: "criar" | "editar"; payload: Doc; resumoCampos: CampoResumo[]; titulo: string; descricao: string; sensivel?: boolean; extra?: Doc },
 ): Promise<{ resumo: string; conteudo: string }> {
   const id = novoIdCdp("prop");
   await firestoreCriar("copilotoDpPendentes", id, {
     id, acao: p.acao, colecao: p.colecao, docId: p.docId, tipoOp: p.tipoOp, payload: p.payload,
     resumoCampos: p.resumoCampos, titulo: p.titulo, descricao: p.descricao, sensivel: !!p.sensivel,
+    ...(p.extra || {}),
     restaurantId: ctx.restaurantId ?? null, pessoaId: ctx.pessoaId, pessoaNome: ctx.pessoaNome,
     criadoEm: new Date().toISOString(), status: "aguardando",
   });
@@ -858,6 +859,48 @@ const SKILL_TOOLS_DP: Record<string, SkillTool> = {
       const nome = String(cand && cand.nome ? cand.nome : id), status = String(a.status);
       const resumoCampos: CampoResumo[] = [{ label: "Admissão", valor: nome }, { label: "Novo status", valor: status }];
       return stageProposta(ctx, { acao: "mover_card_admissao", colecao: "admissoes", docId: id, tipoOp: "editar", payload: { status }, resumoCampos, titulo: "Mover admissão", descricao: `${nome} → ${status}` });
+    },
+  },
+  promover_empregado: {
+    desc: "Monta uma PROPOSTA de MUDAR O CARGO de um empregado (promoção/rebaixamento), com vigência. Vira card de aprovação; AFETA GORJETA/FOLHA. Informe empregadoId OU busca (nome/cpf do empregado), o cargo novo (cargoId OU cargoNome) e aPartirDe (dd/mm/aaaa; vazio = hoje). O cargo-alvo tem que ser do MESMO restaurante do empregado (se for de outro, é transferência — faça no módulo de Admissão). Diferente de editar_cargo, que edita a DEFINIÇÃO do cargo pra todo mundo.",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      empregadoId: { type: "string" }, busca: { type: "string", description: "nome ou cpf do empregado" },
+      cargoId: { type: "string" }, cargoNome: { type: "string" }, aPartirDe: { type: "string", description: "dd/mm/aaaa (vazio = hoje)" }, motivo: { type: "string" },
+    }, required: [] },
+    exec: async (a, ctx) => {
+      const rid = ctx.restaurantId || "";
+      const nrm = (s: unknown) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+      const emps = ((await firestoreListar("empregados")) as Doc[]).filter(e => (e.restaurantId || e.rid) === rid);
+      let emp = a.empregadoId ? emps.find(e => e.id === String(a.empregadoId)) || null : null;
+      if (!emp && a.busca) {
+        const q = String(a.busca); const qd = q.replace(/\D/g, ""); const qn = nrm(q);
+        emp = emps.find(e => (qd.length >= 5 && String(e.cpf || "").replace(/\D/g, "").includes(qd)) || nrm(e.nome).includes(qn)) || null;
+      }
+      if (!emp) return { resumo: "empregado não encontrado", conteudo: JSON.stringify({ ok: false, erro: "Empregado não encontrado NESTE restaurante. Use ler_empregados pra pegar o id." }) };
+      const cargos = ((await firestoreListar("cargos")) as Doc[]).filter(c => (c.restaurantId || c.rid) === rid && c.ativo !== false);
+      let cargo = a.cargoId ? cargos.find(c => c.id === String(a.cargoId)) || null : null;
+      if (!cargo && a.cargoNome) { const qn = nrm(a.cargoNome); cargo = cargos.find(c => nrm(c.nome) === qn) || cargos.find(c => nrm(c.nome).includes(qn)) || null; }
+      if (!cargo) return { resumo: "cargo não encontrado", conteudo: JSON.stringify({ ok: false, erro: "Cargo-alvo não encontrado NESTE restaurante. Promoção é só no mesmo restaurante (cargo de outro = transferência, via Admissão). Use ler_cargos." }) };
+      if (String(emp.cargoId) === String(cargo.id)) return { resumo: "mesmo cargo", conteudo: JSON.stringify({ ok: false, erro: "O empregado já está nesse cargo." }) };
+      const cargoAntes = cargos.find(c => c.id === String(emp.cargoId)) || null;
+      const parseData = (s: unknown) => { const t = String(s ?? "").trim(); if (!t) return ""; if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t; const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/); if (m) { const d = m[1].padStart(2, "0"), mo = m[2].padStart(2, "0"); let y = m[3]; if (y.length === 2) y = "20" + y; return `${y}-${mo}-${d}`; } return ""; };
+      const hoje = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+      const vig = parseData(a.aPartirDe) || hoje;
+      const brDate = (iso: string) => iso.split("-").reverse().join("/");
+      const resumoCampos: CampoResumo[] = [
+        { label: "Empregado", valor: String(emp.nome || "") },
+        { label: "De", valor: cargoAntes ? `${cargoAntes.nome} (${cargoAntes.pontos ?? 0} pts)` : "—" },
+        { label: "Para", valor: `${cargo.nome} (${cargo.pontos ?? 0} pts)` },
+        { label: "A partir de", valor: `${brDate(vig)}${vig > hoje ? " (agendada)" : " (imediata)"}` },
+        ...(a.motivo ? [{ label: "Motivo", valor: String(a.motivo) }] : []),
+      ];
+      return stageProposta(ctx, {
+        acao: "promover_empregado", colecao: "empregados", docId: String(emp.id), tipoOp: "editar",
+        payload: { cargoId: String(cargo.id) }, resumoCampos,
+        titulo: `Promover ${emp.nome}`, descricao: `${emp.nome}: ${cargoAntes?.nome || "?"} → ${cargo.nome} (${brDate(vig)})`, sensivel: true,
+        extra: { vigenteApartir: vig, cargoAntesId: String(emp.cargoId || ""), cargoAntesNome: cargoAntes?.nome || "", cargoNovoId: String(cargo.id), cargoNovoNome: cargo.nome, empregadoNome: String(emp.nome || ""), motivo: a.motivo ? String(a.motivo) : "" },
+      });
     },
   },
   desfazer_acao: {
@@ -1021,7 +1064,7 @@ export async function runAgenteCore(
       // Especiais de Almoço (esta é uma SEÇÃO do dobrável Comidas e Bebidas).
       ? " ESTRUTURA DOS CARDÁPIOS (o Puba tem 3 PEÇAS): (A) o DOBRÁVEL 'Comidas e Bebidas' — UMA peça que reúne 3 SEÇÕES: *Comidas*, *Bebidas* e *Especiais de Almoço*; (B) a *Carta de Vinhos* (peça própria, com curadoria); (C) a filipeta *Especiais do Dia* (peça própria). ATENÇÃO: *Especiais de Almoço* NÃO é uma peça/cardápio separado — é SEÇÃO do dobrável Comidas e Bebidas; quando listar os cardápios, apresente as 3 peças (deixando claro que Especiais de Almoço é seção do dobrável). FLUXO DE ALTERAÇÃO (CONFIRME antes de mexer): (1) Quando pedirem uma alteração, primeiro IDENTIFIQUE onde está o item — use ler_cardapio e veja se é seção *Comidas*, *Bebidas* ou *Especiais de Almoço* (todas no dobrável), ou *Carta de Vinhos*, ou *Especiais do Dia*. (2) ANTES de aplicar, mande UMA mensagem curta CONFIRMANDO, nomeando o que SAI, o que ENTRA e em QUAL cardápio (ex.: 'Vou tirar *Prato X* e colocar *Prato Y* no cardápio de *Comidas* — confirma?'). NUNCA aplique sem esse ok. (3) Se faltar info pra fazer (preço, descrição, seção/categoria, ou em qual cardápio), PEÇA primeiro — não invente. (4) Só com o OK ('pode', 'confirma', 'isso', 'sim') chame aplicar_cardapio; depois responda 'Feito ✅' com 1 linha do que mudou e PERGUNTE se quer o PDF reformado (NÃO gere sozinho). (5) Na menor DÚVIDA (não achou o item, item parecido em mais de um cardápio, pedido ambíguo), PERGUNTE em vez de adivinhar. (6) Quando o usuário PEDIR o PDF/filipeta diretamente ('manda o pdf', 'gera a filipeta', 'quero o pdf de comidas'), aí sim gere e mande NA HORA, sem reconfirmar. (7) Quando pedirem TODOS os cardápios / 'os 3' / 'manda tudo', gere as 3 PEÇAS SEPARADAS chamando gerar_pdf TRÊS vezes — 'dobravel', 'vinhos' e 'especiais' — NUNCA use cardapio='todos' (que junta tudo numa peça só). Cada PDF é entregue como um arquivo próprio."
       : ehDp
-        ? " COPILOTO DE DP — seja CURTO e objetivo (1 a 2 linhas, tom de conversa; NUNCA textão nem listas longas). (1) Pra achar uma pessoa/cargo/candidatura, use a leitura primeiro (ler_pessoas, ler_cargos, ler_admissoes, ler_proc_seletivo) e BUSQUE pelo termo mais simples e distintivo: só o PRIMEIRO NOME, ou só os DÍGITOS do CPF — nunca o nome completo com sobrenomes nem o CPF com pontos. Se vier 0, refaça com um termo mais curto (primeiro nome) ANTES de concluir que não existe; nunca invente IDs. (1b) NÃO se contradiga: se numa leitura anterior desta MESMA conversa você já achou e confirmou alguém/um cargo, ele EXISTE — não diga depois 'não achei' nem 'foi erro meu, inventei'. Uma busca que agora volta 0 é quase sempre o termo (sobrenome a mais, CPF com máscara): refaça pelo primeiro nome/CPF e siga. (2) Pra ESCREVER, é só chamar a ferramenta de escrita: ela NÃO aplica na hora — monta um CARD de aprovação pro usuário clicar. Depois de chamar, responda só uma linha curta tipo 'Montei a proposta 👇 confere e aprova' — NÃO repita os campos no texto, o card já mostra tudo. (3) Cargo (cadastrar_cargo/editar_cargo) mexe na gorjeta e na folha: acrescente no seu texto UMA linha '⚠️ muda a gorjeta/folha de quem tem esse cargo'. (4) CONTRATO e WHATSAPP são EXTERNOS: você NÃO tem ferramenta — descreva em 1 linha o que fazer e diga pro usuário disparar no módulo (Admissão/Documentos); nunca diga que enviou. (5) Pra desfazer o que foi aplicado, use desfazer_acao. (6) Datas dd/mm/aaaa, valores R$; se não achar, diga em uma linha."
+        ? " COPILOTO DE DP — seja CURTO e objetivo (1 a 2 linhas, tom de conversa; NUNCA textão nem listas longas). (1) Pra achar uma pessoa/cargo/candidatura, use a leitura primeiro (ler_pessoas, ler_cargos, ler_admissoes, ler_proc_seletivo) e BUSQUE pelo termo mais simples e distintivo: só o PRIMEIRO NOME, ou só os DÍGITOS do CPF — nunca o nome completo com sobrenomes nem o CPF com pontos. Se vier 0, refaça com um termo mais curto (primeiro nome) ANTES de concluir que não existe; nunca invente IDs. (1b) NÃO se contradiga: se numa leitura anterior desta MESMA conversa você já achou e confirmou alguém/um cargo, ele EXISTE — não diga depois 'não achei' nem 'foi erro meu, inventei'. Uma busca que agora volta 0 é quase sempre o termo (sobrenome a mais, CPF com máscara): refaça pelo primeiro nome/CPF e siga. (2) Pra ESCREVER, é só chamar a ferramenta de escrita: ela NÃO aplica na hora — monta um CARD de aprovação pro usuário clicar. Depois de chamar, responda só uma linha curta tipo 'Montei a proposta 👇 confere e aprova' — NÃO repita os campos no texto, o card já mostra tudo. (3) Cargo (cadastrar_cargo/editar_cargo) mexe na gorjeta e na folha: acrescente UMA linha '⚠️ muda a gorjeta/folha'. Pra PROMOVER ou mudar o cargo de UM empregado específico, use promover_empregado (com aPartirDe) — NÃO editar_cargo (que muda a definição do cargo pra TODOS). Promoção só vale se o cargo-alvo é do MESMO restaurante; cargo de outro restaurante é transferência (módulo Admissão). (4) CONTRATO e WHATSAPP são EXTERNOS: você NÃO tem ferramenta — descreva em 1 linha o que fazer e diga pro usuário disparar no módulo (Admissão/Documentos); nunca diga que enviou. (5) Pra desfazer o que foi aplicado, use desfazer_acao. (6) Datas dd/mm/aaaa, valores R$; se não achar, diga em uma linha."
         : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = !temCardapioClassico ? ""

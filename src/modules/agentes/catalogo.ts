@@ -39,6 +39,7 @@ export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
     { key: "registrar_ajuste_ponto",label: "Registrar ajuste de ponto",tipo: "write", permissao: "ptrp",              desc: "Lança ajuste/tratamento no PTRP (reversível, confirmação)" },
     { key: "mover_candidatura",     label: "Mover candidatura",        tipo: "write", permissao: "processoSeletivo",  desc: "Muda etapa no kanban (reversível, confirmação)" },
     { key: "mover_card_admissao",   label: "Mover card de admissão",   tipo: "write", permissao: "admissao",          desc: "Muda o status do card de admissão (reversível, confirmação)" },
+    { key: "promover_empregado",    label: "Promover/mudar cargo",     tipo: "write", permissao: "pessoas",           desc: "⚠️ Muda o cargo de um empregado com vigência (afeta gorjeta/folha; confirmação)" },
     { key: "desfazer_acao",         label: "Desfazer ação",            tipo: "write", permissao: "pessoas",           desc: "Desfaz a última ação do copiloto" },
   ],
   financeiro: [
