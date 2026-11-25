@@ -15,7 +15,7 @@ import {
   // Pessoas & DP
   Users, FileText, UserSearch, UserRoundPlus, UserRoundMinus, Route, Send,
   CalendarRange, Fingerprint, ChartColumn, Gift, Coins, ReceiptText,
-  Stethoscope, Shirt,
+  Stethoscope, Shirt, Sparkles,
   // Administrativo
   ListTodo, AlarmClock, Calculator, ShoppingCart, BookMarked, Repeat, KeyRound,
   Receipt, ChartLine, CreditCard, Bot, GitFork, TrendingUp,
@@ -49,7 +49,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   "route": Route, "send": Send, "calendar-range": CalendarRange,
   "fingerprint": Fingerprint, "chart-column": ChartColumn, "gift": Gift,
   "coins": Coins, "receipt-text": ReceiptText, "stethoscope": Stethoscope,
-  "shirt": Shirt,
+  "shirt": Shirt, "sparkles": Sparkles,
   // Administrativo
   "list-todo": ListTodo, "alarm-clock": AlarmClock, "calculator": Calculator,
   "shopping-cart": ShoppingCart, "book-marked": BookMarked, "repeat": Repeat,
