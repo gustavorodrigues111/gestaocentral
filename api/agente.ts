@@ -917,7 +917,13 @@ const SKILL_TOOLS_DP: Record<string, SkillTool> = {
 function noEscopo(d: Doc, escopo: Escopo): boolean {
   if (escopo === "todas") return true;
   const rid = (d.restaurantId || d.rid) as string | undefined;
-  return !rid || escopo.includes(rid);
+  if (rid) return escopo.includes(rid);
+  // Pessoas (e afins) não têm restaurantId único: têm restaurantIds[] (vários
+  // restaurantes). Escopa pelo array — assim o copiloto só enxerga gente DO
+  // restaurante selecionado (evita "achar" alguém de outro restaurante).
+  const rids = d.restaurantIds as unknown;
+  if (Array.isArray(rids) && rids.length) return rids.some((r) => escopo.includes(String(r)));
+  return true; // sem vínculo de restaurante → não dá pra escopar, mantém visível
 }
 
 // Normaliza texto pra busca: tira acento e pontuação, baixa caixa, vira tokens.
