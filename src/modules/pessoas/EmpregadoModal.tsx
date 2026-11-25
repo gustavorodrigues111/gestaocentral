@@ -274,7 +274,6 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
 
   function buildPeriodos() {
     const now = new Date().toISOString();
-    const dem = demissaoPeriodo();
     // Freela mensalista: UM período por linha de cobertura (cargo + janela +
     // motivo). ultimoDia (inclusivo) → demissao = ultimoDia + 1 (1º dia fora).
     if (freelaMensalista) {
