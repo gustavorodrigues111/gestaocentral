@@ -294,6 +294,7 @@ export function CopilotoDpPage() {
         pessoaNome={pessoa?.nome}
         onVoltar={() => setAba("painel")}
         onConfig={() => setAba("painel")}
+        soMinhaConversa
       />
     </div>
   );

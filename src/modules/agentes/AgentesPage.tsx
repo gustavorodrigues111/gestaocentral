@@ -237,7 +237,7 @@ function CardapioPreview({ e }: { e: CardEstado }) {
   );
 }
 
-export function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void }) {
+export function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig, soMinhaConversa }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void; soMinhaConversa?: boolean }) {
   // Uma conversa contínua por (agente, pessoa). Persiste em agenteMensagens.
   const conversaId = `${agente.id}__${pessoaId || "anon"}`;
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -256,14 +256,25 @@ export function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }:
   // completa; ordena no cliente. O que você digita continua indo pra sua
   // conversa (conversaId do app); as do WhatsApp aparecem marcadas.
   useEffect(() => {
-    const q = query(collection(db, "agenteMensagens"), where("agenteId", "==", agente.id));
+    // Privado (Copiloto DP): busca só a SUA thread. Compartilhado (cardápio):
+    // busca tudo do agente (app + WhatsApp).
+    const q = soMinhaConversa
+      ? query(collection(db, "agenteMensagens"), where("conversaId", "==", conversaId))
+      : query(collection(db, "agenteMensagens"), where("agenteId", "==", agente.id));
     const u = onSnapshot(q, s => setMsgs(
       s.docs.map(d => ({ id: d.id, ...(d.data() as Omit<ChatMsg, "id">) }))
         .sort((a, b) => (a.criadoEm || "").localeCompare(b.criadoEm || ""))
     ));
     return () => u();
-  }, [agente.id]);
+  }, [agente.id, soMinhaConversa, conversaId]);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length, enviando]);
+
+  // Mensagens exibidas na tela. Por padrão mostra tudo (conversa compartilhada,
+  // ex.: agentes de cardápio que misturam app + WhatsApp). Com `soMinhaConversa`
+  // (ex.: Copiloto DP), cada usuário vê SÓ a própria thread — privacidade.
+  const visiveis = soMinhaConversa
+    ? msgs.filter(x => (x.conversaId || conversaId) === conversaId)
+    : msgs;
 
   async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[], cardapio?: CardEstado, pdfUrl?: string, previaUrl?: string, pdfUrls?: { url: string; nome: string }[]) {
     await addDoc(collection(db, "agenteMensagens"), {
@@ -376,20 +387,20 @@ export function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }:
           <button type="button" onClick={onVoltar} className="text-sm font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">← Voltar</button>
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 min-w-0 truncate"><DomIcon tipo={agente.tipo} size={16} /> {agente.nome}</div>
           <div className="flex items-center gap-1 ml-auto">
-            {msgs.length > 0 && <button type="button" onClick={() => void limparConversa()} title="Limpar conversa" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center"><Trash2 size={16} /></button>}
+            {visiveis.length > 0 && <button type="button" onClick={() => void limparConversa()} title="Limpar conversa" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center"><Trash2 size={16} /></button>}
             <button type="button" onClick={onConfig} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center"><Settings size={16} /></button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {msgs.length === 0 && (
+          {visiveis.length === 0 && (
             <div className="text-center text-xs text-gray-400 py-8">
               <div className="flex justify-center mb-2 text-gray-400"><DomIcon tipo={agente.tipo} size={30} /></div>
               Pergunte algo. Ele consulta os dados da plataforma e responde — por enquanto só leitura.
               <div className="mt-2 text-[11px]">Ex: {agente.tipo === "financeiro" ? "“Quais contas fixas vencem em julho?”" : "“Quem está em período de experiência este mês?”"}</div>
             </div>
           )}
-          {msgs.map(m => (
+          {visiveis.map(m => (
             <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
               {m.canal === "whatsapp" && (
                 <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mb-0.5 px-1 flex items-center gap-1">
