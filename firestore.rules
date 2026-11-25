@@ -299,6 +299,12 @@ service cloud.firestore {
     match /pendencias/{id}      { allow read, write: if authed(); }   // snapshot de pendências por módulo (cron das Rotinas "só com pendência")
     match /agenteMensagens/{id} { allow read, write: if authed(); }
     match /agenteLogs/{id}    { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
+    // Copiloto DP: propostas de escrita (aguardando aprovação) + log de ações
+    // (undo). Gravadas pelo backend (usuário de serviço autenticado) e lidas/
+    // aprovadas pelo cliente. Mesmo nível de confiança do agenteMensagens.
+    // TODO hardening (F4): escopar por isMaster()/permUsuario copilotoDp.
+    match /copilotoDpPendentes/{id} { allow read, write: if authed(); }
+    match /copilotoDpAcoes/{id}     { allow read, write: if authed(); }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
     match /ftImportRascunhos/{id}      { allow read, write: if authed(); }
     match /ftVinculosRecebimento/{id}  { allow read, write: if authed(); }
