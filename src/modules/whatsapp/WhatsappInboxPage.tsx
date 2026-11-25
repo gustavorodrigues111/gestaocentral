@@ -825,13 +825,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal, deepLi
         else await addDoc(collection(db, "whatsappMensagens"), docMsg);
         rascunhosRef.current[foneKey(sel)] = "";   // rascunho enviado → limpa
         setResposta(""); setMencionados([]); setRespondendo(null);
-      } else if ((j as { naoConfigurado?: boolean; numeroInexistente?: boolean }).naoConfigurado || (j as { numeroInexistente?: boolean }).numeroInexistente) {
-        // Falha DEFINITIVA (não configurado / número sem WhatsApp): não grava, avisa.
-        alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Este número não tem WhatsApp."));
+      } else if ((j as { naoConfigurado?: boolean }).naoConfigurado) {
+        // Falha DEFINITIVA de CONFIG (nada foi enviado): não grava, avisa.
+        alert("Evolution ainda não configurada (env vars na Vercel).");
       } else {
-        // Timeout / Evolution instável: a mensagem PODE ter saído (Evolution lento
-        // devolve erro mesmo entregando). Grava como INCERTA (⏳) pra não sumir — o
-        // ACK/eco do webhook confirma depois (ou o operador reenvia se ficar ⏳).
+        // Inclui `numeroInexistente`: a Evolution ÀS VEZES reporta isso mesmo
+        // tendo ENTREGADO (instabilidade). Antes a gente DESCARTAVA a mensagem —
+        // e ela sumia do app apesar de chegar no WhatsApp (bug relatado em
+        // conversas transferidas), ou timeout. Agora grava INCERTA (⏳) pra não
+        // sumir; o ACK/eco do webhook confirma depois (ou o operador reenvia).
         await addDoc(collection(db, "whatsappMensagens"), baseDoc({ status: 0, incerto: true }));
         rascunhosRef.current[foneKey(sel)] = "";
         setResposta(""); setMencionados([]); setRespondendo(null);
