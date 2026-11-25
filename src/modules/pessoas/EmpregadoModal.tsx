@@ -38,6 +38,9 @@ const addDiasYmd = (ymd: string, n: number): string => {
 // Linha do editor de coberturas (freela mensalista com vários períodos).
 // ultimoDia é INCLUSIVO (o que o usuário digita); "" = em aberto.
 type CoberturaRow = { cargoId: string; primeiroDia: string; ultimoDia: string; motivo: string };
+// Linha de substituição temporária (acting-up): empregado permanente que cobre
+// outro cargo numa janela. `de`/`ate` INCLUSIVOS.
+type SubRow = { cargoId: string; de: string; ate: string; motivo: string };
 
 export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId, cargos, onClose, onSaved, initialTab }: Props) {
   const { pessoa: me } = useAuth();
@@ -118,6 +121,16 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const addCobertura = () => setCoberturas(cs => [...cs, { cargoId: cargosAtivos[0]?.id || "", primeiroDia: "", ultimoDia: "", motivo: "" }]);
   const setCobertura = (i: number, patch: Partial<CoberturaRow>) => setCoberturas(cs => cs.map((r, k) => k === i ? { ...r, ...patch } : r));
   const removeCobertura = (i: number) => setCoberturas(cs => cs.length > 1 ? cs.filter((_, k) => k !== i) : cs);
+  // Substituição temporária (acting-up) — empregado PERMANENTE que cobre outro
+  // cargo por uma janela. Não é freela; não mexe no vínculo/ponto.
+  const [substituicoes, setSubstituicoes] = useState<SubRow[]>(
+    (empregado?.substituicoes || []).map(s => ({ cargoId: s.cargoId, de: s.de, ate: s.ate, motivo: s.motivo || "" }))
+  );
+  const addSub = () => setSubstituicoes(ss => [...ss, { cargoId: cargosAtivos[0]?.id || "", de: "", ate: "", motivo: "" }]);
+  const setSub = (i: number, patch: Partial<SubRow>) => setSubstituicoes(ss => ss.map((r, k) => k === i ? { ...r, ...patch } : r));
+  const removeSub = (i: number) => setSubstituicoes(ss => ss.filter((_, k) => k !== i));
+  const subPayload = (): { cargoId: string; de: string; ate: string; motivo?: string }[] =>
+    substituicoes.filter(s => s.cargoId && s.de && s.ate).map(s => ({ cargoId: s.cargoId, de: s.de, ate: s.ate, ...(s.motivo.trim() ? { motivo: s.motivo.trim() } : {}) }));
   const [empCode, setEmpCode] = useState(empregado?.empCode || "");
   const [codigoContabil, setCodigoContabil] = useState(empregado?.codigoContabil || "");
   const [emergenciaNome, setEmergenciaNome] = useState(empregado?.emergenciaNome || "");
@@ -351,6 +364,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           // Freela mensalista não bate ponto mesmo em cargo CLT.
           ...(freelaMensalista ? { batePonto: false } : (batePonto !== null ? { batePonto } : {})),
           ...(freelaMensalista ? { freelaMensalista: true } : {}),
+          ...(subPayload().length ? { substituicoes: subPayload() } : {}),
           unidadePadraoId: unidadePadraoId || null,
           empCode: empCode.trim() || null,
           codigoContabil: codigoContabil.trim() || null,
@@ -439,6 +453,11 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
       nonCritical.admissaoAtual = freelaMensalista ? admissaoAtivaFreela : (!dem ? admissao : null);
       nonCritical.estaAtivo = freelaMensalista ? true : !dem;
       nonCritical.demitidoEm = freelaMensalista ? null : dem;
+    }
+    // Substituição temporária (acting-up) — não-crítico, só afeta gorjeta na janela.
+    const subsNovas = subPayload();
+    if (JSON.stringify(subsNovas) !== JSON.stringify(empregado!.substituicoes || [])) {
+      nonCritical.substituicoes = subsNovas;
     }
 
     if (criticas.length === 0) {
@@ -774,6 +793,75 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                 Marque se esta pessoa é freela cobrindo um período (ex: férias de um CLT) e deve <strong>entrar na gorjeta</strong> desses dias, no cargo escolhido. Diarista pago por turno é no módulo <strong>Freelas</strong>.
               </p>
             )}
+          </div>
+        )}
+
+        {/* ── Substituição temporária (acting-up) ──
+            Pro empregado PERMANENTE (não-freela) que cobre OUTRO cargo por uma
+            janela e recebe a gorjeta desse cargo só nesses dias, voltando
+            sozinho ao cargo-base. Não mexe no vínculo/ponto. */}
+        {cargo && !freelaMensalista && (
+          <div className="border border-sky-200 dark:border-sky-800/50 rounded-lg p-3 bg-sky-50/60 dark:bg-sky-950/20 space-y-2.5">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium inline-flex items-center gap-1"><Zap size={14} /> Substituição temporária (acting-up)</span>
+              <span className="text-xs text-gray-500">(cobre outro cargo numa janela e volta sozinho)</span>
+            </div>
+            {substituicoes.length === 0 ? (
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                Continua <strong>{cargo.nome}</strong> normalmente. Adicione uma janela só se ele vai <strong>cobrir um cargo diferente</strong> por um período (ex.: subir pra Garçom 1 enquanto cobre férias de alguém) e <strong>receber a gorjeta desse cargo</strong> nesses dias. Fora da janela, volta ao cargo-base sozinho. Não mexe no ponto nem no vínculo.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {substituicoes.map((s, i) => {
+                  const sObj = cargosAtivos.find(c => c.id === s.cargoId);
+                  const baseP = cargo?.pontos ?? 0; const subP = sObj?.pontos ?? 0;
+                  return (
+                    <div key={i} className="rounded-lg border border-sky-200 dark:border-sky-800/50 bg-white/70 dark:bg-gray-900/40 p-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-sky-500">Substituição {i + 1}</span>
+                        <button type="button" onClick={() => removeSub(i)} className="ml-auto text-gray-400 hover:text-rose-500" title="Remover"><Trash2 size={14} /></button>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Cargo da substituição * <span className="text-gray-400">(gorjeta desses dias)</span></label>
+                        <select value={s.cargoId} onChange={(e) => setSub(i, { cargoId: e.target.value })}
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                          {cargosAtivos.map(c => (
+                            <option key={c.id} value={c.id}>{c.nome}{c.area ? ` · ${c.area}` : ""} · {c.pontos ?? 0} pts</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">De *</label>
+                          <input type="date" value={s.de} onChange={(e) => setSub(i, { de: e.target.value })}
+                            className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Até *</label>
+                          <input type="date" value={s.ate} min={s.de || undefined} onChange={(e) => setSub(i, { ate: e.target.value })}
+                            className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Motivo</label>
+                        <input type="text" value={s.motivo} onChange={(e) => setSub(i, { motivo: e.target.value })}
+                          placeholder="ex: cobertura de férias da Eliza"
+                          className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                      </div>
+                      {sObj && (
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                          Nesses dias a gorjeta sai como <strong>{sObj.nome}</strong> ({subP} pts{sObj.area ? ` · ${sObj.area}` : ""}) em vez de {cargo?.nome} ({baseP} pts).{subP < baseP ? " ⚠️ é MENOR que o cargo-base." : ""}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button type="button" onClick={addSub}
+              className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1">
+              <Zap size={13} /> + Adicionar substituição
+            </button>
           </div>
         )}
 

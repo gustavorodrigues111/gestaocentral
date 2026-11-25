@@ -58,6 +58,13 @@ export function empregadoAtivoEm(emp: Empregado, dateStr: string): boolean {
 // existentes hoje), retorna exatamente `emp.cargoId` — zero mudança de
 // comportamento. `demissao` é exclusivo (1º dia FORA), igual a empregadoAtivoEm.
 export function cargoIdDoEmpregadoEm(emp: Empregado, dateStr: string): string {
+  // Substituição temporária (acting-up) tem PRECEDÊNCIA: empregado permanente
+  // que cobre outro cargo numa janela recebe a gorjeta DESSE cargo nesses dias.
+  // `de`/`ate` são INCLUSIVOS. Não mexe no vínculo — só no cargo da gorjeta.
+  for (const s of emp.substituicoes || []) {
+    if (s.cargoId && s.de && dateStr >= s.de && dateStr <= s.ate) return s.cargoId;
+  }
+  // Cargo do período (freela mensalista com cargos diferentes por janela).
   for (const p of emp.periodos || []) {
     if (!p.cargoId) continue;
     if (dateStr < p.admissao) continue;

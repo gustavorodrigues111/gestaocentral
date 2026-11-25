@@ -558,6 +558,11 @@ export type Empregado = {
   // É só um marcador de clareza: a gorjeta já entra por cargo com pontos +
   // período ativo + escala; o fechamento entra por não bater ponto.
   freelaMensalista?: boolean;
+  // SUBSTITUIÇÃO TEMPORÁRIA (acting-up): empregado PERMANENTE que cobre outro
+  // cargo por uma janela e recebe a gorjeta DESSE cargo nesses dias, voltando
+  // sozinho ao cargo-base depois. NÃO mexe no vínculo/ponto/cargo-base — só tem
+  // precedência na gorjeta na janela. `de`/`ate` INCLUSIVOS (YYYY-MM-DD).
+  substituicoes?: { cargoId: string; de: string; ate: string; motivo?: string }[];
   // Derivados pra performance (atualizados sempre que mexe em periodos)
   estaAtivo: boolean;            // true se último período sem demissão
   admissaoAtual?: string | null; // último período em aberto
