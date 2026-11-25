@@ -21,7 +21,7 @@ import { fmtBR } from "../../core/utils/date";
 import type { AgenteIA } from "../../core/types";
 import { CATALOGO, DOMINIO_META } from "./catalogo";
 import { AgenteChat } from "./AgentesPage";
-import { Sparkles, History, Undo2, ShieldAlert, Loader2, Check, X, MessageSquare, LayoutDashboard } from "lucide-react";
+import { Sparkles, History, Undo2, ShieldAlert, Loader2, Check, X, MessageSquare, LayoutDashboard, Pencil } from "lucide-react";
 
 type AcaoDp = {
   id: string; acao: string; colecao: string; docId: string; descricao: string;
@@ -59,6 +59,8 @@ export function CopilotoDpPage() {
   // Contador de re-assinatura: se um listener cai (403 antes de liberar a regra,
   // rede), re-assina sozinho em alguns segundos em vez de ficar morto.
   const [reconectar, setReconectar] = useState(0);
+  // Rascunho enviado ao chat quando o usuário clica "Editar" num card.
+  const [prefill, setPrefill] = useState<{ texto: string; nonce: number } | undefined>();
 
   // Garante (idempotente) um agente DP por restaurante.
   useEffect(() => {
@@ -167,6 +169,22 @@ export function CopilotoDpPage() {
     } finally { setAgindo(null); }
   }
 
+  // "Editar comando": recusa a proposta atual e joga um rascunho no chat com o
+  // que estava proposto, pra o usuário dizer o ajuste e o copiloto remontar.
+  async function editar(p: PropDp) {
+    if (agindo) return;
+    setAgindo(p.id);
+    try {
+      await updateDoc(doc(db, "copilotoDpPendentes", p.id), { status: "recusada", recusadaEm: new Date().toISOString(), motivoRecusa: "editar" });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao editar."); setAgindo(null); return;
+    }
+    setAgindo(null);
+    const campos = (p.resumoCampos || []).map((c) => `${c.label}: ${c.valor}`).join("; ");
+    setPrefill({ texto: `Ajusta a proposta "${p.titulo}"${campos ? ` (${campos})` : ""}. Muda: `, nonce: Date.now() });
+    setAba("chat");
+  }
+
   const fmtQuando = (iso: string) => {
     try { const d = new Date(iso); return `${fmtBR(iso)} ${d.toTimeString().slice(0, 5)}`; } catch { return iso; }
   };
@@ -192,10 +210,14 @@ export function CopilotoDpPage() {
           </div>
         ))}
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button onClick={() => aprovar(p)} disabled={agindo === p.id}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white enabled:hover:bg-emerald-700 disabled:opacity-50">
           {agindo === p.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Aprovar
+        </button>
+        <button onClick={() => editar(p)} disabled={agindo === p.id}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 enabled:hover:bg-indigo-50 enabled:dark:hover:bg-indigo-950/40 disabled:opacity-50">
+          <Pencil size={14} /> Editar
         </button>
         <button onClick={() => recusar(p)} disabled={agindo === p.id}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 enabled:hover:bg-gray-50 enabled:dark:hover:bg-gray-800 disabled:opacity-50">
@@ -298,6 +320,7 @@ export function CopilotoDpPage() {
         onVoltar={() => setAba("painel")}
         onConfig={() => setAba("painel")}
         soMinhaConversa
+        prefill={prefill}
       />
     </div>
   );

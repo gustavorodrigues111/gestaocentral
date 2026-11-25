@@ -237,11 +237,14 @@ function CardapioPreview({ e }: { e: CardEstado }) {
   );
 }
 
-export function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig, soMinhaConversa }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void; soMinhaConversa?: boolean }) {
+export function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig, soMinhaConversa, prefill }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void; soMinhaConversa?: boolean; prefill?: { texto: string; nonce: number } }) {
   // Uma conversa contínua por (agente, pessoa). Persiste em agenteMensagens.
   const conversaId = `${agente.id}__${pessoaId || "anon"}`;
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [texto, setTexto] = useState("");
+  // Texto pré-preenchido vindo de fora (ex.: botão "Editar" de um card de
+  // proposta no Copiloto DP) — aplica quando o nonce muda.
+  useEffect(() => { if (prefill?.texto) setTexto(prefill.texto); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [prefill?.nonce]);
   const [anexo, setAnexo] = useState<{ base64: string; mediaType: string; nome: string; isPdf: boolean } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [enviando, setEnviando] = useState(false);
