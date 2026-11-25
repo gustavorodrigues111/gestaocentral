@@ -56,6 +56,9 @@ export function CopilotoDpPage() {
   const [desfazendo, setDesfazendo] = useState<string | null>(null);
   const [pendentes, setPendentes] = useState<PropDp[]>([]);
   const [agindo, setAgindo] = useState<string | null>(null);
+  // Contador de re-assinatura: se um listener cai (403 antes de liberar a regra,
+  // rede), re-assina sozinho em alguns segundos em vez de ficar morto.
+  const [reconectar, setReconectar] = useState(0);
 
   // Garante (idempotente) um agente DP por restaurante.
   useEffect(() => {
@@ -90,10 +93,10 @@ export function CopilotoDpPage() {
       query(collection(db, "copilotoDpAcoes"), where("restaurantId", "==", rid)),
       (s) => setAcoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as AcaoDp)
         .sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)))),
-      () => { /* permissão/rede — mantém o último valor */ },
+      () => { setTimeout(() => setReconectar((r) => r + 1), 3000); }, // re-assina sozinho
     );
     return () => u();
-  }, [rid]);
+  }, [rid, reconectar]);
 
   async function desfazer(a: AcaoDp) {
     if (a.desfeita || desfazendo) return;
@@ -120,10 +123,10 @@ export function CopilotoDpPage() {
       (s) => setPendentes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as PropDp)
         .filter((p) => p.status === "aguardando")
         .sort((a, b) => String(a.criadoEm).localeCompare(String(b.criadoEm)))),
-      () => { /* permissão/rede */ },
+      () => { setTimeout(() => setReconectar((r) => r + 1), 3000); }, // re-assina sozinho
     );
     return () => u();
-  }, [rid]);
+  }, [rid, reconectar]);
 
   async function logAcao(x: { acao: string; colecao: string; docId: string; antes: Record<string, unknown> | null; descricao: string }) {
     const id = `cdp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
